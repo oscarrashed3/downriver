@@ -1143,6 +1143,11 @@ export class Game {
     const mv = f.multiplyScalar(inp.axis(['KeyS', 'ArrowDown'], ['KeyW', 'ArrowUp'])).add(r.multiplyScalar(inp.axis(['KeyA'], ['KeyD'])));
     if (mv.lengthSq() > 1) mv.normalize();
     if (this.hud.helpOpen()) mv.set(0, 0, 0);
+    // Esc, or the browser letting go of the mouse (which is what Esc does while looking around), opens the menu.
+    if (inp.lockLost) { inp.lockLost = false; this.menuByLock = this.time; this.openTab('goal'); return; }
+    if (inp.hit('Escape')) { this.openTab('goal'); return; }
+    const keyed = MENU_TABS.find(t => t.key && inp.hit('Key' + t.key));
+    if (keyed) { this.openTab(keyed.id); return; }
     if (this.sitting) {
       if (mv.lengthSq() > 0.01 || inp.hit('Space') || inp.hit('KeyE')) { this.sitting = null; pl.pose = {}; }
       else { pl.animate(dt, 0, false); pl.sync(); this.hud.setPrompt(null); return; }
@@ -1151,11 +1156,6 @@ export class Game {
     this.fold.kiteMode = pl.gliding;
     if (inp.hit('KeyQ') && this.flags.has('power:skyreading')) { this.skyread.active = !this.skyread.active; this.sound.sfxPlay('soft'); }
     if (inp.hit('KeyF')) { this.sound.sfxPlay('whistle'); this.fold.hop(); pl.pose = {}; }
-    // Esc, or the browser letting go of the mouse (which is what Esc does while looking around), opens the menu.
-    if (inp.lockLost) { inp.lockLost = false; this.menuByLock = this.time; this.openTab('goal'); return; }
-    if (inp.hit('Escape')) { this.openTab('goal'); return; }
-    const keyed = MENU_TABS.find(t => t.key && inp.hit('Key' + t.key));
-    if (keyed) { this.openTab(keyed.id); return; }
     if (inp.hit('Tab') || inp.wheel > 0) { this.openSky(); return; }
     this.surveyT -= dt;
     if (this.surveyT <= 0) { this.surveyT = 0.5; const ll = latLonOf(pl.up); this.map.reveal(this.planet, ll.lat, wrapDeg(ll.lon - this.planet.lonAtLat(ll.lat)), 22); }

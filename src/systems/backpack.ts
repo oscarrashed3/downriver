@@ -155,6 +155,6 @@ export class BackpackView {
       body = c.sketches.length ? `<div class="sketches">${c.sketches.map(s => `<figure><img src="${s.img}" alt=""/><figcaption>${esc(s.label)}</figcaption></figure>`).join('')}</div>`
         : '<p class="dim">Find a viewpoint, sit down, and the view will draw itself here.</p>';
     }
-    this.el.innerHTML = `<div class="sheet bagsheet"><div class="tabs">${tabs}</div>${body}</div>`;
+    this.el.innerHTML = `<div class="sheet bagsheet"><div class="tabs">${tabs}</div><h2>${this.tab === 'bag' ? 'Backpack' : this.tab === 'letters' ? 'Letters' : 'Sketchbook'}</h2>${body}</div>`;
   }
 }
