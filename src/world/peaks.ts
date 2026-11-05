@@ -8,6 +8,7 @@ import type { WorldContent } from './content';
 import type { Landmark } from '../systems/mapView';
 import { smoothstep } from './noise';
 import { makeHollo } from './hollo';
+import { leafClump } from '../render/foliage';
 
 /** Where everything in Chapter One stands: [lat from the north pole, degrees of longitude from the river]. */
 export const PK = {
@@ -214,6 +215,19 @@ export function populatePeaks(p: Planet, scene: THREE.Scene, c: WorldContent,
   };
   for (const [la, lo] of [[32, -26], [40, 28], [78, 38], [84, -44], [108, -22], [116, 26], [134, 4], [150, -30], [140, 40], [96, 60], [100, -70], [26, -50]]) grove(la, lo, 9, 10, () => Q.alpinePine(5 + P.rand() * 4));
   for (const [la, lo] of [[20, 14], [47, -27], [70, 16], [56, -4]]) grove(la, lo, 4, 6, () => Q.birch(4 + P.rand() * 2));
+  for (const [la, lo] of [[44, 30], [58, 24], [64, -34], [38, -18], [82, 20], [90, -16], [30, 8]]) grove(la, lo, 3, 7, () => Q.birch(3.5 + P.rand() * 2.5));
+  // leafy bushes along the valley sides, so the slopes read lush instead of bare
+  const greens = ['#5a9a3a', '#4e8c36', '#6aa844', '#3f7d34'];
+  let bu = 0;
+  for (let tries = 0; tries < 600 && bu < 46; tries++) {
+    const lat = 18 + P.rand() * 95, lon = (P.rand() * 2 - 1) * 75;
+    const d = p.dirRiver(lat, lon);
+    if (!free(d, 4) || p.slope(d) > 0.55) continue;
+    const g = new THREE.Group();
+    const n = P.rand() < 0.4 ? 2 : 1;
+    for (let k = 0; k < n; k++) { const cl = leafClump({ radius: 0.7 + P.rand() * 0.6, color: greens[(bu + k) % 4], cards: 16, seed: bu * 3 + k, squash: 0.7 }); cl.position.set(k * 0.9 - 0.4, 0.45, (P.rand() - 0.5) * 0.6); g.add(cl); }
+    put(g, lat, lon, 0, undefined, 0.15); bu++;
+  }
   let bo = 0;
   for (let tries = 0; tries < 400 && bo < 34; tries++) {
     const lat = 15 + P.rand() * 160, lon = (P.rand() * 2 - 1) * 170;
