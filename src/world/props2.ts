@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { toon, rand } from './props';
 import { addOutlines } from '../render/paint';
+import { leafClump, firTier } from '../render/foliage';
+import { texToon, plasterTex, roofTex, woodTex, stoneTex } from '../render/textures';
 
 // Hand-made pieces for the Spring Peaks. Built from simple shapes, inked, and a little crooked on purpose.
 
@@ -13,9 +15,16 @@ const ink = (g: THREE.Object3D, w = 0.035) => addOutlines(g, '#3b2a30', w);
 export function cottage(opts: { wall?: string; roof?: string; door?: string; w?: number; d?: number; flowers?: string } = {}): THREE.Group {
   const g = new THREE.Group();
   const W = opts.w ?? 4.2, D = opts.d ?? 3.6, Hh = 2.6;
-  g.add(mesh(new THREE.BoxGeometry(W + 0.3, 0.6, D + 0.3), toon('#8f8a96'), 0, 0.3, 0));
-  g.add(mesh(new THREE.BoxGeometry(W, Hh, D), toon(opts.wall ?? '#f1e6d2'), 0, 0.6 + Hh / 2, 0));
-  const timber = toon('#6a4a34');
+  g.add(mesh(new THREE.BoxGeometry(W + 0.3, 0.6, D + 0.3), texToon('#a8a2a8', stoneTex), 0, 0.3, 0));
+  const wallMat = texToon(opts.wall ?? '#f1e6d2', plasterTex);
+  g.add(mesh(new THREE.BoxGeometry(W, Hh, D), wallMat, 0, 0.6 + Hh / 2, 0));
+  const timber = texToon('#7a5638', woodTex);
+  // half-timbering on the front and sides: a top beam and diagonal braces
+  for (const z of [D / 2 + 0.03, -D / 2 - 0.03]) {
+    g.add(mesh(new THREE.BoxGeometry(W + 0.1, 0.16, 0.08), timber, 0, 0.6 + Hh - 0.08, z));
+    for (const sx of [-1, 1]) { const br = mesh(new THREE.BoxGeometry(0.12, Hh * 0.62, 0.06), timber, sx * W * 0.4, 0.6 + Hh * 0.62, z); br.rotation.z = sx * 0.6; g.add(br); }
+  }
+  for (const x of [W / 2 + 0.03, -W / 2 - 0.03]) g.add(mesh(new THREE.BoxGeometry(0.08, 0.16, D + 0.1), timber, x, 0.6 + Hh - 0.08, 0));
   for (const x of [-W / 2, W / 2]) for (const z of [-D / 2, D / 2]) g.add(mesh(new THREE.BoxGeometry(0.2, Hh, 0.2), timber, x, 0.6 + Hh / 2, z));
   g.add(mesh(new THREE.BoxGeometry(W + 0.1, 0.18, 0.12), timber, 0, 0.6 + Hh * 0.55, D / 2 + 0.02));
   // roof: a triangular prism with overhang
@@ -23,13 +32,14 @@ export function cottage(opts: { wall?: string; roof?: string; door?: string; w?:
   const shape = new THREE.Shape(); shape.moveTo(-rw, 0); shape.lineTo(0, rh); shape.lineTo(rw, 0); shape.lineTo(rw - 0.25, 0); shape.lineTo(0, rh - 0.28); shape.lineTo(-rw + 0.25, 0); shape.closePath();
   const rg = new THREE.ExtrudeGeometry(shape, { depth: roofLen, bevelEnabled: false });
   rg.translate(0, 0, -roofLen / 2);
-  const roof = mesh(rg, toon(opts.roof ?? '#a8533a'), 0, 0.6 + Hh - 0.05, 0);
+  const roof = mesh(rg, texToon(opts.roof ?? '#a8533a', roofTex, 0.32), 0, 0.6 + Hh - 0.05, 0);
+  roof.rotation.z = (rand() - 0.5) * 0.03;
   g.add(roof);
   const gable = new THREE.Shape(); gable.moveTo(-W / 2, 0); gable.lineTo(0, rh - 0.3); gable.lineTo(W / 2, 0); gable.closePath();
   const gg = new THREE.ShapeGeometry(gable);
-  for (const z of [D / 2 + 0.01, -D / 2 - 0.01]) { const m = mesh(gg, toon(opts.wall ?? '#f1e6d2'), 0, 0.6 + Hh, z); if (z < 0) m.rotation.y = Math.PI; g.add(m); }
+  for (const z of [D / 2 + 0.01, -D / 2 - 0.01]) { const m = mesh(gg, wallMat, 0, 0.6 + Hh, z); if (z < 0) m.rotation.y = Math.PI; g.add(m); }
   // chimney
-  const ch = mesh(new THREE.BoxGeometry(0.6, 1.8, 0.6), toon('#8f8a96'), W * 0.25, 0.6 + Hh + 1.6, -D * 0.2);
+  const ch = mesh(new THREE.BoxGeometry(0.6, 1.8, 0.6), texToon('#a8a2a8', stoneTex), W * 0.25, 0.6 + Hh + 1.6, -D * 0.2);
   g.add(ch);
   g.userData.chimney = new THREE.Vector3(W * 0.25, 0.6 + Hh + 2.6, -D * 0.2);
   // door, round window, shutters, flower box
@@ -156,12 +166,12 @@ export function oldTree(): THREE.Group {
   const trunk = mesh(new THREE.CylinderGeometry(0.45, 0.85, 5.5, 9), bark, 0, 2.6, 0); trunk.rotation.z = 0.12; g.add(trunk);
   const b1 = mesh(new THREE.CylinderGeometry(0.22, 0.38, 3.2, 7), bark, 0.9, 5.4, 0.2); b1.rotation.z = -0.7; g.add(b1);
   const b2 = mesh(new THREE.CylinderGeometry(0.2, 0.34, 3, 7), bark, -0.9, 5.6, -0.3); b2.rotation.z = 0.8; g.add(b2);
-  const leaves: THREE.Mesh[] = [];
-  const cols = ['#4f8a44', '#5f9e4a', '#3f7a40', '#6aa852'];
-  for (let i = 0; i < 11; i++) {
-    const a = rand() * Math.PI * 2, r = 1 + rand() * 2.4;
-    const l = mesh(new THREE.IcosahedronGeometry(1.4 + rand() * 0.9, 1), toon(cols[i % 4]), Math.cos(a) * r, 6.5 + rand() * 2.4, Math.sin(a) * r);
-    l.scale.y = 0.8; g.add(l); leaves.push(l);
+  const leaves: THREE.Object3D[] = [];
+  const cols = ['#4f9a3c', '#62ad44', '#3f8a3a', '#78bb4c'];
+  for (let i = 0; i < 9; i++) {
+    const a = rand() * Math.PI * 2, r = 0.8 + rand() * 2.4;
+    const l = leafClump({ radius: 1.5 + rand() * 0.8, color: cols[i % 4], seed: i + 3 });
+    l.position.set(Math.cos(a) * r, 6.4 + rand() * 2.6, Math.sin(a) * r); g.add(l); leaves.push(l);
   }
   // roots
   for (let i = 0; i < 5; i++) { const a = i * 1.3; const rt = mesh(new THREE.CylinderGeometry(0.12, 0.3, 1.8, 5), bark, Math.cos(a) * 0.9, 0.25, Math.sin(a) * 0.9); rt.rotation.z = Math.cos(a) * 1.2; rt.rotation.x = -Math.sin(a) * 1.2; g.add(rt); }
@@ -191,14 +201,15 @@ export function treeChimes(): THREE.Group {
 export function alpinePine(h = 6): THREE.Group {
   const g = new THREE.Group();
   g.add(mesh(new THREE.CylinderGeometry(0.15, 0.3, h * 0.45, 6), toon('#5a3e2c'), 0, h * 0.22, 0));
-  const col = rand() > 0.5 ? '#2f6a48' : '#3a7a50';
-  const m = toon(col);
-  for (let i = 0; i < 4; i++) {
-    const r = (1.3 - i * 0.28) * h / 6;
-    const c = mesh(new THREE.ConeGeometry(r, h * 0.3, 8), m, 0, h * (0.32 + i * 0.16), 0);
-    c.rotation.y = i * 0.7; g.add(c);
-  }
+  const col = rand() > 0.5 ? '#2d6e46' : '#3a8050';
+  const m = toon(new THREE.Color(col).multiplyScalar(0.7).getStyle());
   ink(g, 0.04);
+  for (let i = 0; i < 5; i++) {
+    const r = (1.35 - i * 0.24) * h / 6;
+    const y = h * (0.26 + i * 0.14);
+    const core = mesh(new THREE.ConeGeometry(r * 0.55, h * 0.24, 7), m, 0, y + h * 0.1, 0); core.userData.noOutline = true; g.add(core);
+    const t = firTier(r, h * 0.24, col, Math.floor(rand() * 1000)); t.position.y = y; t.rotation.y = i * 0.7; g.add(t);
+  }
   return g;
 }
 
@@ -206,12 +217,13 @@ export function birch(h = 5): THREE.Group {
   const g = new THREE.Group();
   const t = mesh(new THREE.CylinderGeometry(0.1, 0.16, h, 6), toon('#efeae0'), 0, h / 2, 0); t.rotation.z = (rand() - 0.5) * 0.15; g.add(t);
   for (let i = 0; i < 4; i++) g.add(mesh(new THREE.BoxGeometry(0.17, 0.05, 0.17), toon('#3a3430'), 0, 0.6 + i * h * 0.2, 0));
-  const leaves: THREE.Mesh[] = [];
+  const leaves: THREE.Object3D[] = [];
+  ink(g, 0.04);
   for (let i = 0; i < 5; i++) {
-    const l = mesh(new THREE.IcosahedronGeometry(0.8 + rand() * 0.5, 1), toon(i % 2 ? '#8ab84a' : '#a8c850'), (rand() - 0.5) * 1.4, h * 0.75 + rand() * 1.4, (rand() - 0.5) * 1.4);
+    const l = leafClump({ radius: 0.9 + rand() * 0.5, color: i % 2 ? '#86bf44' : '#a6cc4c', seed: Math.floor(rand() * 999) });
+    l.position.set((rand() - 0.5) * 1.4, h * 0.75 + rand() * 1.4, (rand() - 0.5) * 1.4);
     g.add(l); leaves.push(l);
   }
-  ink(g, 0.04);
   g.userData.leaves = leaves;
   return g;
 }

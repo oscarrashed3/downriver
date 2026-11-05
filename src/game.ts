@@ -3,6 +3,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { FinishPass } from './render/finish';
 import { WORLDS } from './world/worlds';
 import { Planet } from './world/planet';
 import { Sky } from './world/sky';
@@ -51,6 +52,7 @@ export class Game {
   camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.1, 12000);
   composer: EffectComposer;
   bloom: UnrealBloomPass;
+  finish!: FinishPass;
   sunLight: THREE.DirectionalLight;
   moonLight: THREE.DirectionalLight;
   day: DayCycle;
@@ -203,10 +205,13 @@ export class Game {
     this.seq = new Sequencer((who, text) => this.hud.showCaption(who, text));
     if (this.fast > 1) this.seq.speed = 4;
 
-    this.composer = new EffectComposer(this.renderer);
+    const rt = new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType, depthTexture: new THREE.DepthTexture(innerWidth, innerHeight) });
+    this.composer = new EffectComposer(this.renderer, rt);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.2, 0.5, 0.96);
     this.composer.addPass(this.bloom);
+    this.finish = new FinishPass(this.camera);
+    this.composer.addPass(this.finish);
     this.composer.addPass(new OutputPass());
     this.applyQuality();
 
@@ -974,6 +979,8 @@ export class Game {
     this.hud.setGoal(showGoal && step && this.flags.has('read-letter') ? step.text : null);
     if (this.mode === 'play' || this.mode === 'raft') { const lv = this.quality.sample(dt); if (lv) { this.applyQuality(); this.hud.notify(`Picture quality set to <b>${lv}</b> to keep things smooth. <b>P</b> to change.`); } }
     this.hud.update(dt);
+    this.finish.mat.uniforms.uTime.value = this.time;
+    this.finish.mat.uniforms.uNight.value = 1 - Math.max(this.day.day, far);
     this.composer.render();
     inp.endFrame();
   }

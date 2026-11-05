@@ -16,9 +16,9 @@ export const PEAKS = {
   waterDeep: '#2f86b8',
   sunlight: '#fff1da',      // morning sun
   skyAmbient: '#9cc4f0',    // the blue that fills shadows
-  haze: '#cfe5f2',          // distance fog by day
-  skyTop: '#3b86de',
-  skyHorizon: '#e4f1f6',
+  haze: '#bcdcf0',          // distance fog by day
+  skyTop: '#1d5fc8',
+  skyHorizon: '#b4def2',
 } as const;
 
 export const LIGHT = {
@@ -37,7 +37,7 @@ export const LIGHT = {
 
 export const CLOUDS = {
   top: '#fff7ea',           // sunlit cumulus
-  belly: '#9eb0d2',         // cool shaded underside
+  belly: '#a9bad8',         // cool shaded underside
   dusk: '#ffb29a',
 } as const;
 

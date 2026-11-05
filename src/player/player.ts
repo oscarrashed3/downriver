@@ -47,21 +47,24 @@ export class Player {
 
   constructor() {
     this.person = new Person({
-      skin: '#f2c8a2', hair: '#3b2a22', hairStyle: 'messy', top: '#efe4cc', coat: '#c4693a', coatLen: 0.78,
-      trousers: '#46506e', boots: '#5a3a28', scarf: '#3f86b8', satchel: true,
+      skin: '#b88a68', hair: '#3a261c', hairStyle: 'short', top: '#2f3550', coat: '#c8a47c', coatLen: 0.82, facets: true,
+      trousers: '#4a3428', boots: '#7a4a2c', scarf: '#2c3456', satchel: true, hood: '#c8a47c', glowEyes: '#ffc85a', head: 1.12,
+      props: ['boatPeek'],
     });
     this.root.add(this.person.root);
     // Lantern with the drop, hanging from the satchel strap at his right hip.
-    const glass = new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 8), new THREE.MeshBasicMaterial({ color: '#dff6ff', transparent: true, opacity: 0.35 }));
+    const glass = new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 8), new THREE.MeshBasicMaterial({ color: '#ffe6a8', transparent: true, opacity: 0.45 }));
     this.dropMesh = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), new THREE.MeshBasicMaterial({ color: '#bfeeff' }));
-    const lcap = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.045, 0.035, 8), toon('#8a6a4a'));
+    const lcap = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.05, 0.04, 6), toon('#b88a3a'));
+    for (let i = 0; i < 4; i++) { const bar = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.15, 0.008), toon('#8a6428')); const a = i * Math.PI / 2 + Math.PI / 4; bar.position.set(Math.cos(a) * 0.06, 0.0, Math.sin(a) * 0.06); this.lantern.add(bar); }
+    const lbase = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.025, 6), toon('#b88a3a')); lbase.position.y = -0.075; this.lantern.add(lbase);
     lcap.position.y = 0.08;
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.02, 0.006, 4, 8), toon('#8a6a4a')); ring.position.y = 0.11;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.02, 0.006, 4, 8), toon('#b88a3a')); ring.position.y = 0.11;
     this.lantern.add(glass, this.dropMesh, lcap, ring);
-    this.lantern.position.set(0.02, -0.1, 0.02);
-    this.lanternLight = new THREE.PointLight('#bfefff', 0, 7, 2);
+    this.lantern.position.set(0, -0.06, 0.03);
+    this.lanternLight = new THREE.PointLight('#ffd690', 0, 7, 2);
     this.lantern.add(this.lanternLight);
-    this.person.hipR.add(this.lantern);
+    this.person.strapPoint.add(this.lantern);
     this.satchelMat = toon('#8a5a34').clone();
     this.person.satchel?.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh && !m.userData.isOutline && (m.material as THREE.MeshToonMaterial).color?.getHexString() === '8a5a34') m.material = this.satchelMat; });
   }
@@ -176,8 +179,8 @@ export class Player {
     const t = performance.now() / 1000;
     this.lantern.rotation.z = Math.sin(t * 2.2) * 0.12 + clamp(sp / 9) * Math.sin(t * 9) * 0.15;
     const glow = this.hasDrop ? (0.25 + this.dropGlow * 0.75) * (0.35 + 0.65 * this.warmth) : 0;
-    this.lanternLight.intensity = glow * 2.2;
-    (this.dropMesh.material as THREE.MeshBasicMaterial).color.setHSL(0.54, 0.9, 0.35 + glow * 0.55);
+    this.lanternLight.intensity = glow * 1.1;
+    (this.dropMesh.material as THREE.MeshBasicMaterial).color.setHSL(0.11, 0.95, 0.4 + glow * 0.5);
     this.dropMesh.visible = this.hasDrop;
     this.satchelMat.emissive.set('#ffd890');
     this.satchelMat.emissiveIntensity = this.satchelGlow * (0.55 + 0.45 * Math.sin(t * 3));

@@ -10,7 +10,7 @@ export interface PersonLook {
   head?: number;        // head size multiplier (children have bigger heads)
   skin: string;
   hair: string;
-  hairStyle: 'messy' | 'bun' | 'pigtails' | 'short' | 'bald' | 'long';
+  hairStyle: 'messy' | 'bun' | 'pigtails' | 'short' | 'bald' | 'long' | 'crown' | 'curly' | 'fringe';
   top: string;          // shirt / sleeves under the coat
   coat?: string;        // long coat or robe color
   coatLen?: number;     // 0.4 (short jacket) .. 1 (to the ankle)
@@ -26,9 +26,23 @@ export interface PersonLook {
   beard?: string;
   glasses?: boolean;
   hunch?: number;       // 0..1, older people stoop a little
+  /** A big angular hood that hides the face in shadow (Nilo). */
+  hood?: string;
+  /** Eyes that glow out of the hood's shadow. */
+  glowEyes?: string;
+  /** Faceted, paper-like cloth for the coat and hood. */
+  facets?: boolean;
+  ears?: number;        // ear size (Tor's are big)
+  vest?: string;        // sheepskin vest over the shirt
+  mustache?: string;    // a big droopy mustache
+  barefoot?: boolean;
+  rolledSleeves?: boolean;
+  props?: PersonProp[];
 }
 
-export type IdleKind = 'weave' | 'tinker' | 'count' | 'fold' | 'point' | 'none';
+export type PersonProp = 'stick' | 'tinCup' | 'kettle' | 'notebook' | 'goggles' | 'bell' | 'lavender' | 'brooch' | 'kneePads' | 'boatPeek' | 'kiteString' | 'towel';
+
+export type IdleKind = 'weave' | 'tinker' | 'count' | 'fold' | 'point' | 'lean' | 'scratch' | 'polish' | 'none';
 
 export interface PoseInput {
   speed: number;
@@ -56,6 +70,17 @@ const sph = (r: number, w = 14, h = 10) => new THREE.SphereGeometry(r, w, h);
 function mk(g: THREE.BufferGeometry, color: string, x = 0, y = 0, z = 0) {
   const m = new THREE.Mesh(g, toon(color)); m.position.set(x, y, z); m.castShadow = true; return m;
 }
+const flatMats = new Map<string, THREE.MeshToonMaterial>();
+function toonFlat(color: string) {
+  let m = flatMats.get(color);
+  if (!m) { m = toon(color).clone(); m.side = THREE.DoubleSide; m.onBeforeCompile = toon(color).onBeforeCompile; m.customProgramCacheKey = () => 'dbl' + toon(color).customProgramCacheKey(); flatMats.set(color, m); }
+  return m;
+}
+/** Faceted, like folded paper: split the vertices so every face gets its own flat normal. */
+function mkFlat(g: THREE.BufferGeometry, color: string, x = 0, y = 0, z = 0) {
+  const fg = g.index ? g.toNonIndexed() : g; fg.computeVertexNormals();
+  const m = new THREE.Mesh(fg, toonFlat(color)); m.position.set(x, y, z); m.castShadow = true; return m;
+}
 
 export class Person {
   root = new THREE.Group();
@@ -76,6 +101,10 @@ export class Person {
   scarfTail: THREE.Group[] = [];
   satchel: THREE.Group | null = null;
   hipR = new THREE.Group();
+  /** A point on the front of the satchel strap, at the chest (Nilo's lantern hangs here). */
+  strapPoint = new THREE.Group();
+  /** Things held in the hands. */
+  held: THREE.Object3D[] = [];
   hairClumps: THREE.Object3D[] = [];
   private phase = 0;
   private t = Math.random() * 10;
@@ -91,7 +120,7 @@ export class Person {
   constructor(public look: PersonLook) {
     const H = this.H = look.height ?? 1;
     const B = look.build ?? 1;
-    const HS = look.head ?? 1;
+    const HS = (look.head ?? 1) * 1.12;
     this.hipY = 0.88;
     this.root.add(this.body);
     this.body.add(this.hips);
@@ -101,11 +130,18 @@ export class Person {
     // Legs
     for (const s of [-1, 1]) {
       const thigh = new THREE.Group(); thigh.position.set(0.1 * s * B, -0.02, 0);
-      thigh.add(mk(cap(0.075 * B, 0.27), look.dress ? look.coat ?? look.trousers : look.trousers, 0, -0.2, 0));
+      thigh.add(mk(cap(0.095 * B, 0.25), look.dress ? look.coat ?? look.trousers : look.trousers, 0, -0.2, 0));
       const knee = new THREE.Group(); knee.position.y = -0.4;
-      knee.add(mk(cap(0.064 * B, 0.26), look.trousers, 0, -0.18, 0));
-      const boot = mk(sph(0.085, 10, 8), look.boots, 0, -0.39, 0.04); boot.scale.set(0.95, 0.75, 1.45);
+      knee.add(mk(cap(0.082 * B, 0.24), look.trousers, 0, -0.18, 0));
+      const boot = mk(sph(0.085, 10, 8), look.barefoot ? look.skin : look.boots, 0, -0.39, 0.04); boot.scale.set(0.95, 0.75, 1.45);
       knee.add(boot);
+      if (look.hood) { // chunky buckled boots
+        const cuff = mkFlat(new THREE.CylinderGeometry(0.085, 0.08, 0.16, 7), look.boots, 0, -0.3, 0.0); knee.add(cuff);
+        const strap = mk(new THREE.TorusGeometry(0.083, 0.012, 4, 10), '#4a2e1c', 0, -0.32, 0); strap.rotation.x = Math.PI / 2; knee.add(strap);
+        const buckle = mk(new THREE.BoxGeometry(0.03, 0.03, 0.01), '#c8a060', 0, -0.32, 0.085); buckle.userData.noOutline = true; knee.add(buckle);
+        boot.scale.set(1.1, 0.85, 1.55);
+      }
+      if (look.props?.includes('kneePads')) { const kp = mk(sph(0.06, 8, 6), '#c8a070', 0, -0.02, 0.05); kp.scale.set(1, 1, 0.6); knee.add(kp); }
       thigh.add(knee);
       this.hips.add(thigh);
       this.legs.push({ thigh, knee });
@@ -113,7 +149,7 @@ export class Person {
 
     // Torso
     this.hips.add(this.torso);
-    const chest = mk(cap(0.17 * B, 0.26), look.top, 0, 0.27, 0); chest.scale.set(1, 1, 0.78);
+    const chest = mk(cap(0.19 * B, 0.24), look.top, 0, 0.27, 0); chest.scale.set(1, 1, 0.8);
     this.torso.add(chest);
     const pelvis = mk(sph(0.16 * B, 12, 8), look.trousers, 0, 0.03, 0); pelvis.scale.set(1.05, 0.7, 0.85);
     this.torso.add(pelvis);
@@ -125,7 +161,7 @@ export class Person {
         new THREE.Vector2(0.21 * B, 0.0), new THREE.Vector2((0.24 + len * 0.1) * B, bottom * 0.5), new THREE.Vector2((0.27 + len * 0.12) * B, bottom),
         new THREE.Vector2((0.25 + len * 0.12) * B, bottom - 0.01),
       ];
-      const coat = mk(new THREE.LatheGeometry(prof, 16), look.coat);
+      const coat = look.facets ? mkFlat(new THREE.LatheGeometry(prof, 8), look.coat) : mk(new THREE.LatheGeometry(prof, 16), look.coat);
       coat.scale.set(1, 1, 0.82);
       (coat.material as THREE.Material).side = THREE.DoubleSide;
       this.coat = coat;
@@ -136,6 +172,12 @@ export class Person {
         this.torso.add(strip);
       }
     }
+    if (look.vest) {
+      // sheepskin: a lumpy shell of wool over the chest and back
+      const v = mk(new THREE.CapsuleGeometry(0.185 * B, 0.2, 3, 8), look.vest, 0, 0.26, 0); v.scale.set(1.05, 1, 0.84); this.torso.add(v);
+      for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2; const f = mk(sph(0.045, 6, 5), look.vest, Math.sin(a) * 0.17 * B, 0.44, Math.cos(a) * 0.14); this.torso.add(f); }
+      const strip = mk(new THREE.BoxGeometry(0.08 * B, 0.34, 0.02), look.top, 0, 0.27, 0.16); this.torso.add(strip);
+    }
     if (look.apron) { const ap = mk(new THREE.BoxGeometry(0.28 * B, 0.5, 0.02), look.apron, 0, -0.05, 0.2); ap.rotation.x = 0.12; this.torso.add(ap); }
     if (look.shawl) { const sh = mk(new THREE.ConeGeometry(0.3 * B, 0.3, 14, 1, true), look.shawl, 0, 0.42, 0); sh.scale.set(1, 1, 0.85); (sh.material as THREE.Material).side = THREE.DoubleSide; this.torso.add(sh); }
 
@@ -143,11 +185,11 @@ export class Person {
     for (const s of [-1, 1]) {
       const sh = new THREE.Group(); sh.position.set(0.215 * s * B, 0.42, 0);
       const sleeve = look.coat && !look.dress ? look.coat : look.top;
-      sh.add(mk(cap(0.052 * B, 0.2), sleeve, 0, -0.13, 0));
+      sh.add(mk(cap(0.07 * B, 0.18), sleeve, 0, -0.13, 0));
       const el = new THREE.Group(); el.position.y = -0.27;
-      el.add(mk(cap(0.045 * B, 0.15), look.skin, 0, -0.1, 0));
-      el.add(mk(new THREE.TorusGeometry(0.048 * B, 0.02, 6, 12), sleeve, 0, -0.02, 0).rotateX(Math.PI / 2));
-      const hand = mk(sph(0.058, 10, 8), look.skin, 0, -0.24, 0.01); hand.scale.set(0.9, 1.1, 0.8);
+      el.add(mk(cap(0.062 * B, 0.13), look.rolledSleeves ? look.skin : sleeve, 0, -0.1, 0));
+      el.add(mk(new THREE.TorusGeometry(0.064 * B, 0.022, 6, 12), sleeve, 0, look.rolledSleeves ? -0.02 : -0.2, 0).rotateX(Math.PI / 2));
+      const hand = mk(sph(0.07, 10, 8), look.skin, 0, -0.25, 0.01); hand.scale.set(0.9, 1.1, 0.8);
       el.add(hand);
       sh.add(el);
       sh.rotation.z = 0.08 * s;
@@ -174,7 +216,8 @@ export class Person {
       const brow = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.013, 0.012), toon(look.hair === '#f2f0ea' ? '#bdb8ae' : look.hair));
       brow.position.set(0.062 * s, 0.238, 0.152); brow.rotation.z = -0.12 * s; brow.userData.noOutline = true;
       this.head.add(brow); this.brows.push(brow);
-      const ear = mk(sph(0.032, 8, 6), look.skin, 0.162 * s, 0.16, 0); ear.scale.set(0.6, 1, 0.9); this.head.add(ear);
+      const er = 0.032 * (look.ears ?? 1);
+      const ear = mk(sph(er, 8, 6), look.skin, (0.155 + er * 0.3) * s, 0.16, 0); ear.scale.set(0.6, 1, 0.9); ear.rotation.z = -0.3 * s * ((look.ears ?? 1) - 1); this.head.add(ear);
       const blush = new THREE.Mesh(new THREE.CircleGeometry(0.024, 12), toon('#f0a39a')); blush.position.set(0.09 * s, 0.135, 0.142); blush.rotation.y = 0.5 * s; blush.userData.noOutline = true;
       this.head.add(blush);
     }
@@ -185,6 +228,9 @@ export class Person {
     this.head.add(this.mouthFlat, this.mouthSmile, this.mouthO);
     if (look.glasses) {
       for (const s of [-1, 1]) { const g = new THREE.Mesh(new THREE.TorusGeometry(0.034, 0.006, 4, 14), toon('#3a3030')); g.position.set(0.062 * s, 0.185, 0.165); g.userData.noOutline = true; this.head.add(g); }
+    }
+    if (look.mustache) {
+      for (const s of [-1, 1]) { const ms = mk(sph(0.05, 8, 6), look.mustache, 0.045 * s, 0.118, 0.15); ms.scale.set(1.3, 0.55, 0.6); ms.rotation.z = 0.5 * s; this.head.add(ms); }
     }
     if (look.beard) {
       const bd = mk(sph(0.13, 12, 8), look.beard, 0, 0.06, 0.06); bd.scale.set(1.0, 1.15, 0.8); this.head.add(bd);
@@ -199,6 +245,22 @@ export class Person {
       if (look.hat === 'paper') { const c = mk(new THREE.ConeGeometry(0.17, 0.2, 3), '#f2ead6', 0, 0.02, 0); c.rotation.y = Math.PI / 6; c.scale.set(1.3, 1, 0.6); hat.add(c); }
       this.head.add(hat);
     }
+
+    if (look.props?.includes('lavender') && look.hat === 'wide') {
+      const sprig = new THREE.Group(); sprig.position.set(0.13, 0.36, 0.05); sprig.rotation.z = -0.5;
+      sprig.add(mk(new THREE.CylinderGeometry(0.004, 0.004, 0.14, 3), '#5a7a3a', 0, 0.07, 0));
+      for (let i = 0; i < 6; i++) { const b = mk(sph(0.012, 5, 4), '#9a7ad0', (i % 2 ? 0.01 : -0.01), 0.08 + i * 0.012, 0); b.userData.noOutline = true; sprig.add(b); }
+      this.head.add(sprig);
+    }
+    if (look.props?.includes('goggles')) {
+      // leather flying cap with ear flaps, goggles pushed up
+      for (const s of [-1, 1]) { const flap = mk(sph(0.055, 8, 6), look.hatColor ?? '#7a4a2a', 0.15 * s, 0.13, 0); flap.scale.set(0.5, 1.2, 0.9); this.head.add(flap); }
+      for (const s of [-1, 1]) {
+        const ring = mk(new THREE.TorusGeometry(0.035, 0.012, 6, 12), '#8a6a3a', 0.05 * s, 0.33, 0.1); ring.rotation.x = -0.5; this.head.add(ring);
+        const lens = mk(new THREE.CircleGeometry(0.03, 12), '#bfe0e8', 0.05 * s, 0.335, 0.105); lens.rotation.x = -0.5; lens.userData.noOutline = true; this.head.add(lens);
+      }
+    }
+    if (look.hood) this.buildHood(look);
 
     // Scarf
     if (look.scarf) {
@@ -225,9 +287,88 @@ export class Person {
     }
     this.hipR.position.set(0.2, -0.02, 0.05);
     this.torso.add(this.hipR);
+    this.strapPoint.position.set(0.12, 0.3, 0.17);
+    this.torso.add(this.strapPoint);
+    this.buildProps(look);
     if (look.hunch) this.torso.rotation.x = look.hunch * 0.3;
 
     addOutlines(this.root, '#3a2a2e', 0.012);
+  }
+
+  private buildHood(look: PersonLook) {
+    const c = look.hood!;
+    // The face sinks into shadow: darken skin on the head, hide mouth and brows, light the eyes.
+    const shade = '#2a1c20';
+    this.head.traverse(o => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh || m.userData.isOutline) return;
+      const col = (m.material as THREE.MeshToonMaterial).color?.getStyle?.();
+      if (col && new THREE.Color(look.skin).getStyle() === col) m.material = toon(shade);
+    });
+    this.brows.forEach(b => (b.visible = false));
+    [this.mouthFlat, this.mouthSmile, this.mouthO].forEach(m => (m.visible = false));
+    this.head.children.forEach(o => { const m = o as THREE.Mesh; if (m.isMesh && (m.geometry as THREE.CircleGeometry).type === 'CircleGeometry') m.visible = false; });
+    for (const e of this.eyes) {
+      e.children.forEach(ch => (ch.visible = false));
+      const glow = new THREE.Mesh(sph(0.026, 10, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(look.glowEyes ?? '#ffd36a').multiplyScalar(2.2) }));
+      glow.scale.set(1.15, 0.8, 0.4); glow.userData.noOutline = true; e.add(glow);
+      e.position.z += 0.01;
+    }
+    // bangs under the hood's rim
+    for (let i = 0; i < 5; i++) { const b = mk(sph(0.05, 6, 5), look.hair, -0.1 + i * 0.05, 0.27 - Math.abs(i - 2) * 0.012, 0.11); b.scale.set(0.8, 1.4, 0.6); b.rotation.z = (i - 2) * 0.25; this.head.add(b); }
+    // The hood: an angular cone, open at the front, flaring onto the shoulders like a small cape.
+    const prof = [
+      new THREE.Vector2(0.0, 0.66), new THREE.Vector2(0.07, 0.6), new THREE.Vector2(0.17, 0.47), new THREE.Vector2(0.22, 0.3),
+      new THREE.Vector2(0.225, 0.14), new THREE.Vector2(0.24, 0.0), new THREE.Vector2(0.3, -0.12), new THREE.Vector2(0.34, -0.2),
+    ];
+    const hood = mkFlat(new THREE.LatheGeometry(prof, 7, 0.75, Math.PI * 2 - 1.5), c, 0, 0.08, -0.015);
+    hood.rotation.x = -0.12;
+    this.head.add(hood);
+    // the hood's rim, a little thicker so it reads at a distance
+    const rim = mkFlat(new THREE.TorusGeometry(0.2, 0.025, 4, 7, Math.PI * 1.2), c, 0, 0.22, 0.09);
+    rim.rotation.set(0.15, 0, Math.PI * 1.4 - Math.PI * 0.6); rim.scale.set(1, 1.15, 0.6);
+    this.head.add(rim);
+  }
+
+  private buildProps(look: PersonLook) {
+    const P = look.props ?? [];
+    const right = this.arms[1].hand, left = this.arms[0].hand;
+    if (P.includes('stick')) {
+      const st = mk(new THREE.CylinderGeometry(0.018, 0.022, 1.15, 6), '#d8c8a0', 0, -0.48, 0.03); st.rotation.x = 0.05;
+      const knob = mk(sph(0.035, 6, 5), '#c8b890', 0, 0.1, 0); st.add(knob);
+      left.add(st); this.held.push(st);
+    }
+    if (P.includes('kettle')) {
+      const k = new THREE.Group(); k.position.set(0, -0.12, 0.02);
+      const body = mk(sph(0.1, 12, 8), '#c8743a', 0, -0.06, 0); body.scale.set(1, 0.85, 1); k.add(body);
+      k.add(mk(new THREE.CylinderGeometry(0.06, 0.07, 0.03, 10), '#a85a2a', 0, 0.02, 0));
+      const sp = mk(new THREE.CylinderGeometry(0.012, 0.022, 0.12, 6), '#c8743a', 0.1, -0.04, 0); sp.rotation.z = -0.9; k.add(sp);
+      const h = mk(new THREE.TorusGeometry(0.06, 0.01, 4, 10, Math.PI), '#6a3a1a', 0, 0.03, 0); k.add(h);
+      right.add(k); this.held.push(k);
+    }
+    if (P.includes('notebook')) {
+      const nb = mk(new THREE.BoxGeometry(0.12, 0.16, 0.025), '#8a6a4a', 0, -0.05, 0.04); nb.rotation.set(0.2, 0.3, 0.1);
+      const pg = mk(new THREE.BoxGeometry(0.11, 0.15, 0.02), '#f2ead6', 0.004, 0, 0.004); pg.userData.noOutline = true; nb.add(pg);
+      left.add(nb); this.held.push(nb);
+    }
+    if (P.includes('towel')) { const t = mk(new THREE.BoxGeometry(0.1, 0.24, 0.015), '#f2ead6', 0.17, 0.4, 0.02); this.torso.add(t); }
+    if (P.includes('tinCup')) {
+      const cup = mk(new THREE.CylinderGeometry(0.045, 0.04, 0.08, 10), '#b8b8b8', 0, -0.06, 0); cup.userData.noOutline = false;
+      const g = new THREE.Group(); g.position.set(0.21, -0.08, 0.08); g.add(cup); this.torso.add(g);
+    }
+    if (P.includes('bell')) {
+      const b = mk(new THREE.ConeGeometry(0.04, 0.06, 8), '#d8b050', 0.06, -0.04, 0.2); this.torso.add(b);
+      const belt = mk(new THREE.TorusGeometry(0.2, 0.014, 4, 18), '#b8a070', 0, 0.02, 0); belt.rotation.x = Math.PI / 2; belt.scale.set(1.05, 0.85, 1); this.torso.add(belt);
+    }
+    if (P.includes('brooch')) { const br = mk(sph(0.03, 6, 5), '#8a5a2a', 0, 0.4, 0.2); br.scale.set(1.6, 0.8, 0.5); this.torso.add(br); }
+    if (P.includes('kiteString')) { const ks = mk(new THREE.TorusGeometry(0.05, 0.015, 4, 10), '#efe4c8', 0, -0.15, 0); ks.rotation.x = Math.PI / 2; this.arms[0].el.add(ks); }
+    if (P.includes('boatPeek') && this.satchel) {
+      const boat = new THREE.Group(); boat.position.set(0, 0.13, 0.02); boat.rotation.y = Math.PI / 2;
+      const paper = '#f6f0e2';
+      const hull = mk(new THREE.CylinderGeometry(0.07, 0.035, 0.05, 4, 1), paper); hull.rotation.y = Math.PI / 4; hull.scale.set(1.6, 1, 0.5); boat.add(hull);
+      const sail = mk(new THREE.ConeGeometry(0.04, 0.09, 4), paper, 0, 0.06, 0); sail.scale.z = 0.3; boat.add(sail);
+      this.satchel.add(boat);
+    }
   }
 
   private buildHair(look: PersonLook) {
@@ -253,7 +394,21 @@ export class Person {
         clump(0, 0.27, 0.11, 0.07, 1.6, 0.5, 0.6);
         break;
       case 'long': clump(0, 0.24, -0.03, 0.17, 1.05, 0.8, 1.05); clump(0, 0.08, -0.1, 0.15, 1.05, 1.5, 0.6); break;
-      case 'bald': clump(0, 0.15, -0.12, 0.12, 1.2, 0.6, 0.5); break;
+      case 'bald': clump(0, 0.15, -0.12, 0.12, 1.2, 0.6, 0.5); for (const s of [-1, 1]) clump(0.13 * s, 0.17, -0.06, 0.06, 0.8, 1, 1.3); break;
+      case 'crown': {
+        clump(0, 0.24, -0.03, 0.17, 1.04, 0.76, 1.04);
+        // a thick braid wrapped around the head
+        for (let i = 0; i < 14; i++) { const a = (i / 14) * Math.PI * 2; const m = clump(Math.sin(a) * 0.15, 0.3, Math.cos(a) * 0.14 - 0.02, 0.045, 1.2, 0.8, 1); m.rotation.y = a; }
+        for (let i = 0; i < 6; i++) clump(-0.12 + i * 0.05, 0.27, 0.12, 0.035, 1, 0.7, 0.8);
+        break;
+      }
+      case 'curly': {
+        clump(0, 0.24, -0.04, 0.17, 1.08, 0.82, 1.06);
+        for (let i = 0; i < 16; i++) { const a = (i / 16) * Math.PI * 2; clump(Math.sin(a) * 0.16, 0.18 + (i % 3) * 0.05, Math.cos(a) * 0.15 - 0.03, 0.055 + (i % 2) * 0.015); }
+        for (let i = 0; i < 4; i++) clump(-0.09 + i * 0.06, 0.29, 0.12, 0.05, 1.2, 0.9, 0.8);
+        break;
+      }
+      case 'fringe': clump(0, 0.24, -0.03, 0.17, 1.03, 0.75, 1.03); for (let i = 0; i < 5; i++) clump(-0.1 + i * 0.05, 0.27, 0.12, 0.04, 1, 1.3, 0.7); break;
     }
   }
 
@@ -331,6 +486,11 @@ export class Person {
         if (idle === 'tinker' && i === 1) { x = -0.9; el = -1.0 + Math.abs(Math.sin(t * 5)) * 0.5; z = -0.2; }
         if (idle === 'count' && i === 1) { x = -1.3 + Math.sin(t * 0.8) * 0.2; el = -0.2; z = 0.2; }
         if (idle === 'point' && i === 1) { x = -2.6; el = 0; z = 0.1; }
+        if (idle === 'lean' && i === 0) { x = -0.45; el = -0.35; z = -0.05; }
+        if (idle === 'lean' && i === 1) { x = -0.3; el = -0.9; z = -0.35; }
+        if (idle === 'scratch' && i === 1 && Math.sin(t * 0.45) > 0.2) { x = -1.5; el = -2.25 + Math.sin(t * 9) * 0.12; z = -0.35; }
+        if (idle === 'polish' && i === 1) { x = -0.75; el = -1.05; z = -0.25; }
+        if (idle === 'polish' && i === 0) { x = -0.85 + Math.sin(t * 5) * 0.12; el = -1.45; z = -0.45 + Math.cos(t * 5) * 0.08; }
       }
       if (p.talking && sp < 0.3) { x += Math.sin(t * 2.3 + i * 1.7) * 0.12 - 0.2; el += Math.sin(t * 3.1 + i) * 0.15 - 0.3; }
       // listening: hands together in front
@@ -361,6 +521,7 @@ export class Person {
       if (Math.abs(Math.atan2(local.x, local.z)) > 2.2) { yaw = 0; pitch = 0; }
     }
     if (idle === 'point' && sp < 0.3) pitch = -0.6;
+    if (idle === 'polish' && sp < 0.3 && !p.lookAt) pitch = 0.35;
     if (idle === 'count' && sp < 0.3) yaw = Math.sin(t * 0.6) * 0.7;
     pitch = lerp(pitch, -0.35, shield * 0.6);
     pitch = lerp(pitch, 0.25, chest * 0.5);

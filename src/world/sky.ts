@@ -32,11 +32,12 @@ export class Sky {
           vec3 top = mix(vec3(0.05, 0.07, 0.18), uTop, day);
           vec3 hor = mix(vec3(0.16, 0.18, 0.36), uHorizon, day);
           hor = mix(hor, uDusk, dusk * (0.55 + 0.45 * pow(sunAmt, 2.0)));
-          vec3 col = mix(hor, top, smoothstep(-0.02, 0.6, e));
+          vec3 col = mix(hor, top, pow(smoothstep(-0.02, 0.75, e), 0.55));
           // the cloud sea below the horizon, glowing where the sun is
-          vec3 seaC = mix(uCloud * mix(0.25, 0.95, day), hor, 0.35) + vec3(1.0,0.82,0.6) * pow(sunAmt, 6.0) * 0.45 * day;
+          vec3 seaC = mix(vec3(0.86, 0.93, 1.0), hor, 0.3) * mix(0.25, 1.0, day) + vec3(1.0,0.82,0.6) * pow(sunAmt, 6.0) * 0.35 * day;
           col = mix(col, seaC, smoothstep(0.02, -0.12, e));
-          col = mix(col, mix(uCloud, vec3(0.74, 0.84, 0.97), 0.5) * mix(0.22, 0.95, day), smoothstep(-0.25, -0.9, e));
+          vec3 deep = mix(vec3(0.62, 0.78, 0.95), vec3(0.22, 0.46, 0.84), smoothstep(-0.3, -0.95, e));
+          col = mix(col, deep * mix(0.18, 1.0, day), smoothstep(-0.2, -0.55, e));
           // sun disk and halo
           col += vec3(1.0, 0.86, 0.62) * (pow(sunAmt, 900.0) * 3.0 + pow(sunAmt, 14.0) * 0.4 * (0.4 + dusk));
           // moon opposite the sun, and stars at night
@@ -69,9 +70,11 @@ export class Sky {
       vertexShader: /* glsl */ `
         varying vec3 vN; varying vec3 vW; varying float vSeed;
         void main(){
-          vec4 wp = modelMatrix * instanceMatrix * vec4(position, 1.0);
+          vec3 lp = position; lp.y = max(lp.y, -0.38);
+          vec4 wp = modelMatrix * instanceMatrix * vec4(lp, 1.0);
           vW = wp.xyz;
-          vN = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * normal);
+          vec3 nn = position.y < -0.37 ? vec3(0.0, -1.0, 0.0) : normal;
+          vN = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * nn);
           vSeed = fract(instanceMatrix[3].x * 0.013 + instanceMatrix[3].z * 0.007);
           gl_Position = projectionMatrix * viewMatrix * wp;
         }`,
@@ -84,7 +87,7 @@ export class Sky {
           float up = N.y;
           float lit = clamp(dot(N, uSun) * 0.5 + 0.5, 0.0, 1.0);
           float k = smoothstep(-0.35, 0.65, up) * 0.6 + lit * 0.4;
-          k = floor(k * 3.0 + 0.5) / 3.0 * 0.45 + k * 0.55;
+          k = smoothstep(0.38, 0.5, k) * 0.7 + k * 0.3;
           vec3 col = mix(uBelly, uTop, k);
           col = mix(col, col * uDusk * 1.15, uDuskAmt * (0.4 + lit * 0.6));
           float fres = pow(1.0 - abs(dot(N, V)), 2.5);
