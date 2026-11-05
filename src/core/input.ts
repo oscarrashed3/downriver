@@ -10,6 +10,9 @@ export class Input {
   clicks: { x: number; y: number }[] = [];
   /** When false, clicking does not capture the mouse (sky view, overlays). */
   allowLock = true;
+  /** Set when the browser let go of the mouse on its own (the player pressed Esc). */
+  lockLost = false;
+  private releasing = false;
 
   constructor(private canvas: HTMLCanvasElement) {
     addEventListener('keydown', e => {
@@ -27,7 +30,12 @@ export class Input {
       }
     });
     addEventListener('mouseup', e => { if (e.button === 0) this.mouseHeld = false; });
-    document.addEventListener('pointerlockchange', () => { this.locked = document.pointerLockElement === canvas; });
+    document.addEventListener('pointerlockchange', () => {
+      const was = this.locked;
+      this.locked = document.pointerLockElement === canvas;
+      if (was && !this.locked && !this.releasing) this.lockLost = true;
+      this.releasing = false;
+    });
     addEventListener('mousemove', e => {
       if (this.locked) { this.mouseDX += e.movementX; this.mouseDY += e.movementY; }
       else if (e.buttons & 2) { this.mouseDX += e.movementX; this.mouseDY += e.movementY; }
@@ -41,6 +49,6 @@ export class Input {
   axis(neg: string[], pos: string[]) {
     return (pos.some(k => this.down.has(k)) ? 1 : 0) - (neg.some(k => this.down.has(k)) ? 1 : 0);
   }
-  unlock() { if (document.pointerLockElement) document.exitPointerLock(); }
+  unlock() { if (document.pointerLockElement) { this.releasing = true; document.exitPointerLock(); } }
   endFrame() { this.pressed.clear(); this.mouseDX = 0; this.mouseDY = 0; this.wheel = 0; this.clicks.length = 0; }
 }

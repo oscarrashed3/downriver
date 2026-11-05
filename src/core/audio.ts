@@ -28,6 +28,8 @@ export class Sound {
   private nextNote = 0;
   private step = 0;
   muted = false;
+  /** Master volume 0..1, kept between visits. */
+  volume = (() => { const v = Number(localStorage.getItem('downriver-volume')); return localStorage.getItem('downriver-volume') !== null && isFinite(v) ? Math.min(1, Math.max(0, v)) : 0.8; })();
   private ambT = 0;
   private fireT = 0;
   private chimeT = 0;
@@ -39,7 +41,7 @@ export class Sound {
     if (this.ctx) { this.ctx.resume(); return; }
     const ctx = new AudioContext();
     this.ctx = ctx;
-    this.master = ctx.createGain(); this.master.gain.value = 0.8; this.master.connect(ctx.destination);
+    this.master = ctx.createGain(); this.master.gain.value = this.muted ? 0 : this.volume; this.master.connect(ctx.destination);
     this.reverb = ctx.createConvolver(); this.reverb.buffer = this.impulse(3.2);
     const wet = ctx.createGain(); wet.gain.value = 0.55; this.reverb.connect(wet).connect(this.master);
     this.music = ctx.createGain(); this.music.gain.value = 0.32; this.music.connect(this.master); this.music.connect(this.reverb);
@@ -76,7 +78,13 @@ export class Sound {
     return b;
   }
 
-  setMuted(m: boolean) { this.muted = m; if (this.master) this.master.gain.value = m ? 0 : 0.8; }
+  setMuted(m: boolean) { this.muted = m; if (this.master) this.master.gain.value = m ? 0 : this.volume; }
+  setVolume(v: number) {
+    this.volume = Math.min(1, Math.max(0, v));
+    try { localStorage.setItem('downriver-volume', String(this.volume)); } catch { /* private mode */ }
+    if (this.volume > 0 && this.muted) this.muted = false;
+    if (this.master) this.master.gain.value = this.muted ? 0 : this.volume;
+  }
 
   /** Called each frame with how close the river is (0 far .. 1 standing in it). */
   update(riverNear: number, flow: number, wind: number) {

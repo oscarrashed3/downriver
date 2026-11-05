@@ -76,6 +76,22 @@ export function nextToInvite(c: QuestCtx): string | null {
   return FRIENDS.find(f => !has(c, 'invited:' + f)) ?? null;
 }
 
+/** Who the player should go and see for the current step, or null when the step is not about a person. */
+export function nextPerson(c: QuestCtx): string | null {
+  const s = currentStep(c);
+  if (!s || !has(c, 'read-letter')) return null;
+  switch (s.id) {
+    case 'hollo': return 'ysolde';
+    case 'wind': return has(c, 'quest:kite') && !has(c, 'item:spar') && !has(c, 'flag:tor-follow') ? null : 'tor';
+    case 'fences':
+      if (!has(c, 'goat-home')) return has(c, 'quest:goat') && !has(c, 'goat-following') ? null : 'bram';
+      return has(c, 'flag:tor-fences') ? null : 'bram';
+    case 'night': return nextToInvite(c);
+    case 'odo': return 'odo';
+    default: return null;
+  }
+}
+
 export function currentStep(c: QuestCtx): Step | null {
   for (const s of MAIN_STEPS) if (!s.done(c)) return s;
   return null;

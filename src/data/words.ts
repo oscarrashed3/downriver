@@ -60,7 +60,7 @@ export const NOTE = {
   allLit: "All three lanterns burn on Odo's bridge. <i>The river is running.</i>",
   riverStrong: 'The river is strong now. <i>Let it carry you to the edge of the world.</i>',
   avalanche: 'Far up the east road, the heavy slope lets go with a long, low roar.',
-  sketch: 'A new page in your sketchbook. <i>B to look.</i>',
+  sketch: 'A new page in your sketchbook. <i>K to look.</i>',
   notVisited: 'You have not been there yet. Follow the river.',
   needKite: 'You would need a kite to fly there.',
   quality: (l: string) => `Picture quality: <b>${l}</b>`,

@@ -35,8 +35,9 @@ import { QualityAuto } from './render/quality';
 import { SkyView, type CamPose } from './systems/skyView';
 import { Life } from './systems/life';
 import { Sequencer, type Beat } from './story/sequencer';
-import { currentStep, activeSideQuests, stepDetail, lanternsLit, knownAs, type QuestCtx } from './story/quests';
-import { NOTE, PROMPT, NEW_GOAL } from './data/words';
+import { currentStep, activeSideQuests, stepDetail, lanternsLit, knownAs, nextPerson, type QuestCtx } from './story/quests';
+import { Menu, MENU_TABS, type MenuTab, type GoalInfo } from './ui/menu';
+import { NOTE, PROMPT, NEW_GOAL, WHERE } from './data/words';
 import { BackpackView, ITEMS, bagAdd, doTrade } from './systems/backpack';
 import { foldMood } from './player/fold';
 import { Fox } from './world/fox';
@@ -109,7 +110,12 @@ export class Game {
   lastBlip = 0;
   // other state
   ride: Ride | null = null;
-  overlay: 'map' | 'journal' | 'bag' | null = null;
+  overlay: MenuTab | null = null;
+  menu!: Menu;
+  /** When the menu opened because the browser let go of the mouse (its Esc key may arrive a moment later). */
+  menuByLock = -1;
+  /** Set while starting over, so nothing writes the old journey back. */
+  saveOff = false;
   bag: string[] = [];
   sketches: { id: string; label: string; img: string }[] = [];
   sent: Record<string, string> = {};
@@ -200,6 +206,15 @@ export class Game {
     this.journalEl = document.createElement('div');
     this.journalEl.className = 'overlay hidden';
     document.getElementById('ui')!.append(this.journalEl);
+    this.menu = new Menu(document.getElementById('ui')!);
+    this.menu.onTab = t => { if (this.mode === 'play' || this.mode === 'overlay') this.openTab(t); };
+    this.menu.onClose = () => this.closeOverlay();
+    this.menu.onQuality = () => { const l = this.quality.cycle(); this.applyQuality(); this.hud.notify(NOTE.quality(l)); this.menu.showSettings(this.settingsInfo()); };
+    this.menu.onVolume = v => { this.sound.setVolume(v); this.menu.setMuted(this.sound.muted); };
+    this.menu.onMute = () => { this.sound.setMuted(!this.sound.muted); this.menu.setMuted(this.sound.muted); };
+    this.menu.onReset = () => { clearSave(); this.saveOff = true; location.reload(); };
+    // Clicking the dim space around any sheet closes the menu.
+    for (const el of [this.map.el, this.bagView.el, this.journalEl]) el.addEventListener('click', e => { if (e.target === el) this.closeOverlay(); });
     this.skyView = new SkyView(this.scene, this.planets, this.hud.labels);
 
     // The home light: the lighthouse at the end of the river, blinking far below the clouds.
@@ -433,6 +448,7 @@ export class Game {
   }
 
   save() {
+    if (this.saveOff) return;
     const d = this.player.up;
     const data: SaveData = {
       v: 3, flags: [...this.flags], moods: this.moods, river: this.river, snow: this.snow, world: this.cur,
@@ -766,30 +782,57 @@ export class Game {
   }
 
   // ------------------------------------------------------------------ overlays
-  toggleOverlay(kind: 'map' | 'journal' | 'bag') {
-    if (this.overlay === kind) { this.closeOverlay(); return; }
-    this.closeOverlay();
+  /** Open a menu tab, or close the menu if that tab is already open. */
+  toggleOverlay(kind: MenuTab) {
+    if (this.overlay === kind) this.closeOverlay(); else this.openTab(kind);
+  }
+  openTab(kind: MenuTab) {
+    if (this.overlay === kind) return;
+    this.hideSheets();
     this.overlay = kind; this.mode = 'overlay';
     this.input.unlock();
-    if (kind === 'bag') { this.renderBag(); this.bagView.show(true); this.sound.sfxPlay('paper'); return; }
-    if (kind === 'map') {
-      const ll = latLonOf(this.player.up);
-      const f = this.player.facing, up = this.player.up;
-      const north = new THREE.Vector3(0, 1, 0).projectOnPlane(up).normalize();
-      const east = new THREE.Vector3().crossVectors(north, up).normalize();
-      const heading = Math.atan2(f.dot(east), f.dot(north));
-      this.map.draw(this.planet, this.flags, { lat: ll.lat, lonOff: wrapDeg(ll.lon - this.planet.lonAtLat(ll.lat)), heading });
-      this.map.show(true); this.sound.sfxPlay('paper');
-    } else {
-      this.renderJournal(); this.journalEl.classList.remove('hidden'); this.sound.sfxPlay('paper');
+    this.menu.select(kind);
+    this.sound.sfxPlay('paper');
+    switch (kind) {
+      case 'bag': case 'letters': case 'sketches':
+        this.bagView.tab = kind; this.renderBag(); this.bagView.show(true); break;
+      case 'map': {
+        const ll = latLonOf(this.player.up);
+        const f = this.player.facing, up = this.player.up;
+        const north = new THREE.Vector3(0, 1, 0).projectOnPlane(up).normalize();
+        const east = new THREE.Vector3().crossVectors(north, up).normalize();
+        const heading = Math.atan2(f.dot(east), f.dot(north));
+        this.map.draw(this.planet, this.flags, { lat: ll.lat, lonOff: wrapDeg(ll.lon - this.planet.lonAtLat(ll.lat)), heading });
+        this.map.show(true); break;
+      }
+      case 'journal': this.renderJournal(); this.journalEl.classList.remove('hidden'); break;
+      case 'goal': this.menu.showGoal(this.goalInfo()); break;
+      case 'controls': this.menu.showControls(); break;
+      case 'settings': this.menu.showSettings(this.settingsInfo()); break;
     }
   }
+  private hideSheets() { this.map.show(false); this.journalEl.classList.add('hidden'); this.bagView.show(false); this.menu.hidePage(); }
   closeOverlay() {
     if (!this.overlay) return;
-    this.map.show(false); this.journalEl.classList.add('hidden'); this.bagView.show(false);
+    this.hideSheets();
+    this.menu.select(null);
     this.overlay = null;
     if (this.mode === 'overlay') this.mode = 'play';
+    this.sound.sfxPlay('soft');
   }
+  goalInfo(): GoalInfo {
+    const c = this.questCtx();
+    const who = nextPerson(c);
+    const raw = who ? knownAs(c, who) : '';
+    return {
+      quest: MAIN_QUEST,
+      step: this.flags.has('read-letter') ? stepDetail(c) : null,
+      lanterns: this.cur === 0 && this.flags.has('quest:hollo') && !this.flags.has('chapter1-complete') ? lanternsLit(c) : null,
+      next: who ? { name: raw.charAt(0).toUpperCase() + raw.slice(1), where: WHERE[who] ?? '' } : null,
+      side: activeSideQuests(c),
+    };
+  }
+  settingsInfo() { return { quality: this.quality.level.charAt(0).toUpperCase() + this.quality.level.slice(1), volume: this.sound.volume, muted: this.sound.muted }; }
   /** Open the journal during a scene (no mode change). */
   showJournal(on: boolean) {
     if (on) { this.renderJournal(); this.journalEl.classList.remove('hidden'); this.sound.sfxPlay('paper'); }
@@ -843,7 +886,7 @@ export class Game {
     const main = `<div class="quest"><div class="qk">The way home</div><div class="qm">${esc(MAIN_QUEST)}</div>${step ? `<div class="qs">${esc(stepDetail(c) ?? step.text)}</div>` : ''}</div>`;
     const sideHtml = side.length ? `<div class="sub">Along the way:</div><ul>${side.map(q => `<li><b>${esc(q.title)}.</b> ${esc(q.text)}</li>`).join('')}</ul>` : '';
     const entries = this.journal.map(id => JOURNAL[id]).filter(Boolean);
-    this.journalEl.innerHTML = `<div class="sheet journal"><h2>Journal</h2>${main}${sideHtml}${entries.length ? '' : '<p class="dim">Things I learn will be drawn here.</p>'}<div class="entries"></div><p class="dim">J to close</p></div>`;
+    this.journalEl.innerHTML = `<div class="sheet journal"><h2>Journal</h2>${main}${sideHtml}${entries.length ? '' : '<p class="dim">Things I learn will be drawn here.</p>'}<div class="entries"></div></div>`;
     const box = this.journalEl.querySelector('.entries')!;
     for (const e of entries) {
       const row = document.createElement('div'); row.className = 'entry';
@@ -953,7 +996,6 @@ export class Game {
     this.fps = lerp(this.fps, 1 / Math.max(1e-3, dt), 0.05);
     PAINT.uTime.value = this.time;
     const inp = this.input;
-    if (inp.hit('KeyH') && this.mode !== 'title') this.hud.toggleHelp();
     if (inp.hit('KeyN')) this.sound.setMuted(!this.sound.muted);
     if (inp.hit('KeyP') && this.mode !== 'title') { const l = this.quality.cycle(); this.applyQuality(); this.hud.notify(NOTE.quality(l)); }
     if (inp.hit('KeyG') && this.mode !== 'title') { this.hud.goalHidden = !this.hud.goalHidden; }
@@ -981,18 +1023,22 @@ export class Game {
       case 'ride': this.updateRide(dt); break;
       case 'sky': this.updateSky(dt); break;
       case 'overlay':
-        if (inp.hit('Escape') || (this.overlay === 'map' && inp.hit('KeyM')) || (this.overlay === 'journal' && inp.hit('KeyJ')) || (this.overlay === 'bag' && inp.hit('KeyB'))) this.closeOverlay();
-        else if (inp.hit('KeyJ')) this.toggleOverlay('journal');
-        else if (inp.hit('KeyM')) this.toggleOverlay('map');
-        else if (inp.hit('KeyB')) this.toggleOverlay('bag');
+      {
+        inp.lockLost = false;
+        const keyed = MENU_TABS.find(t => t.key && inp.hit('Key' + t.key));
+        if (inp.hit('Escape') && this.time - this.menuByLock > 0.4) this.closeOverlay();
+        else if (keyed) this.toggleOverlay(keyed.id);
         break;
+      }
     }
     if (this.mode !== 'play' && this.mode !== 'raft') { this.hud.setPrompt(null); this.hud.setHold(null); }
 
     // ---- time of day, light and wind
     const p = this.planet;
     const viewUp = this.mode === 'title' ? new THREE.Vector3(0, 1, 0) : this.player.up;
-    this.day.update(dt * (this.sitting ? 9 : 1), viewUp);
+    this.day.update(this.mode === 'overlay' ? 0 : dt * (this.sitting ? 9 : 1), viewUp);
+    this.menu.setButton(this.mode === 'play' || this.mode === 'overlay');
+    if (this.mode !== 'play' && this.mode !== 'overlay') inp.lockLost = false;
     this.day.apply(WORLDS[this.cur].palette, this.sunLight, this.moonLight, this.scene.fog as THREE.FogExp2, p.center);
     this.sunLight.position.copy(this.player.pos).addScaledVector(this.day.sun, 120);
     this.sunLight.target.position.copy(this.player.pos);
@@ -1105,9 +1151,11 @@ export class Game {
     this.fold.kiteMode = pl.gliding;
     if (inp.hit('KeyQ') && this.flags.has('power:skyreading')) { this.skyread.active = !this.skyread.active; this.sound.sfxPlay('soft'); }
     if (inp.hit('KeyF')) { this.sound.sfxPlay('whistle'); this.fold.hop(); pl.pose = {}; }
-    if (inp.hit('KeyM')) { this.toggleOverlay('map'); return; }
-    if (inp.hit('KeyJ')) { this.toggleOverlay('journal'); return; }
-    if (inp.hit('KeyB')) { this.toggleOverlay('bag'); return; }
+    // Esc, or the browser letting go of the mouse (which is what Esc does while looking around), opens the menu.
+    if (inp.lockLost) { inp.lockLost = false; this.menuByLock = this.time; this.openTab('goal'); return; }
+    if (inp.hit('Escape')) { this.openTab('goal'); return; }
+    const keyed = MENU_TABS.find(t => t.key && inp.hit('Key' + t.key));
+    if (keyed) { this.openTab(keyed.id); return; }
     if (inp.hit('Tab') || inp.wheel > 0) { this.openSky(); return; }
     this.surveyT -= dt;
     if (this.surveyT <= 0) { this.surveyT = 0.5; const ll = latLonOf(pl.up); this.map.reveal(this.planet, ll.lat, wrapDeg(ll.lon - this.planet.lonAtLat(ll.lat)), 22); }

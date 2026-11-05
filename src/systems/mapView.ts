@@ -43,7 +43,7 @@ export class MapView {
   constructor(private landmarks: Landmark[]) {
     this.el = document.createElement('div');
     this.el.className = 'overlay hidden';
-    this.el.innerHTML = `<div class="sheet mapsheet"><h2 class="mt"></h2><div class="sub">Everywhere you walk is surveyed. People's map pieces fill in the rest. Click to pin a note. M to close.</div><canvas width="${W}" height="${H}"></canvas><div class="legend dim"></div></div>`;
+    this.el.innerHTML = `<div class="sheet mapsheet"><h2 class="mt"></h2><div class="sub">Everywhere you walk is surveyed. People's map pieces fill in the rest. Click to pin a note.</div><canvas width="${W}" height="${H}"></canvas><div class="legend dim"></div></div>`;
     this.canvas = this.el.querySelector('canvas')!;
     this.canvas.style.width = 'min(980px, 88vw)';
     document.getElementById('ui')!.append(this.el);
