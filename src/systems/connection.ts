@@ -33,6 +33,8 @@ export interface Script {
   id: string;
   name: string;
   title: string;
+  /** What the player calls them before they have met ("the old woman"). */
+  stranger?: string;
   start: Mood;
   /** Chosen script by the game state when the player talks; first match wins. */
   nodes: Node[];

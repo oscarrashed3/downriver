@@ -35,7 +35,8 @@ import { QualityAuto } from './render/quality';
 import { SkyView, type CamPose } from './systems/skyView';
 import { Life } from './systems/life';
 import { Sequencer, type Beat } from './story/sequencer';
-import { currentStep, activeSideQuests, stepDetail, lanternsLit, type QuestCtx } from './story/quests';
+import { currentStep, activeSideQuests, stepDetail, lanternsLit, knownAs, type QuestCtx } from './story/quests';
+import { NOTE, PROMPT, NEW_GOAL } from './data/words';
 import { BackpackView, ITEMS, bagAdd, doTrade } from './systems/backpack';
 import { foldMood } from './player/fold';
 import { Fox } from './world/fox';
@@ -132,6 +133,8 @@ export class Game {
   raftSpin = 0;
   edgeWarned = false;
   fps = 60;
+  /** The goal line last shown, so a new one can be announced. */
+  lastGoal: string | null = null;
   /** ?fast in the URL speeds up talking and waiting, for automated playtests. */
   fast = new URLSearchParams(location.search).has('fast') ? 10 : 1;
 
@@ -906,9 +909,9 @@ export class Game {
     for (const c of inp.clicks) {
       const i = this.skyView.pick(c, this.camera);
       if (i === null) continue;
-      if (!this.flags.has('visited:' + i)) this.hud.notify('You have not been there yet. Follow the river.');
+      if (!this.flags.has('visited:' + i)) this.hud.notify(NOTE.notVisited);
       else if (i === this.cur) this.skyView.exit();
-      else if (!canTravel) this.hud.notify('You would need a kite to fly there. <i>Tor might know about kites.</i>');
+      else if (!canTravel) this.hud.notify(NOTE.needKite);
       else this.startTravel(i);
     }
   }
@@ -916,11 +919,11 @@ export class Game {
   // ------------------------------------------------------------------ main loop
   interactPrompt(): { label: string; act: () => void; hold?: number; key: string } | null {
     const pl = this.player;
-    if (this.cur === 0 && !this.flags.has('read-letter')) return { label: 'Read the letter in your satchel', act: () => this.openLetter(), key: 'letter' };
+    if (this.cur === 0 && !this.flags.has('read-letter')) return { label: PROMPT.letter, act: () => this.openLetter(), key: 'letter' };
     let best: { label: string; act: () => void; hold?: number; key: string; d: number } | null = null;
     for (const n of this.contents[this.cur].npcs) {
       const d = n.root.position.distanceTo(pl.pos);
-      if (d < 3.6 && (!best || d < best.d)) best = { label: `Talk to ${SCRIPTS[n.id].name}`, act: () => this.startTalk(n), d, key: 'npc:' + n.id };
+      if (d < 3.6 && (!best || d < best.d)) best = { label: PROMPT.talk(this.cur === 0 ? knownAs(this.questCtx(), n.id) : SCRIPTS[n.id].name), act: () => this.startTalk(n), d, key: 'npc:' + n.id };
     }
     // People and things compete by distance; a person counts as a little closer, so talking wins ties.
     if (best) best.d -= 0.8;
@@ -930,7 +933,7 @@ export class Game {
     }
     if (!best && (this.cur > 0 || this.flags.has('peaks-healed'))) {
       const near = this.planet.riverNearest(pl.up);
-      if (near.dist < this.planet.cfg.riverWidth * this.planet.flowWidth + 2.2 && near.t < 0.985) best = { label: 'Unfold Fold into a raft', act: () => this.boardRaft(), d: 99, key: 'raft' };
+      if (near.dist < this.planet.cfg.riverWidth * this.planet.flowWidth + 2.2 && near.t < 0.985) best = { label: PROMPT.raft, act: () => this.boardRaft(), d: 99, key: 'raft' };
     }
     return best;
   }
@@ -952,7 +955,7 @@ export class Game {
     const inp = this.input;
     if (inp.hit('KeyH') && this.mode !== 'title') this.hud.toggleHelp();
     if (inp.hit('KeyN')) this.sound.setMuted(!this.sound.muted);
-    if (inp.hit('KeyP') && this.mode !== 'title') { const l = this.quality.cycle(); this.applyQuality(); this.hud.notify(`Picture quality: <b>${l}</b>`); }
+    if (inp.hit('KeyP') && this.mode !== 'title') { const l = this.quality.cycle(); this.applyQuality(); this.hud.notify(NOTE.quality(l)); }
     if (inp.hit('KeyG') && this.mode !== 'title') { this.hud.goalHidden = !this.hud.goalHidden; }
 
     switch (this.mode) {
@@ -1059,9 +1062,17 @@ export class Game {
     const qc = this.questCtx();
     const step = currentStep(qc);
     const goal = step && this.flags.has('read-letter') ? stepDetail(qc) : null;
-    const lit = this.cur === 0 && this.flags.has('quest:hollo') && !this.flags.has('chapter1-complete') ? `   Lanterns ${'●'.repeat(lanternsLit(qc))}${'○'.repeat(3 - lanternsLit(qc))}` : '';
-    this.hud.setGoal(showGoal && goal ? goal + lit : null);
-    if (this.mode === 'play' || this.mode === 'raft') { const lv = this.quality.sample(dt); if (lv) { this.applyQuality(); this.hud.notify(`Picture quality set to <b>${lv}</b> to keep things smooth. <b>P</b> to change.`); } }
+    const lit = this.cur === 0 && this.flags.has('quest:hollo') && !this.flags.has('chapter1-complete') ? `Lanterns  ${'●'.repeat(lanternsLit(qc))}${'○'.repeat(3 - lanternsLit(qc))}` : '';
+    this.hud.setGoal(showGoal && goal ? goal : null, lit);
+    // A new task: a toast with the same words as the goal line, once the conversation or scene is over.
+    if (goal && (this.mode === 'play' || this.mode === 'raft')) {
+      const key = goal.replace(/\(\d+ of \d+\)\s*$/, '').trim();
+      if (key !== this.lastGoal) {
+        if (this.lastGoal !== null) { this.hud.notifyNow(`<b>${NEW_GOAL}</b> · ${key}`); this.sound.sfxPlay('chime'); }
+        this.lastGoal = key;
+      }
+    }
+    if (this.mode === 'play' || this.mode === 'raft') { const lv = this.quality.sample(dt); if (lv) { this.applyQuality(); this.hud.notify(NOTE.qualityAuto(lv)); } }
     this.hud.update(dt);
     this.finish.mat.uniforms.uTime.value = this.time;
     this.finish.mat.uniforms.uNight.value = 1 - Math.max(this.day.day, far);

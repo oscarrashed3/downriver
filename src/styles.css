@@ -66,10 +66,12 @@ canvas#game { display: block; width: 100vw; height: 100vh; }
 .chapter .cn { font-size: 18px; letter-spacing: .5em; text-transform: uppercase; font-family: system-ui, sans-serif; opacity: .9; }
 .chapter .cti { font-size: 60px; font-style: italic; margin-top: 10px; }
 .chapter .cs { font-size: 18px; margin-top: 10px; letter-spacing: .2em; opacity: .85; }
-.goal { position: absolute; left: 3vw; top: 4vh; max-width: 380px; opacity: 0; transition: opacity .8s; color: #fffaf0; text-shadow: 0 1px 10px rgba(30,20,50,.9); }
+.goal { position: absolute; left: 3vw; top: 4vh; max-width: 440px; opacity: 0; transition: opacity .8s; color: #fffaf0; text-shadow: 0 1px 10px rgba(30,20,50,.9); }
 .goal.on { opacity: .95; }
 .goal .gk { font-family: system-ui, sans-serif; font-size: 11px; letter-spacing: .22em; text-transform: uppercase; opacity: .75; margin-bottom: 4px; }
 .goal .gt { font-size: 18px; line-height: 1.4; font-style: italic; }
+.goal .gl { font-family: system-ui, sans-serif; font-size: 12px; letter-spacing: .12em; margin-top: 6px; opacity: .85; }
+.goal .gl:empty { display: none; }
 .goal.pulse .gt { animation: gpulse 2.4s ease; }
 @keyframes gpulse { 0% { color: #ffe39a; } 100% { color: #fffaf0; } }
 .letter { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(30,24,50,.35); }

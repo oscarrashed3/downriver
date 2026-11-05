@@ -1,0 +1,29 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Goal lines > walks the whole of world 1 in order 1`] = `
+[
+  "Read the letter in your satchel. Press E.",
+  "Talk to the old woman sitting by the giant on the spring.",
+  "Find Tor at his workbench, down the path in the village.",
+  "Get a willow branch from the old tree by the spring.",
+  "Bring the willow branch to Tor at his workbench.",
+  "Walk with Tor up to Kite Ridge, across the bridge.",
+  "Ask Bram at the goat pen for fence wood.",
+  "Find Pebble, the runaway goat, up on the west cliffs.",
+  "Walk Pebble home to Bram. Don't run.",
+  "Talk to Bram at the goat pen about the fence rails.",
+  "Build snow fences on the windy ridges. Press Q to see wind. (0 of 3)",
+  "Build snow fences on the windy ridges. Press Q to see wind. (1 of 3)",
+  "Build snow fences on the windy ridges. Press Q to see wind. (2 of 3)",
+  "Build snow fences on the windy ridges. Press Q to see wind. (3 of 3)",
+  "Invite Ysolde, at the spring, to the fire. (0 of 5)",
+  "Invite Bram, at the goat pen, to the fire. (1 of 5)",
+  "Invite the cloud girl, past Kite Ridge, to the fire. (2 of 5)",
+  "Invite Tor, at his workbench in the village, to the fire. (3 of 5)",
+  "Invite Odo, on his bridge, to the fire. (4 of 5)",
+  "Sit by the fire beside Hollo and wait for the snow.",
+  "Find Odo on his bridge, just past the village.",
+  "Say goodbye to everyone at the bridge.",
+  "Follow the river down to the edge of the world.",
+]
+`;

@@ -76,6 +76,7 @@ export const KITE_FLIGHT = [
   'Now!',
   "It's flying. It's really flying!",
   "I'm not scared. Well, a bit. But I'm up here.",
+  "Now the snow. Ask Bram at the goat pen for Grandpa's fence rails.",
 ];
 
 export const ECHOES = [

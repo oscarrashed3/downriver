@@ -10,6 +10,7 @@ import * as Props from '../world/props';
 import { orientTo, anyTangent } from '../world/sphere';
 import { clamp, lerp, smoothstep } from '../world/noise';
 import { SCRIPTS } from '../data/scripts';
+import { NOTE, PROMPT } from '../data/words';
 import { CAMPFIRE, WINTER_LINES, DAWN_LINES, FAREWELL, KITE_GIFT, KITE_FLIGHT, POSTMAN, ECHOES, NOT_YET } from '../data/story';
 import { passWinter, isHealed, projectedSnowpack } from '../systems/snowpack';
 import { currentStep, invitedCount, lanternsLit, FRIENDS } from './quests';
@@ -143,8 +144,8 @@ export class ChapterOne {
     // The willow branch by the old tree, for Tor's kite.
     add({
       id: 'spar', world: 0, pos: pos(R.spar), radius: 3.2,
-      label: () => (this.has('item:spar') || this.has('kite-flown') ? null : 'Pick up a straight willow branch'),
-      act: () => { g.give('item:spar'); (R.spar as THREE.Object3D).visible = false; g.sound.sfxPlay('soft'); g.hud.notify('A straight willow branch. <i>Light, and it bends without breaking.</i>'); g.save(); },
+      label: () => (this.has('item:spar') || this.has('kite-flown') ? null : PROMPT.willow),
+      act: () => { g.give('item:spar'); (R.spar as THREE.Object3D).visible = false; g.sound.sfxPlay('soft'); g.hud.notify(NOTE.willow); g.save(); },
     });
 
     // Fence and ice tower sites
@@ -156,9 +157,9 @@ export class ChapterOne {
           const s = g.snow.sites.find(x => x.id === site.id)!;
           if (s.built) return null;
           if (s.kind === 'fence') {
-            if (!this.has('flag:tor-fences')) return this.has('quest:hollo') ? "Old fence posts. <i>Somebody's rails used to hang here.</i>" : null;
-            if (g.skyread.active) return s.windExposure > 0.5 ? 'Rail the old posts into a snow fence. <i>The wind drops its snow here.</i>' : 'Rail the old posts into a snow fence. <i>The wind barely touches this hollow.</i>';
-            return this.has('power:skyreading') ? 'Rail the old posts into a snow fence <i>(Q to read the wind first)</i>' : 'Rail the old posts into a snow fence';
+            if (!this.has('flag:tor-fences')) return this.has('quest:hollo') ? PROMPT.fencePosts : null;
+            if (g.skyread.active) return s.windExposure > 0.5 ? PROMPT.fenceWindy : PROMPT.fenceCalm;
+            return this.has('power:skyreading') ? PROMPT.fenceQ : PROMPT.fence;
           }
           return null;
         },
@@ -169,10 +170,10 @@ export class ChapterOne {
     // Grandpa's snow poles
     (R.poles as { obj: THREE.Object3D }[]).forEach((pole, i) => add({
       id: 'pole' + i, world: 0, pos: pos(pole.obj), radius: 4,
-      label: () => 'Read the snow pole',
+      label: () => PROMPT.pole,
       act: () => {
         const r = POLE_READINGS[i];
-        g.hud.notify(`Pole ${i + 1}: snow today <b>${r.now} m</b>. Grandpa's oldest paint mark: <b>${r.old} m</b>.`);
+        g.hud.notify(NOTE.pole(i + 1, r.now, r.old));
         g.sound.sfxPlay('soft');
         g.polesRead.add(i);
         if (g.polesRead.size === 3) g.give('journal:poles');
@@ -183,68 +184,67 @@ export class ChapterOne {
     // The campfire: warm hands, or the long night when the mountain is ready
     add({
       id: 'fire', world: 0, pos: pos(R.fire), radius: 4.5,
-      label: () => 'Warm your hands by the fire',
-      act: () => { g.player.warmth = 1; g.hud.notify('Warm again.'); },
+      label: () => PROMPT.warm,
+      act: () => { g.player.warmth = 1; g.hud.notify(NOTE.warm); },
     });
     add({
       id: 'hollofire', world: 0, pos: pos(R.holloFire), radius: 4.5,
       label: () => {
         if (!(R.holloFire as THREE.Object3D).visible || this.has('peaks-healed')) return null;
-        return this.has('gathered') ? 'Sit by the fire beside Hollo, and wait for the snow' : 'Warm your hands by the fire';
+        return this.has('gathered') ? PROMPT.sitFire : PROMPT.warm;
       },
       act: () => {
         if (this.has('gathered') && !this.has('peaks-healed')) { g.cut(this.campfireNight()); return; }
         g.player.warmth = 1;
-        g.hud.notify(NOT_YET.notGathered + ` <i>(${invitedCount(g.questCtx())} of 5 invited)</i>`);
+        g.hud.notify(NOTE.notGathered(invitedCount(g.questCtx())));
       },
     });
     // Hollo himself: you can't wake him, but you can sit with him
     add({
       id: 'hollo', world: 0, get pos() { return R.hollo.root.position; }, radius: 7,
-      label: () => (this.has('peaks-healed') ? 'Hollo watches the valley' : 'Put a hand on the sleeping giant'),
+      label: () => (this.has('peaks-healed') ? PROMPT.holloAwake : PROMPT.hollo),
       act: () => {
         g.sound.sfxPlay('soft'); g.fold.hop();
-        g.hud.notify(this.has('peaks-healed') ? 'Hollo leans down and breathes frost on your hood. <i>That might be a hello.</i>'
-          : `Cold fur, slow breath, deep as the tide. <i>${lanternsLit(g.questCtx())} of 3 lanterns lit.</i>`);
+        g.hud.notify(this.has('peaks-healed') ? NOTE.holloHello : NOTE.holloAsleep(lanternsLit(g.questCtx())));
       },
     } as any);
 
     // Nima's little cloud
     add({
       id: 'wisp', world: 0, pos: pos(R.wisp), radius: 9,
-      label: () => (this.has('item:bottle') && !this.has('cloud-caught') ? "Catch the little cloud in Nima's bottle" : null),
+      label: () => (this.has('item:bottle') && !this.has('cloud-caught') ? PROMPT.catchCloud : null),
       act: () => {
         g.give('cloud-caught'); g.sound.sfxPlay('chime');
         bagTake(g.bag, 'item:bottle'); g.give('item:cloud');
         (R.wisp as THREE.Group).scale.setScalar(0.35);
-        g.hud.notify('The bottle fogs up, cold and heavy. <i>There is weather inside.</i>');
+        g.hud.notify(NOTE.cloudCaught);
         g.save();
       },
     });
     add({
       id: 'meadow', world: 0, pos: this.at(PK.dryMeadow), radius: 8,
-      label: () => (this.has('cloud-caught') && !this.has('journal:cloud') ? 'Let the cloud go over the dry meadow' : null),
+      label: () => (this.has('cloud-caught') && !this.has('journal:cloud') ? PROMPT.releaseCloud : null),
       act: () => { this.rainT = 7; g.sound.sfxPlay('splash'); this.greenMeadow(); bagTake(g.bag, 'item:cloud'); g.give('journal:cloud'); g.save(); },
     });
 
     // Viewpoints
     VIEWPOINTS.forEach((vp, i) => add({
       id: vp.id, world: 0, pos: this.vpMarkers[i].position.clone(), radius: 3.2,
-      label: () => (g.sketches.some(sk => sk.id === vp.id) ? 'Look at the view again' : 'Sit down and sketch the view'),
+      label: () => (g.sketches.some(sk => sk.id === vp.id) ? PROMPT.sketchAgain : PROMPT.sketch),
       act: () => g.cut(this.sketchBeats(vp)),
     }));
 
     // Benches: sit and watch the day go by
     (R.benches as THREE.Object3D[]).forEach((b, i) => add({
       id: 'bench' + i, world: 0, pos: pos(b), radius: 2.4,
-      label: () => (g.npcsNear(b.position, 1.5) ? null : 'Sit on the bench'),
+      label: () => (g.npcsNear(b.position, 1.5) ? null : PROMPT.bench),
       act: () => g.sit(b),
     }));
 
     // Echo stones: hold still and listen
     (R.echoes as THREE.Object3D[]).forEach((e, i) => add({
       id: 'echo' + i, world: 0, pos: pos(e), radius: 3.2, hold: 3,
-      label: () => (this.has('echo:' + i) ? null : 'Listen to the old stone'),
+      label: () => (this.has('echo:' + i) ? null : PROMPT.stone),
       act: () => {
         g.give('echo:' + i); g.give('echo:any');
         e.userData.heard = true; (e.userData.glow as THREE.MeshBasicMaterial).opacity = 0.85;
@@ -258,48 +258,48 @@ export class ChapterOne {
     // Mountain flowers to give away
     PK.flowers.forEach((ll, i) => add({
       id: 'flower' + i, world: 0, pos: this.at(ll), radius: 4,
-      label: () => (this.has('picked:' + i) || g.bag.filter(b => b === 'item:flower').length >= 2 ? null : 'Pick a mountain flower'),
+      label: () => (this.has('picked:' + i) || g.bag.filter(b => b === 'item:flower').length >= 2 ? null : PROMPT.flower),
       act: () => {
-        if (!bagAdd(g.bag, 'item:flower')) { g.hud.notify('Your backpack is full.'); return; }
+        if (!bagAdd(g.bag, 'item:flower')) { g.hud.notify(NOTE.bagFull); return; }
         g.flags.add('picked:' + i); g.sound.sfxPlay('soft');
-        g.hud.notify('A mountain flower, into your backpack. <i>Someone might like one.</i>');
+        g.hud.notify(NOTE.flower);
       },
     }));
 
     // Goats to pet, and Pebble the runaway
     (R.goats as Goat[]).forEach((gt, i) => add({
       id: 'goat' + i, world: 0, get pos() { return gt.obj.position; }, radius: 2.4,
-      label: () => 'Pet the goat',
+      label: () => PROMPT.petGoat,
       act: () => { gt.look = 2.5; g.sound.sfxPlay('bleat'); g.fold.hop(); },
     } as any));
     const pebble = R.pebble as THREE.Object3D;
     add({
       id: 'pebble', world: 0, get pos() { return pebble.position; }, radius: 3, hold: 2.5,
-      label: () => (this.has('goat-home') ? 'Pet Pebble' : this.has('goat-following') ? null : this.has('quest:goat') ? 'Speak softly to the little goat' : 'A little goat, far from the others. <i>She looks lost.</i>'),
+      label: () => (this.has('goat-home') ? PROMPT.petPebble : this.has('goat-following') ? null : this.has('quest:goat') ? PROMPT.pebble : PROMPT.pebbleLost),
       act: () => {
         if (this.has('goat-home')) { g.sound.sfxPlay('bleat'); return; }
         if (!this.has('quest:goat')) return;
         g.flags.add('goat-following'); g.sound.sfxPlay('bleat');
-        g.hud.notify('Pebble decides you are acceptable. <i>Lead her home to Bram. Walk, don\'t run.</i>');
+        g.hud.notify(NOTE.pebbleFollows);
       },
     } as any);
 
     // The bridge: goodbyes
     add({
       id: 'farewell', world: 0, pos: pos(R.bridge), radius: 6,
-      label: () => (this.has('boat-ready') && !this.has('chapter1-complete') ? 'Say goodbye, and let the river carry you' : null),
+      label: () => (this.has('boat-ready') && !this.has('chapter1-complete') ? PROMPT.goodbye : null),
       act: () => g.cut(this.farewell()),
     });
     // The dock below the bridge
     add({
       id: 'dock0', world: 0, pos: this.at(PK.dock), radius: 3.5,
-      label: () => 'Unfold Fold into a raft',
+      label: () => PROMPT.raft,
       act: () => { if (this.has('peaks-healed')) g.boardRaft(); else g.hud.notify(NOT_YET.thinRiver); },
     });
     // The edge of the world
     add({
       id: 'edge0', world: 0, pos: pos(R.edge), radius: 10,
-      label: () => (this.has('chapter1-complete') ? 'Ride the falling stream down to The Ember Pines' : 'Look over the edge'),
+      label: () => (this.has('chapter1-complete') ? PROMPT.ride : PROMPT.edge),
       act: () => { if (this.has('chapter1-complete')) g.startRide(0, 1); else g.hud.notify(NOT_YET.edgeEarly); },
     });
   }
@@ -323,7 +323,7 @@ export class ChapterOne {
       } else g.hud.notify('The ice tower rises, fed from the high channel Bram offered.');
     } else {
       g.give('built-fence');
-      g.hud.notify(s.windExposure > 0.5 ? 'The fence hums in the wind. Snow begins to settle behind it.' : 'The fence stands quietly. Hardly any snow drifts here.');
+      g.hud.notify(s.windExposure > 0.5 ? NOTE.fenceHums : NOTE.fenceQuiet);
     }
     g.save();
   }
@@ -393,7 +393,7 @@ export class ChapterOne {
     if (id === 'bram' && this.has('flag:tor-fences') && !this.has('got-rails')) { g.flags.add('got-rails'); g.give('item:rails'); }
     if (id === 'tor' && this.has('flag:tor-follow') && !this.has('kite-flown')) {
       g.flags.add('flag:tor-follow-active');
-      g.hud.notify('Tor tucks the kite under his arm. <i>Walk up to Kite Ridge together, across the bridge and east.</i>');
+      g.hud.notify(NOTE.torFollows);
     }
   }
 
@@ -436,7 +436,7 @@ export class ChapterOne {
       const speed = pl.vel.clone().projectOnPlane(pl.up).length();
       if (speed > 7.5) {
         g.flags.delete('goat-following'); g.sound.sfxPlay('bleat');
-        g.hud.notify("Pebble startles and trots off. <i>Walk, don't run.</i>");
+        g.hud.notify(NOTE.pebbleStartles);
       } else {
         const behind = pl.pos.clone().addScaledVector(pl.facing, -1.8);
         const goal = behind.sub(p.center).normalize();
@@ -450,7 +450,7 @@ export class ChapterOne {
           g.flags.delete('goat-following');
           g.give('goat-home'); g.give('map:pasture');
           g.sound.sfxPlay('bleat');
-          g.hud.notify('Pebble trots straight to Bram and bites his sleeve. <i>He looks very happy about it.</i>');
+          g.hud.notify(NOTE.pebbleHome);
           this.npc('bram').smileT = 4;
           this.pebbleHome();
           g.save();
@@ -489,7 +489,7 @@ export class ChapterOne {
     // Reading the wind on Kite Ridge
     if (g.skyread.active && !this.has('saw-wind') && pl.pos.distanceTo(this.at(PK.ridge)) < 18) {
       g.give('saw-wind'); g.give('journal:where-snow-goes');
-      g.hud.notify('The wind pours over the ridge and drops its snow in the still air behind it. <i>Fences on the windy side would catch it.</i>');
+      g.hud.notify(NOTE.windSeen);
       g.save();
     }
     if (!this.has('fences-done') && this.has('flag:tor-fences') && projectedSnowpack(g.snow) >= 0.7 - 1e-6) {
@@ -498,14 +498,14 @@ export class ChapterOne {
         g.give('quest:night');
         (this.R.holloFire as THREE.Object3D).visible = true;
         g.sound.sfxPlay('chime');
-        g.hud.notify('The second lantern lights on Odo\'s bridge. <i>Far off, Nima is shouting: a big grey cloud is coming. Snow tonight!</i>');
+        g.hud.notify(NOTE.lantern2);
         g.save();
       }, 2500);
       g.save();
     }
     if (this.has('quest:night') && !this.has('gathered') && FRIENDS.every(f => this.has('invited:' + f))) {
       g.give('gathered'); g.sound.sfxPlay('chime');
-      g.hud.notify('Everyone is coming. The third lantern lights. <i>Go to the fire beside Hollo.</i>');
+      g.hud.notify(NOTE.lantern3);
       g.save();
     }
     this.updateGuides(dt);
@@ -580,7 +580,7 @@ export class ChapterOne {
     if (this.avalancheT < 0) return;
     this.avalancheT += dt;
     const cor = this.R.cornice as THREE.Mesh;
-    if (this.avalancheT < 0.05) { this.g.hud.notify('Far up the east road, the heavy slope lets go with a long, low roar.'); this.g.sound.sfxPlay('whoosh'); }
+    if (this.avalancheT < 0.05) { this.g.hud.notify(NOTE.avalanche); this.g.sound.sfxPlay('whoosh'); }
     const k = smoothstep(0, 5, this.avalancheT);
     this.p.surfacePoint(this.p.dirRiver(lerp(42, 50, k), lerp(-92, -88, k)), 0.2 - k * 1.5, cor.position);
     cor.scale.set(1.4 + k, 0.5 - k * 0.3, 0.8 + k * 1.5);
@@ -629,7 +629,7 @@ export class ChapterOne {
         },
         tick: k => sk?.draw(Math.min(1, k * 1.25)),
         exit: () => {
-          if (sk && !already) { g.sketches.push({ id: vp.id, label: vp.label, img: sk.jpeg() }); g.hud.notify('A new page in your sketchbook. <i>B to look.</i>'); }
+          if (sk && !already) { g.sketches.push({ id: vp.id, label: vp.label, img: sk.jpeg() }); g.hud.notify(NOTE.sketch); }
           view?.remove(); view = null;
           pl.pose = {}; pl.root.visible = true; g.fold.root.visible = true;
           g.save();
@@ -693,7 +693,7 @@ export class ChapterOne {
         tor.lookAt = null; pl.lookAt = null;
         g.give('kite-flown'); g.give('journal:kite'); g.give('map:ridge'); g.give('power:kite');
         g.give('power:skyreading'); g.give('saw-wind'); g.give('journal:where-snow-goes');
-        g.hud.notify('The kite shows the wind: it pours over the ridges and drops its snow in the still air behind them. <b>Q</b> to see it any time.');
+        g.hud.notify(NOTE.kiteWind);
         g.save();
       },
     });
@@ -826,7 +826,7 @@ export class ChapterOne {
         this.peopleAway = false;
         this.holloAwake();
         g.applyRiver();
-        g.hud.notify('All three lanterns burn on Odo\'s bridge. <i>The river is running. Odo is waiting.</i>');
+        g.hud.notify(NOTE.allLit);
         g.save();
       },
     });
@@ -922,7 +922,7 @@ export class ChapterOne {
         pl.placeAt(this.p, this.p.dirRiver(PK.bridge[0] + 0.5, 0));
         g.boardRaft();
         g.departure = true;
-        g.hud.notify('The river is strong now. <i>Let it carry you to the edge of the world.</i>');
+        g.hud.notify(NOTE.riverStrong);
       },
     });
     return beats;

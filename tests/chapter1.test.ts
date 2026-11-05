@@ -43,7 +43,7 @@ describe('Chapter One main quest', () => {
     expect(lanternsLit(ctx(['peaks-healed']))).toBe(3);
   });
   it('the step detail counts fences and invitations', () => {
-    expect(stepDetail({ ...ctx(['read-letter', 'quest:hollo', 'kite-flown', 'goat-home']), fences: 2 })).toMatch(/2 of 3/);
+    expect(stepDetail({ ...ctx(['read-letter', 'quest:hollo', 'kite-flown', 'goat-home', 'flag:tor-fences']), fences: 2 })).toMatch(/2 of 3/);
     expect(stepDetail(ctx(['read-letter', 'quest:hollo', 'kite-flown', 'fences-done', 'invited:tor', 'invited:odo']))).toMatch(/2 of 5/);
   });
   it('every step has words, and every step id is unique', () => {

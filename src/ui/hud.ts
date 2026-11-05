@@ -16,7 +16,7 @@ export class Hud {
   help = $(`<div class="help hidden"></div>`);
   caption = $(`<div class="caption"><div class="cw"></div><div class="ct"></div><div class="ck">Space</div></div>`);
   chapter = $(`<div class="chapter"><div class="cn"></div><div class="cti"></div><div class="cs"></div></div>`);
-  goal = $(`<div class="goal"><div class="gk">On my way home</div><div class="gt"></div></div>`);
+  goal = $(`<div class="goal"><div class="gk">On my way home</div><div class="gt"></div><div class="gl"></div></div>`);
   letter = $(`<div class="letter hidden"><div class="paper"><div class="lt"></div><div class="lk">E to fold it away</div></div></div>`);
   panel = $(`<div class="kpanel hidden"><div class="frame"></div><div class="kc"></div></div>`);
   hold = $(`<div class="hold"><svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" class="bg"/><circle cx="22" cy="22" r="18" class="fg"/></svg><span></span></div>`);
@@ -44,7 +44,9 @@ export class Hud {
     this.prompt.classList.toggle('on', !!text);
   }
 
-  notify(text: string) { if (!this.toastQ.includes(text)) this.toastQ.push(text); if (this.toastQ.length > 4) this.toastQ.shift(); }
+  /** A toast that jumps the queue, for a new goal. */
+  notifyNow(text: string) { this.toastQ = this.toastQ.filter(q => q !== text); this.toastQ.unshift(text); this.toastT = Math.min(this.toastT, 0.4); }
+  notify(text: string) { if (!this.toastQ.includes(text)) this.toastQ.push(text); if (this.toastQ.length > 4) this.toastQ.splice(1, 1); }
 
   showBanner(name: string, sub: string) {
     (this.banner.querySelector('.bn') as HTMLElement).textContent = name;
@@ -107,7 +109,9 @@ export class Hud {
     (this.chapter.querySelector('.cs') as HTMLElement).textContent = sub;
     this.chapter.classList.add('on'); this.chapterT = secs;
   }
-  setGoal(text: string | null) {
+  setGoal(text: string | null, lanterns = '') {
+    const l = this.goal.querySelector('.gl') as HTMLElement;
+    if (l.textContent !== lanterns) l.textContent = lanterns;
     const t = this.goal.querySelector('.gt') as HTMLElement;
     if (text && t.textContent !== text) { t.textContent = text; this.goal.classList.remove('pulse'); void this.goal.offsetWidth; this.goal.classList.add('pulse'); }
     this.goal.classList.toggle('on', !!text && !this.goalHidden);
