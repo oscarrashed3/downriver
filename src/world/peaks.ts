@@ -37,7 +37,7 @@ export function preparePeaks(p: Planet) {
     p.flattens.push({ dir: p.dirRiver(lat, lon), radius, height, blend });
   f(13.5, 0, 6, p.cfg.riverBed + 0.5, 6);        // the spring hollow
   f(60, -17.5, 13, 4.2, 10);                     // the village shelf
-  f(50, 47, 4, 14.5, 18);                        // Kite Ridge
+  f(50, 47, 4, 11.2, 18);                        // Kite Ridge
   f(40, 80, 2.5, p.cfg.amplitude * 1.45, 16);    // the tall peak where clouds sleep
   f(75.2, 11.5, 3.2, 3.0, 5);                    // Odo's boathouse
   f(176, 0, 9, p.cfg.riverBed + 1.2, 8);         // the edge

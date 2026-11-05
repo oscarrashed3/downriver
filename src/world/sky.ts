@@ -36,7 +36,7 @@ export class Sky {
           // the cloud sea below the horizon, glowing where the sun is
           vec3 seaC = mix(uCloud * mix(0.25, 0.95, day), hor, 0.35) + vec3(1.0,0.82,0.6) * pow(sunAmt, 6.0) * 0.45 * day;
           col = mix(col, seaC, smoothstep(0.02, -0.12, e));
-          col = mix(col, mix(uCloud, hor, 0.6) * mix(0.2, 0.75, day), smoothstep(-0.25, -0.9, e));
+          col = mix(col, mix(uCloud, vec3(0.74, 0.84, 0.97), 0.5) * mix(0.22, 0.95, day), smoothstep(-0.25, -0.9, e));
           // sun disk and halo
           col += vec3(1.0, 0.86, 0.62) * (pow(sunAmt, 900.0) * 3.0 + pow(sunAmt, 14.0) * 0.4 * (0.4 + dusk));
           // moon opposite the sun, and stars at night

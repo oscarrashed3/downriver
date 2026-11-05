@@ -91,6 +91,8 @@ export function makeGrassMaterial(flower: boolean) {
           lp *= mix(0.25, 1.0, uBloom);
         #endif
         lp.y *= (1.0 - uSnow * 0.7);
+        // blades right in front of the camera bow out of the way, so they never fill the screen
+        lp *= smoothstep(0.6, 2.6, distance(iPos, cameraPosition));
         vec3 wp = iPos + ax * lp.x + up * lp.y + az * lp.z;
         vec3 w = uWind - up * dot(uWind, up); w = normalize(w + 1e-5);
         float along = dot(iPos, w);

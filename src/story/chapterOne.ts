@@ -506,7 +506,7 @@ export class ChapterOne {
         pl.pose = { sit: 1 }; pl.sync();
         g.day.frozen = true;
         g.day.setLocal(pl.up, -0.3, false);
-        g.cutCam = this.orbit(fire, 7.5, 3, 0);
+        g.cutCam = this.orbit(fire, 5.2, 3.4, 0);
         this.peopleAway = true;
       },
       tick: k => g.hud.setFade(1 - smoothstep(0.3, 1, k), '#1a1830'),
@@ -514,7 +514,7 @@ export class ChapterOne {
     CAMPFIRE.forEach((l, i) => beats.push({
       line: l,
       enter: () => { const n = this.npc(order[i]); n.smileT = 2.5; n.pose = { sit: 1, talking: true } as Npc['pose']; },
-      tick: k => { g.cutCam = this.orbit(fire, 7.5, 2.6, 0.3 + (i + k) * 0.5); },
+      tick: k => { g.cutCam = this.orbit(fire, 5.2, 3.2, 0.3 + (i + k) * 0.5); },
       exit: () => { this.npc(order[i]).pose = { sit: 1 }; },
     }));
     beats.push({
@@ -523,7 +523,7 @@ export class ChapterOne {
       tick: (k, dt) => {
         setWinter(smoothstep(0, 0.6, k));
         g.day.t = (g.day.t + dt * 0.35 * g.seq.speed) % 1;
-        g.cutCam = this.orbit(fire, 9 + k * 14, 3 + k * 10, 2.8 + k * 0.6);
+        g.cutCam = this.orbit(fire, 5.2 + k * 14, 3.4 + k * 14, 2.8 + k * 0.6);
       },
       exit: () => {
         passWinter(g.snow);
@@ -544,7 +544,7 @@ export class ChapterOne {
         g.grass.lush = lerp(0.62, 1, smoothstep(0.2, 1, k));
         g.grass.bloom = smoothstep(0.3, 1, k);
         g.day.t = (g.day.t + dt * 0.012 * g.seq.speed) % 1;
-        g.cutCam = this.orbit(fire, 23 - k * 12, 13 - k * 9, 3.4 + k * 0.5);
+        g.cutCam = this.orbit(fire, 19 - k * 12, 17 - k * 12, 3.4 + k * 0.5);
       },
     });
     beats.push({
@@ -577,7 +577,7 @@ export class ChapterOne {
         pl.placeAt(this.p, this.p.dirRiver(74.6, -2.8));
         pl.facing.copy(this.at([75, -6]).sub(pl.pos).projectOnPlane(pl.up).normalize()); pl.sync();
         this.peopleAway = true;
-        g.cutCam = this.orbit(meet, 7, 2.6, 2.2);
+        g.cutCam = this.orbit(meet, 7, 3.4, 2.2);
       },
       tick: k => g.hud.setFade(1 - smoothstep(0.2, 1, k), '#fff8ee'),
     }];
@@ -586,7 +586,7 @@ export class ChapterOne {
       beats.push({
         line: l,
         enter: () => { const n = this.npc(id); n.pose = { wave: 1 }; n.smileT = 3; pl.lookAt = n.root.position.clone().addScaledVector(n.up, 1.3); },
-        tick: k => { g.cutCam = this.orbit(meet, 7, 2.4, 2.2 + (i + k) * 0.22); },
+        tick: k => { g.cutCam = this.orbit(meet, 7, 3.2, 2.2 + (i + k) * 0.22); },
         exit: () => { this.npc(id).pose = {}; },
       });
     });

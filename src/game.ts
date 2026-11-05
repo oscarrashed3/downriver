@@ -268,7 +268,7 @@ export class Game {
   updraftDir(i: number) { return this.planets[i].dirRiver(9, 9); }
   updraftCurve(from: number): THREE.CubicBezierCurve3 {
     const a = this.planets[from], b = this.planets[from - 1];
-    const da = this.updraftDir(from), db = b.dirRiver(166, 6);
+    const da = this.updraftDir(from), db = b.dirRiver(158, 12);
     const p0 = a.surfacePoint(da, 1.5);
     const p3 = b.surfacePoint(db, 1.2);
     return new THREE.CubicBezierCurve3(p0, p0.clone().addScaledVector(da, 160), p3.clone().addScaledVector(db, 110), p3);
@@ -518,7 +518,7 @@ export class Game {
       to, curve: this.updraftCurve(from), s: 0, dur: 13, kite: true,
       arrive: () => {
         const pl = this.planets[to];
-        this.player.placeAt(pl, pl.dirRiver(166, 6));
+        this.player.placeAt(pl, pl.dirRiver(158, 12));
         this.fold.kiteMode = false;
         this.mode = 'play';
         this.hud.notify('The warm air sets you down gently. Everything you did here is just as you left it.');
@@ -844,7 +844,9 @@ export class Game {
       const d = n.root.position.distanceTo(pl.pos);
       if (d < 3.6 && (!best || d < best.d)) best = { label: `Talk to ${SCRIPTS[n.id].name}`, act: () => this.startTalk(n), d, key: 'npc:' + n.id };
     }
-    if (!best) for (const it of this.contents[this.cur].interactables as Interactable[]) {
+    // People and things compete by distance; a person counts as a little closer, so talking wins ties.
+    if (best) best.d -= 0.8;
+    for (const it of this.contents[this.cur].interactables as Interactable[]) {
       const d = it.pos.distanceTo(pl.pos);
       if (d < it.radius && (!best || d < best.d)) { const l = it.label(); if (l) best = { label: l, act: it.act, hold: it.hold, d, key: it.id }; }
     }
@@ -942,8 +944,9 @@ export class Game {
     for (const pl of this.planets) pl.waterMat.uniforms.uTime.value = this.time;
     if (this.streamMat) this.streamMat.uniforms.uTime.value = this.time;
     for (const pl of this.planets) if (pl.ocean) (pl.ocean.material as THREE.ShaderMaterial).uniforms.uTime.value = this.time;
-    const upForSky = this.mode === 'title' || this.skyView.k > 0.5 ? new THREE.Vector3(0, 1, 0) : this.rig.override ? this.rig.override.up : this.rig.smoothUp;
-    this.sky.update(upForSky, this.camera.position, this.time, this.day.sun, this.day.day, this.day.dusk);
+    // Seen from far away (title, sky view, the home light shot) the cloud sea is always in plain daylight.
+    const upForSky = far > 0.5 ? this.day.sun.clone().lerp(new THREE.Vector3(0, 1, 0), 0.25).normalize() : this.rig.override ? this.rig.override.up : this.rig.smoothUp;
+    this.sky.update(upForSky, this.camera.position, this.time, this.day.sun, Math.max(this.day.day, far), this.day.dusk * (1 - far));
     this.skyread.update(dt, p, this.time);
     this.hud.sky.classList.toggle('on', this.skyread.active && this.mode === 'play');
     const onPeaks = this.cur === 0;
