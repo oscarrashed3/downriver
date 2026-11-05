@@ -32,6 +32,8 @@ export class Planet {
   paths: { pts: THREE.Vector3[]; width: number }[] = [];
   /** Places kept clear of grass (house floors, the campfire ring). */
   clearings: { dir: THREE.Vector3; r: number }[] = [];
+  /** Soft ground tints, one per named area. */
+  tints: { dir: THREE.Vector3; r: number; color: THREE.Color; k: number }[] = [];
   /** Grass density per terrain vertex (0..1), filled by recolor(). */
   grassW: Float32Array | null = null;
 
@@ -273,6 +275,7 @@ export class Planet {
       else c.copy(mid).lerp(high, smoothstep(0.5, 1, h + jitter));
       // painted dabs of brighter grass
       c.lerp(dab, smoothstep(0.25, 0.55, big) * 0.35 * smoothstep(0.6, 0.3, h));
+      for (const t of this.tints) { const a = angleBetween(d, t.dir) * this.R; if (a < t.r + 6) c.lerp(t.color, smoothstep(t.r + 6, t.r - 2, a) * t.k); }
       const rocky = smoothstep(0.86, 0.6, flat);
       const rk = rock.clone().lerp(moss, smoothstep(0.62, 0.8, flat) * 0.55 * (peaks ? 1 : 0.3));
       c.lerp(rk, rocky * 0.9);

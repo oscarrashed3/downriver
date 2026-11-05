@@ -9,6 +9,7 @@ import type { Landmark } from '../systems/mapView';
 import { smoothstep } from './noise';
 import { makeHollo } from './hollo';
 import { leafClump } from '../render/foliage';
+import { AREAS } from '../data/areas';
 
 /** Where everything in Chapter One stands: [lat from the north pole, degrees of longitude from the river]. */
 export const PK = {
@@ -43,6 +44,7 @@ export function preparePeaks(p: Planet) {
   f(40, 80, 2.5, p.cfg.amplitude * 1.45, 16);    // the tall peak where clouds sleep
   f(75.2, 11.5, 3.2, 3.0, 5);                    // Odo's boathouse
   f(176, 0, 9, p.cfg.riverBed + 1.2, 8);         // the edge
+  for (const a of AREAS.filter(x => x.world === 0)) p.tints.push({ dir: p.dirRiver(a.at[0], a.at[1]), r: a.r, color: new THREE.Color(a.ground), k: 0.32 });
   for (const pts of PATHS) p.paths.push({ pts: pts.map(([la, lo]) => p.dirRiver(la, lo)), width: 1.5 });
   const clear = (ll: number[], r: number) => p.clearings.push({ dir: p.dirRiver(ll[0], ll[1]), r });
   [PK.ysoldeHouse, PK.bramHouse, PK.torHouse, PK.house4, PK.house5].forEach(h => clear(h, 3.4));

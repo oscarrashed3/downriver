@@ -43,7 +43,7 @@ export class MapView {
   constructor(private landmarks: Landmark[]) {
     this.el = document.createElement('div');
     this.el.className = 'overlay hidden';
-    this.el.innerHTML = `<div class="sheet mapsheet"><h2 class="mt"></h2><div class="sub">Everywhere you walk is surveyed. People's map pieces fill in the rest. Click to pin a note.</div><canvas width="${W}" height="${H}"></canvas><div class="legend dim"></div></div>`;
+    this.el.innerHTML = `<div class="sheet mapsheet"><h2 class="mt"></h2><div class="sub">Everywhere you walk is surveyed, and each place you reach gets its name. Click to pin a note.</div><div class="mapwrap"><canvas width="${W}" height="${H}"></canvas><div class="goalring"></div></div><div class="legend dim"></div></div>`;
     this.canvas = this.el.querySelector('canvas')!;
     this.canvas.style.width = 'min(980px, 88vw)';
     document.getElementById('ui')!.append(this.el);
@@ -126,19 +126,24 @@ export class MapView {
   /** A line of footsteps to draw over the map (playtests record the route here). */
   trail: { lat: number; lonOff: number }[] = [];
   /** People to mark on the map, such as everyone invited to the long night. */
-  people: { name: string; lat: number; lonOff: number }[] = [];
+  people: { name: string; lat: number; lonOff: number; invited?: boolean }[] = [];
+  /** When set, the map shows named areas only (outlines in lat / lon offset), not landmarks or map pieces. */
+  areas: { name: string; at: { lat: number; lonOff: number }; outline: { lat: number; lonOff: number }[] }[] | null = null;
+  /** The current goal, drawn as a pulsing marker. */
+  goal: { lat: number; lonOff: number } | null = null;
 
   draw(p: Planet, owned: Set<string>, playerLatLon: { lat: number; lonOff: number; heading?: number } | null) {
     const ctx = this.canvas.getContext('2d')!;
     (this.el.querySelector('.mt') as HTMLElement).textContent = p.cfg.name;
     const fog = this.fog(p.cfg.id);
-    const mine = PIECES.filter(pc => pc.world === p.cfg.id && owned.has(pc.id));
+    const mine = this.areas ? [] : PIECES.filter(pc => pc.world === p.cfg.id && owned.has(pc.id));
     // what is known: walked cells, plus pieces people gave you
     const known = new Uint8Array(fog);
     for (const pc of mine) for (let i = Math.floor(pc.lat[0] / 2); i < Math.ceil(pc.lat[1] / 2) && i < FOG_H; i++) for (let lo = pc.lon[0]; lo < pc.lon[1]; lo += 2) { const k = i * FOG_W + Math.floor(((lo + 540) % 360) / 2); if (!known[k]) known[k] = 2; }
     // view: the bounding box of what is known, with a margin, at the map's aspect ratio
     let la0 = 180, la1 = 0, lo0 = 180, lo1 = -180;
     for (let i = 0; i < FOG_H; i++) for (let j = 0; j < FOG_W; j++) if (known[i * FOG_W + j]) { la0 = Math.min(la0, i * 2); la1 = Math.max(la1, i * 2 + 2); const lo = j * 2 - 180; lo0 = Math.min(lo0, lo); lo1 = Math.max(lo1, lo + 2); }
+    for (const a of this.areas ?? []) for (const q of a.outline) { la0 = Math.min(la0, q.lat); la1 = Math.max(la1, q.lat); lo0 = Math.min(lo0, q.lonOff); lo1 = Math.max(lo1, q.lonOff); }
     if (playerLatLon) { la0 = Math.min(la0, playerLatLon.lat); la1 = Math.max(la1, playerLatLon.lat); lo0 = Math.min(lo0, playerLatLon.lonOff); lo1 = Math.max(lo1, playerLatLon.lonOff); }
     if (la0 > la1) { la0 = 0; la1 = 60; lo0 = -60; lo1 = 60; }
     let cy = (la0 + la1) / 2, cx = (lo0 + lo1) / 2;
@@ -172,7 +177,16 @@ export class MapView {
     for (let la = Math.ceil(vLat0 / 10) * 10; la < vLat0 + spanLat; la += 10) { const y = toXY(la, 0).y; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); ctx.fillText(`${90 - la}°`, 6, y - 3); }
     for (let lo = Math.ceil(vLon0 / 10) * 10; lo < vLon0 + spanLon; lo += 10) { const x = toXY(0, lo).x; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
     // landmarks you know
-    for (const lm of this.landmarks.filter(l => l.world === p.cfg.id)) {
+    // named areas you have walked into: a soft dashed border and the name
+    for (const a of this.areas ?? []) {
+      ctx.save(); ctx.setLineDash([7, 6]); ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(58,46,34,.55)'; ctx.fillStyle = 'rgba(255,248,225,.16)';
+      ctx.beginPath(); a.outline.forEach((q, i) => { const s = toXY(q.lat, q.lonOff); if (i) ctx.lineTo(s.x, s.y); else ctx.moveTo(s.x, s.y); }); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+      const q = toXY(a.at.lat, a.at.lonOff);
+      ctx.font = 'italic 600 17px Georgia, serif'; ctx.textAlign = 'center';
+      ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(245,238,220,0.9)'; ctx.strokeText(a.name, q.x, q.y);
+      ctx.fillStyle = '#3a2e22'; ctx.fillText(a.name, q.x, q.y); ctx.textAlign = 'left';
+    }
+    for (const lm of this.areas ? [] : this.landmarks.filter(l => l.world === p.cfg.id)) {
       const k = Math.floor(lm.lat / 2) * FOG_W + Math.floor(((lm.lon + 540) % 360) / 2);
       if (!known[k]) continue;
       const q = toXY(lm.lat, lm.lon);
@@ -188,13 +202,21 @@ export class MapView {
     }
     for (const pp of this.people) {
       const q = toXY(pp.lat, pp.lonOff);
-      ctx.fillStyle = '#e8b04a'; ctx.strokeStyle = '#3a2e22'; ctx.lineWidth = 1.5;
+      ctx.fillStyle = pp.invited ? '#e8b04a' : '#a8c0d8'; ctx.strokeStyle = '#3a2e22'; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.arc(q.x, q.y - 6, 4, 0, 7); ctx.fill(); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(q.x - 6, q.y + 6); ctx.quadraticCurveTo(q.x, q.y - 4, q.x + 6, q.y + 6); ctx.closePath(); ctx.fill(); ctx.stroke();
       ctx.font = '13px system-ui, sans-serif'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(245,238,220,0.9)'; ctx.strokeText(pp.name, q.x + 9, q.y + 4);
       ctx.fillStyle = '#5a3a14'; ctx.fillText(pp.name, q.x + 9, q.y + 4);
     }
     for (const pin of this.pins[p.cfg.id] ?? []) { ctx.fillStyle = '#c4524a'; ctx.beginPath(); ctx.arc(pin.x, pin.y, 6, 0, 7); ctx.fill(); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(pin.x - 2, pin.y - 2, 2, 0, 7); ctx.fill(); }
+    const ring = this.el.querySelector('.goalring') as HTMLElement;
+    ring.style.display = 'none';
+    if (this.goal) {
+      const q = toXY(this.goal.lat, this.goal.lonOff);
+      ctx.fillStyle = '#e8b04a'; ctx.strokeStyle = '#7a4a14'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(q.x, q.y, 7, 0, 7); ctx.fill(); ctx.stroke();
+      if (q.x > 0 && q.x < W && q.y > 0 && q.y < H) { ring.style.display = ''; ring.style.left = `${q.x / W * 100}%`; ring.style.top = `${q.y / H * 100}%`; }
+    }
     if (playerLatLon) {
       const q = toXY(playerLatLon.lat, playerLatLon.lonOff);
       ctx.fillStyle = 'rgba(255,220,140,.55)'; ctx.beginPath(); ctx.arc(q.x, q.y, 13, 0, 7); ctx.fill();
@@ -216,7 +238,7 @@ export class MapView {
     ctx.strokeStyle = 'rgba(80,60,40,.5)'; ctx.lineWidth = 3; ctx.strokeRect(4, 4, W - 8, H - 8);
     const walked = fog.reduce((a, v) => a + v, 0);
     const leg = this.el.querySelector('.legend') as HTMLElement;
-    leg.innerHTML = `${walked ? `Surveyed on foot: ${walked} squares.` : 'Nothing surveyed yet.'}${mine.length ? ' From people: ' + mine.map(m => esc(m.label)).join(' &middot; ') : ''}`;
+    leg.innerHTML = this.areas ? (this.areas.length ? `Places you have been: ${this.areas.map(a => esc(a.name)).join(' &middot; ')}.` : 'Nowhere named yet. Walk, and the map fills in.') + (this.goal ? ' The gold ring is where to go next.' : '') : `${walked ? `Surveyed on foot: ${walked} squares.` : 'Nothing surveyed yet.'}${mine.length ? ' From people: ' + mine.map(m => esc(m.label)).join(' &middot; ') : ''}`;
     this.canvas.onclick = e => {
       const r = this.canvas.getBoundingClientRect();
       (this.pins[p.cfg.id] ??= []).push({ x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H });

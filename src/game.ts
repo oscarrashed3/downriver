@@ -37,7 +37,7 @@ import { Life } from './systems/life';
 import { Sequencer, type Beat } from './story/sequencer';
 import { currentStep, activeSideQuests, stepDetail, lanternsLit, knownAs, nextPerson, type QuestCtx } from './story/quests';
 import { Menu, MENU_TABS, type MenuTab, type GoalInfo } from './ui/menu';
-import { AREAS } from './data/areas';
+import { AREAS, AREA_AGAIN, discoveredAreas, type Area } from './data/areas';
 import { NOTE, PROMPT, NEW_GOAL, WHERE } from './data/words';
 import { BackpackView, ITEMS, bagAdd, doTrade } from './systems/backpack';
 import { foldMood } from './player/fold';
@@ -117,6 +117,24 @@ export class Game {
   menuByLock = -1;
   /** Set while starting over, so nothing writes the old journey back. */
   saveOff = false;
+  /** An area's border on the ground, as points around its center. */
+  areaOutline(a: Area): THREE.Vector3[] {
+    const p = this.planet, c = p.dirRiver(a.at[0], a.at[1]);
+    const t1 = new THREE.Vector3(0, 1, 0).cross(c).normalize(), out: THREE.Vector3[] = [];
+    for (let i = 0; i < 36; i++) {
+      const wob = 1 + Math.sin(i * 1.7 + a.r) * 0.06;
+      const axis = t1.clone().applyAxisAngle(c, i / 36 * Math.PI * 2);
+      out.push(p.surfacePoint(c.clone().applyAxisAngle(axis, a.r * wob / p.R)));
+    }
+    return out;
+  }
+
+  /** How much you are inside each area (0..1), for its light and sound. */
+  areaWeights(): { a: Area; w: number }[] {
+    const up = this.player.up;
+    return AREAS.filter(a => a.world === this.cur).map(a => ({ a, w: smoothstep(a.r + 8, a.r - 2, up.angleTo(this.planet.dirRiver(a.at[0], a.at[1])) * this.planet.R) })).filter(x => x.w > 0);
+  }
+
   /** The first time you come near someone, the camera looks at them for a moment. */
   meet: { npc: Npc; t: number; from: CamPose } | null = null;
   nameTags: HTMLElement;
@@ -124,6 +142,10 @@ export class Game {
   trailOn = false;
   trailT = 0;
   renderEvery = 1;
+  /** When you were last inside each area (game seconds), to name it again after a long time away. */
+  areaSeen: Record<string, number> = {};
+  bleatT = 0;
+  areaBanner: { a: Area; t: number } | null = null;
   frameN = 0;
   bag: string[] = [];
   sketches: { id: string; label: string; img: string }[] = [];
@@ -406,7 +428,7 @@ export class Game {
     }
     if (item.startsWith('map:')) {
       const pc = PIECES.find(p => p.id === item);
-      if (pc) { this.hud.notify(`A piece of the map: <i>${esc(pc.label)}</i>. <b>M</b>`); this.sound.sfxPlay('paper'); }
+      if (pc && this.cur !== 0) { this.hud.notify(`A piece of the map: <i>${esc(pc.label)}</i>. <b>M</b>`); this.sound.sfxPlay('paper'); }
     } else if (item === 'power:skyreading') {
       this.hud.notify('You learned <b>Skyreading</b>. Press <b>Q</b> to see the wind.');
       this.sound.sfxPlay('power'); this.fold.hop();
@@ -814,10 +836,15 @@ export class Game {
         const east = new THREE.Vector3().crossVectors(north, up).normalize();
         const heading = Math.atan2(f.dot(east), f.dot(north));
         const c = this.questCtx();
-        this.map.people = this.flags.has('quest:night') && !this.flags.has('peaks-healed') ? this.contents[this.cur].npcs.filter(n => this.flags.has('invited:' + n.id)).map(n => {
-          const d = n.root.position.clone().sub(this.planet.center).normalize(), l = latLonOf(d);
-          return { name: knownAs(c, n.id), lat: l.lat, lonOff: wrapDeg(l.lon - this.planet.lonAtLat(l.lat)) };
-        }) : [];
+        const toLL = (v: THREE.Vector3) => { const l = latLonOf(v.clone().sub(this.planet.center).normalize()); return { lat: l.lat, lonOff: wrapDeg(l.lon - this.planet.lonAtLat(l.lat)) }; };
+        if (this.cur === 0) {
+          // world 1: only the named areas you have walked into, the people you have met, and where to go next
+          const night = this.flags.has('quest:night') && !this.flags.has('peaks-healed');
+          this.map.people = this.contents[0].npcs.filter(n => this.flags.has('talked:' + n.id)).map(n => ({ name: SCRIPTS[n.id].name, ...toLL(n.root.position), invited: night && this.flags.has('invited:' + n.id) }));
+          this.map.areas = discoveredAreas(0, this.flags).map(a => ({ name: a.name, at: toLL(this.planet.surfacePoint(this.planet.dirRiver(a.at[0], a.at[1]))), outline: this.areaOutline(a).map(v => toLL(v)) }));
+          const t = this.ch1.guideTarget();
+          this.map.goal = t ? toLL(t) : null;
+        } else { this.map.people = []; this.map.areas = null; this.map.goal = null; }
         this.map.draw(this.planet, this.flags, { lat: ll.lat, lonOff: wrapDeg(ll.lon - this.planet.lonAtLat(ll.lat)), heading });
         this.map.show(true); break;
       }
@@ -878,11 +905,18 @@ export class Game {
     if (!this.flags.has('read-letter')) return;
     const up = this.player.up;
     for (const a of AREAS) {
-      if (a.world !== this.cur || this.flags.has('area:' + a.id)) continue;
+      if (a.world !== this.cur) continue;
       if (up.angleTo(this.planet.dirRiver(a.at[0], a.at[1])) * this.planet.R > a.r) continue;
-      if (this.meet || this.hud.banner.classList.contains('on') || this.hud.chapter.classList.contains('on')) continue;
-      this.flags.add('area:' + a.id);
-      this.hud.showBanner(a.name, a.sub); this.sound.sfxPlay('chime');
+      const known = this.flags.has('area:' + a.id), last = this.areaSeen[a.id];
+      // the map knows it at once; the name card waits its turn if something else is on screen
+      if (!known || (last !== undefined && this.time - last > AREA_AGAIN)) { this.flags.add('area:' + a.id); this.areaBanner = { a, t: this.time }; }
+      this.areaSeen[a.id] = this.time;
+    }
+    const b = this.areaBanner;
+    if (b && this.time - b.t > 12) this.areaBanner = null;
+    else if (b && !this.meet && !this.hud.banner.classList.contains('on') && !this.hud.chapter.classList.contains('on')) {
+      this.areaBanner = null;
+      this.hud.showBanner(b.a.name, b.a.sub); this.sound.sfxPlay('chime');
     }
   }
 
@@ -1117,6 +1151,9 @@ export class Game {
     this.menu.setButton(this.mode === 'play' || this.mode === 'overlay');
     if (this.mode !== 'play' && this.mode !== 'overlay') inp.lockLost = false;
     this.day.apply(WORLDS[this.cur].palette, this.sunLight, this.moonLight, this.scene.fog as THREE.FogExp2, p.center);
+    const aw = this.mode === 'title' ? [] : this.areaWeights();
+    for (const { a, w } of aw) this.sunLight.color.lerp(new THREE.Color(a.light), w * 0.3);
+    if (aw.length) PAINT.uSunCol.value.copy(this.sunLight.color).multiplyScalar(this.sunLight.intensity / 2.6);
     this.sunLight.position.copy(this.player.pos).addScaledVector(this.day.sun, 120);
     this.sunLight.target.position.copy(this.player.pos);
     const east = new THREE.Vector3(-this.player.up.z, 0, this.player.up.x);
@@ -1179,7 +1216,18 @@ export class Game {
     const riverNear = this.mode === 'raft' ? 1 : clamp(1 - near.dist / 30);
     const alt = clamp(p.height(this.player.up) / p.cfg.amplitude);
     this.sound.amb.day = this.day.day;
-    this.sound.update(riverNear, flowArrivingAt(this.river, this.cur), onPeaks ? 0.3 + alt * 0.6 : 0.2);
+    // each area sounds a little like itself
+    let riverK = riverNear, windK = onPeaks ? 0.3 + alt * 0.6 : 0.2;
+    for (const { a, w } of aw) {
+      if (a.sound === 'chimes') this.sound.amb.chimes = Math.max(this.sound.amb.chimes, w * 0.8);
+      if (a.sound === 'fire') this.sound.amb.fire = Math.max(this.sound.amb.fire, w * 0.6);
+      if (a.sound === 'birds') this.sound.amb.birds = this.day.day * (1 + w);
+      if (a.sound === 'wind') windK = Math.max(windK, 0.55 + w * 0.45);
+      if (a.sound === 'river') riverK = Math.max(riverK, w * 0.7);
+      if (a.sound === 'falls') this.sound.amb.edge = Math.max(this.sound.amb.edge, w);
+      if (a.sound === 'goats' && w > 0.5 && this.mode === 'play' && (this.bleatT -= dt) < 0) { this.bleatT = 6 + Math.random() * 9; this.sound.sfxPlay('bleat'); }
+    }
+    this.sound.update(riverK, flowArrivingAt(this.river, this.cur), windK);
     this.hud.setFrost(onPeaks && this.mode === 'play' ? clamp((1 - this.player.warmth) * 1.1) : 0);
     const showGoal = this.mode === 'play' || this.mode === 'raft' || this.mode === 'overlay';
     const qc = this.questCtx();

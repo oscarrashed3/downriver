@@ -188,3 +188,8 @@ canvas#game { display: block; width: 100vw; height: 100vh; }
 /* names over people's heads */
 .nametags > div { position: absolute; transform: translate(-50%, -100%); white-space: nowrap; font-size: 15px; font-style: italic; color: #fffaf0; text-shadow: 0 1px 6px rgba(30,20,50,.95), 0 0 2px rgba(30,20,50,.9); pointer-events: none; transition: opacity .3s; }
 .nametags > div b { font-style: normal; font-weight: 600; font-size: 17px; }
+
+/* the map: the goal pulses */
+.mapwrap { position: relative; display: inline-block; }
+.goalring { position: absolute; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; border: 3px solid #e8b04a; pointer-events: none; animation: goalpulse 1.6s ease-out infinite; }
+@keyframes goalpulse { 0% { transform: scale(.4); opacity: 1; } 100% { transform: scale(1.6); opacity: 0; } }
