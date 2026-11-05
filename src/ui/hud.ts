@@ -21,7 +21,7 @@ export class Hud {
   constructor() {
     this.root.append(this.sky, this.frost, this.fade, this.banner, this.prompt, this.toast, this.dlg, this.story, this.help);
     this.help.innerHTML = `<h2>How to travel</h2>
-      <p><b>W A S D</b> walk &nbsp; <b>Shift</b> run &nbsp; <b>Space</b> jump &nbsp; <b>Mouse</b> look (click to capture)</p>
+      <p><b>W A S D</b> walk &nbsp; <b>Shift</b> run &nbsp; <b>Space</b> jump &nbsp; <b>Mouse</b> look (click to capture, or hold right button and drag) &nbsp; <b>Arrows</b> turn</p>
       <p><b>E</b> talk, use, board Fold &nbsp; <b>Q</b> Skyreading (once learned)</p>
       <p><b>M</b> your map &nbsp; <b>J</b> journal &nbsp; <b>H</b> this help &nbsp; <b>N</b> sound on/off</p>
       <p>In conversation, <b>hold Space</b> while someone speaks. Letting go early is interrupting.<br/>When they fall silent, staying present is sometimes the kindest thing.</p>

@@ -19,7 +19,7 @@ export class Input {
     canvas.addEventListener('mousedown', e => {
       if (e.button === 0) this.mouseHeld = true;
       if (this.enabled && !this.locked && document.pointerLockElement !== canvas) {
-        canvas.requestPointerLock?.();
+        try { const r = canvas.requestPointerLock?.() as unknown as Promise<void> | undefined; r?.catch?.(() => {}); } catch { /* sandboxed: right-drag still looks around */ }
       }
     });
     addEventListener('mouseup', e => { if (e.button === 0) this.mouseHeld = false; });
