@@ -44,7 +44,7 @@ export const JOURNAL: Record<string, JournalEntry> = {
   },
   'stone-returns': {
     id: 'stone-returns', title: 'A cup of water',
-    text: 'For years Ysolde stopped carrying water up to the spring. This morning she carried a cup, though it did not need it anymore. Below her stones the ice reaches a little farther down the valley, and the river has its voice back, all the way to the next world.',
+    text: 'Sixty winters Ysolde carried a cup up to the spring. This morning the spring filled it for her. Hollo walked back up to the peaks, and the water followed him, all the way to the next world.',
     sketch: c => { [70, 62, 55, 48, 42, 52].forEach((h, i) => { c.fillStyle = i === 5 ? '#9fd3ff' : '#8e8aa8'; c.fillRect(14 + i * 17, 88 - h * 0.9, 10, h * 0.9); }); },
   },
   'where-snow-goes': {
@@ -54,7 +54,7 @@ export const JOURNAL: Record<string, JournalEntry> = {
   },
   'the-fold': {
     id: 'the-fold', title: 'Nothing is just a boat',
-    text: 'Odo knew Fold\'s folds at a glance. He taught them to one child, long ago, on his bridge. A child writing a letter to the sea. My letter has no name on it.',
+    text: 'Odo knew Fold\'s folds at a glance. Only one person ever folded like that: someone who keeps a light, and once crossed his bridge in a storm. My letter has no name on it either.',
     sketch: c => { line(c, [[20, 60], [100, 60], [85, 75], [35, 75], [20, 60]]); line(c, [[45, 60], [60, 25], [75, 60]]); line(c, [[10, 85], [110, 85]], 1); },
   },
   'kite': {
@@ -64,12 +64,17 @@ export const JOURNAL: Record<string, JournalEntry> = {
   },
   'echoes': {
     id: 'echoes', title: 'Five echoes',
-    text: 'At five old stones I sat and listened. A tune by a stream. A paper boat folded again by kinder hands. A letter pushed out onto the water. Someone taught me this fold. Did I send that letter, or was it sent to me?',
+    text: 'At five old stones I sat and listened. Each one remembers someone who passed: a tune, a laugh, a lantern swinging in the rain. One of them walked here just before the storm. Always one valley ahead.',
     sketch: c => { [20, 42, 64, 86, 104].forEach((x, i) => { line(c, [[x, 80], [x + 3, 50 - i * 3], [x + 9, 50 - i * 3], [x + 10, 80]]); }); line(c, [[8, 82], [114, 82]], 1); },
   },
-  'keepsake-boat': {
-    id: 'keepsake-boat', title: 'Keepsake: the carved boat',
-    text: 'A memory came back at the bridge. My grandmother and I carved a little boat by a stream, and she told me to let it go. Now the boat is in my satchel. I think I am starting to remember who I am.',
+  'hollo': {
+    id: 'hollo', title: 'The snow that walks',
+    text: 'Hollo sleeps on the spring when the mountain feels empty, and climbs back to the peaks when it feels full. The water follows him down. Three things woke him: the wind read right, the snow held, and the whole valley beside him on the long night.',
+    sketch: c => { c.fillStyle = '#f4f6ff'; c.beginPath(); c.ellipse(60, 58, 40, 22, 0, 0, 7); c.fill(); line(c, [[22, 60], [30, 40], [60, 34], [92, 42], [100, 60]]); line(c, [[85, 50], [90, 52]]); line(c, [[10, 82], [110, 82]], 1); },
+  },
+  'first-letter': {
+    id: 'first-letter', title: 'A letter from one valley ahead',
+    text: 'At the bridge a postman fell out of the sky under a green umbrella and gave me a letter. Same hand as the one in my bag. Whoever writes them is always one world ahead of me.',
     sketch: c => { c.fillStyle = '#c89a62'; c.beginPath(); c.moveTo(25, 55); c.lineTo(95, 55); c.lineTo(82, 70); c.lineTo(38, 70); c.closePath(); c.fill(); line(c, [[25, 55], [95, 55], [82, 70], [38, 70], [25, 55]]); line(c, [[60, 55], [60, 25]]); line(c, [[60, 27], [80, 50], [60, 50]]); },
   },
 };

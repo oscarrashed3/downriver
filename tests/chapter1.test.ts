@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { MAIN_STEPS, currentStep, activeSideQuests, SIDE_QUESTS, type QuestCtx } from '../src/story/quests';
+import { MAIN_STEPS, currentStep, activeSideQuests, SIDE_QUESTS, lanternsLit, invitedCount, stepDetail, FRIENDS, type QuestCtx } from '../src/story/quests';
 import { migrateSave, RESET_NOTICE, SAVE_VERSION } from '../src/systems/save';
 import { Conversation } from '../src/systems/connection';
 import { SCRIPTS } from '../src/data/scripts';
@@ -25,54 +25,61 @@ function talk(id: string, flags: Set<string>, picks: number[] = []) {
 }
 
 describe('Chapter One main quest', () => {
-  it('starts with the letter, then points to the village', () => {
+  it('starts with the letter, then points to Ysolde and Hollo', () => {
     expect(currentStep(ctx([]))?.id).toBe('letter');
-    expect(currentStep(ctx(['read-letter']))?.id).toBe('why');
+    expect(currentStep(ctx(['read-letter']))?.id).toBe('hollo');
   });
   it('walks through every step in order as the story flags arrive', () => {
-    const order = ['read-letter', 'talked:ysolde', 'power:skyreading', 'saw-wind'];
+    const order = ['read-letter', 'quest:hollo', 'kite-flown', 'fences-done', 'gathered', 'peaks-healed', 'boat-ready', 'chapter1-complete'];
     const flags: string[] = [];
-    expect(currentStep(ctx(flags))?.id).toBe('letter');
-    order.forEach((f, i) => { flags.push(f); expect(currentStep(ctx(flags))?.id).toBe(MAIN_STEPS[i + 1].id); });
-    expect(currentStep(ctx(flags, 0.5))?.id).toBe('keep');
-    expect(currentStep(ctx(flags, 0.74))?.id).toBe('winter');
-    flags.push('peaks-healed');
-    expect(currentStep(ctx(flags))?.id).toBe('tell');
-    flags.push('journal:stone-returns');
-    expect(currentStep(ctx(flags))?.id).toBe('odo');
-    flags.push('boat-ready');
-    expect(currentStep(ctx(flags))?.id).toBe('farewell');
-    flags.push('chapter1-complete');
+    order.forEach((f, i) => { expect(currentStep(ctx(flags))?.id).toBe(MAIN_STEPS[i].id); flags.push(f); });
     expect(currentStep(ctx(flags))?.id).toBe('home');
     flags.push('loop-complete');
     expect(currentStep(ctx(flags))).toBeNull();
   });
-  it('lets winter come only once the snow can stay (projected snowpack at least 0.7)', () => {
-    const f = ['read-letter', 'talked:ysolde', 'power:skyreading', 'saw-wind'];
-    expect(currentStep(ctx(f, 0.69))?.id).toBe('keep');
-    expect(currentStep(ctx(f, 0.7))?.id).toBe('winter');
+  it('lights one lantern per stop', () => {
+    expect(lanternsLit(ctx(['kite-flown']))).toBe(1);
+    expect(lanternsLit(ctx(['kite-flown', 'fences-done', 'gathered']))).toBe(3);
+    expect(lanternsLit(ctx(['peaks-healed']))).toBe(3);
+  });
+  it('the step detail counts fences and invitations', () => {
+    expect(stepDetail({ ...ctx(['read-letter', 'quest:hollo', 'kite-flown', 'goat-home']), fences: 2 })).toMatch(/2 of 3/);
+    expect(stepDetail(ctx(['read-letter', 'quest:hollo', 'kite-flown', 'fences-done', 'invited:tor', 'invited:odo']))).toMatch(/2 of 5/);
   });
   it('every step has words, and every step id is unique', () => {
     expect(new Set(MAIN_STEPS.map(s => s.id)).size).toBe(MAIN_STEPS.length);
     MAIN_STEPS.forEach(s => expect(s.text.length).toBeGreaterThan(10));
   });
-  it('the story flags the quest waits on are actually given by people', () => {
-    const flags = new Set<string>(['peaks-healed']);
+  it('Ysolde starts the Hollo quest for a patient listener', () => {
+    const flags = new Set<string>();
     talk('ysolde', flags);
-    expect(flags.has('journal:stone-returns')).toBe(true);
-    const f2 = new Set<string>(['peaks-healed', 'journal:stone-returns']);
+    expect(flags.has('quest:hollo')).toBe(true);
+  });
+  it('Bram trades fence rails for his goat', () => {
+    const f = new Set<string>(); talk('bram', f);
+    expect(f.has('quest:goat')).toBe(true);
+    expect(f.has('flag:tor-fences')).toBe(false);
+    const f2 = new Set<string>(['goat-home']); talk('bram', f2);
+    expect(f2.has('flag:tor-fences')).toBe(true);
+  });
+  it('everyone accepts the invitation to the long night', () => {
+    const flags = new Set<string>(['quest:night']);
+    for (const id of FRIENDS) talk(id, flags);
+    expect(invitedCount({ flags, projected: 0, echoes: 0 })).toBe(5);
+  });
+  it('Odo readies the boat once Hollo wakes', () => {
+    const f2 = new Set<string>(['peaks-healed']);
     talk('odo', f2);
     expect(f2.has('boat-ready')).toBe(true);
   });
 });
 
 describe('Side quests', () => {
-  it("Tor's kite moves from branch, to Tor, to the ridge", () => {
-    const q = (f: string[]) => activeSideQuests(ctx(f)).find(s => s.title === "Tor's kite")?.text;
+  it("the kite stop moves from branch, to Tor, to the ridge", () => {
+    const q = (f: string[]) => stepDetail(ctx(['read-letter', 'quest:hollo', ...f]));
     expect(q(['quest:kite'])).toMatch(/willow/);
     expect(q(['quest:kite', 'item:spar'])).toMatch(/Tor/);
     expect(q(['quest:kite', 'item:spar', 'flag:tor-follow'])).toMatch(/Kite Ridge/);
-    expect(q(['quest:kite', 'kite-flown'])).toBeUndefined();
   });
   it('echo stones count up and finish at five', () => {
     expect(activeSideQuests(ctx(['echo:any'], 0.3, 2))[0].text).toMatch(/2 of 5/);
@@ -88,10 +95,9 @@ describe('The kite', () => {
     talk('tor', flags);
     expect(flags.has('flag:tor-follow')).toBe(true);
   });
-  it('without the branch, Tor gives the kite quest and the fence know-how', () => {
+  it('without the branch, Tor gives the kite quest', () => {
     const flags = new Set<string>();
     talk('tor', flags, [1, 0]);
-    expect(flags.has('flag:tor-fences')).toBe(true);
     expect(flags.has('quest:kite')).toBe(true);
     expect(flags.has('flag:tor-follow')).toBe(false);
   });
@@ -132,7 +138,7 @@ describe('Save migration', () => {
 
 describe('Story text', () => {
   it('keeps every line short enough for two lines on screen', () => {
-    const lines: string[] = [STORY.LETTER, ...STORY.WINTER_LINES, STORY.KITE_GIFT, ...STORY.KITE_FLIGHT, ...STORY.ECHOES, ...STORY.KEEPSAKE.panels, STORY.KEEPSAKE.after,
+    const lines: string[] = [STORY.LETTER, ...STORY.WINTER_LINES, STORY.KITE_GIFT, ...STORY.KITE_FLIGHT, ...STORY.ECHOES, ...STORY.DAWN_LINES, ...STORY.OPENING.storm, STORY.POSTMAN.arrive, STORY.POSTMAN.hand, STORY.POSTMAN.after,
       ...STORY.CAMPFIRE.map(l => l.text), ...STORY.FAREWELL.map(l => l.text), ...Object.values(STORY.NOT_YET), STORY.OPENING.homeLight];
     lines.forEach(l => expect(l.length, l).toBeLessThanOrEqual(110));
   });

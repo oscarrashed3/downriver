@@ -35,7 +35,7 @@ import { QualityAuto } from './render/quality';
 import { SkyView, type CamPose } from './systems/skyView';
 import { Life } from './systems/life';
 import { Sequencer, type Beat } from './story/sequencer';
-import { currentStep, activeSideQuests, type QuestCtx } from './story/quests';
+import { currentStep, activeSideQuests, stepDetail, lanternsLit, type QuestCtx } from './story/quests';
 import { CHAPTERS, MAIN_QUEST, NOT_YET, OPENING } from './data/story';
 import { ChapterOne } from './story/chapterOne';
 import * as Opening from './story/opening';
@@ -336,7 +336,7 @@ export class Game {
 
   // ------------------------------------------------------------------ state
   questCtx(): QuestCtx {
-    return { flags: this.flags, projected: projectedSnowpack(this.snow), echoes: [0, 1, 2, 3, 4].filter(i => this.flags.has('echo:' + i)).length };
+    return { flags: this.flags, projected: projectedSnowpack(this.snow), echoes: [0, 1, 2, 3, 4].filter(i => this.flags.has('echo:' + i)).length, fences: this.snow.sites.filter(s => s.kind === 'fence' && s.built && s.windExposure > 0.5).length };
   }
 
   give(item: string) {
@@ -764,7 +764,7 @@ export class Game {
     const c = this.questCtx();
     const step = currentStep(c);
     const side = activeSideQuests(c);
-    const main = `<div class="quest"><div class="qk">The way home</div><div class="qm">${esc(MAIN_QUEST)}</div>${step ? `<div class="qs">${esc(step.text)}</div>` : ''}</div>`;
+    const main = `<div class="quest"><div class="qk">The way home</div><div class="qm">${esc(MAIN_QUEST)}</div>${step ? `<div class="qs">${esc(stepDetail(c) ?? step.text)}</div>` : ''}</div>`;
     const sideHtml = side.length ? `<div class="sub">Along the way:</div><ul>${side.map(q => `<li><b>${esc(q.title)}.</b> ${esc(q.text)}</li>`).join('')}</ul>` : '';
     const entries = this.journal.map(id => JOURNAL[id]).filter(Boolean);
     this.journalEl.innerHTML = `<div class="sheet journal"><h2>Journal</h2>${main}${sideHtml}${entries.length ? '' : '<p class="dim">Things I learn will be drawn here.</p>'}<div class="entries"></div><p class="dim">J to close</p></div>`;
@@ -975,8 +975,11 @@ export class Game {
     this.sound.update(riverNear, flowArrivingAt(this.river, this.cur), onPeaks ? 0.3 + alt * 0.6 : 0.2);
     this.hud.setFrost(onPeaks && this.mode === 'play' ? clamp((1 - this.player.warmth) * 1.1) : 0);
     const showGoal = this.mode === 'play' || this.mode === 'raft' || this.mode === 'overlay';
-    const step = currentStep(this.questCtx());
-    this.hud.setGoal(showGoal && step && this.flags.has('read-letter') ? step.text : null);
+    const qc = this.questCtx();
+    const step = currentStep(qc);
+    const goal = step && this.flags.has('read-letter') ? stepDetail(qc) : null;
+    const lit = this.cur === 0 && this.flags.has('quest:hollo') && !this.flags.has('chapter1-complete') ? `   Lanterns ${'●'.repeat(lanternsLit(qc))}${'○'.repeat(3 - lanternsLit(qc))}` : '';
+    this.hud.setGoal(showGoal && goal ? goal + lit : null);
     if (this.mode === 'play' || this.mode === 'raft') { const lv = this.quality.sample(dt); if (lv) { this.applyQuality(); this.hud.notify(`Picture quality set to <b>${lv}</b> to keep things smooth. <b>P</b> to change.`); } }
     this.hud.update(dt);
     this.finish.mat.uniforms.uTime.value = this.time;

@@ -1,7 +1,7 @@
 // Story text for the opening and Chapter One. All player-facing words live in data files.
 // Keep every line under 110 characters, and never more than two lines on screen at once.
 
-export const LETTER = 'Follow the water. It always finds its way home.';
+export const LETTER = 'Nilo. Follow the water. It always finds its way home. But someone up here needs you first.';
 
 export const CHAPTERS = [
   { n: 'Chapter One', title: 'Where the Water Begins' },
@@ -14,7 +14,14 @@ export const CHAPTERS = [
 
 export const MAIN_QUEST = 'Go home, to the light below the clouds.';
 
+export const TITLE = 'The Light Below the Clouds';
+
 export const OPENING = {
+  storm: [
+    'The storm came out of nowhere.',
+    'Somewhere in the lightning, someone with a lantern was watching.',
+    'Then the wind took you, and the sky turned over.',
+  ],
   lookDown: 'Look down.',
   homeLight: 'Far below the clouds, one small light is blinking. Somehow, you know it is home.',
   firstStep: 'The river is too thin to carry you. Find out why.',
@@ -22,16 +29,22 @@ export const OPENING = {
 };
 
 export const CAMPFIRE: { who: string; text: string }[] = [
-  { who: 'Ysolde', text: 'When I was a girl, the snow reached our windows. We tunneled to school like moles.' },
-  { who: 'Bram', text: 'My father talked to goats more than people. I thought he was strange. Now I understand.' },
-  { who: 'Nima', text: 'Once a cloud came down so low I walked right into it. It smelled like rain and pennies.' },
+  { who: 'Ysolde', text: 'When I was a girl, the snow reached our windows, and Hollo walked up the valley every spring.' },
+  { who: 'Bram', text: 'My father slept beside him once. He said Hollo snores like a bear with a cold.' },
+  { who: 'Nima', text: "Big Marguerite is right above us now. Don't look. She's shy." },
   { who: 'Tor', text: "Grandpa said kites aren't about flying. They're about holding on and letting go at once." },
-  { who: 'Odo', text: 'Everyone who crosses my bridge leaves something behind. A song, a story, a bad joke.' },
+  { who: 'Odo', text: 'Tea. Nobody sleeps through tea. Not even a mountain.' },
 ];
 
 export const WINTER_LINES = [
-  'Winter comes. The wind howls over the ridges, and this time the snow stays.',
-  'Spring comes. The spring wakes, cold and bright, and the river finds its voice.',
+  'The snow comes. It piles behind the fences on every ridge, and this time it stays.',
+  'The night is long. Nobody leaves. Hollo breathes a little faster.',
+];
+
+export const DAWN_LINES = [
+  'At first light, something very big opens its eyes.',
+  'Hollo looks at you for a long moment. Then he stands, shakes off the night, and walks home to the peaks.',
+  'Under him, the spring wakes, cold and bright. The river finds its voice.',
 ];
 
 export const FAREWELL: { who: string; text: string }[] = [
@@ -41,6 +54,19 @@ export const FAREWELL: { who: string; text: string }[] = [
   { who: 'Tor', text: "You'll come back, right? Rivers always come back. As rain." },
   { who: 'Odo', text: 'Hold on tight. The edge is the best part.' },
 ];
+
+/** The postman drops out of the sky with the first letter from the light keeper. */
+export const POSTMAN = {
+  arrive: 'Something green comes tumbling down the sky. An umbrella. Under it, a very small postman.',
+  hand: 'He bows, hands you a letter, and checks your name against nothing at all.',
+  letter: [
+    'You woke him. I knew you would.',
+    'The water goes down now, and so do you. The pines below are thirsty, and they are afraid of fire.',
+    'I am always one valley ahead. Do not try to catch me. Just follow the water.',
+  ],
+  sign: '— the one who keeps the light',
+  after: 'The postman opens his umbrella, steps off the bridge, and floats away. He will be back.',
+};
 
 export const KITE_GIFT = "Wait! Your boat can be a kite too. If you ever need to come back up, ride the warm air.";
 
@@ -52,28 +78,17 @@ export const KITE_FLIGHT = [
   "I'm not scared. Well, a bit. But I'm up here.",
 ];
 
-/** The keepsake flashback: four painted panels, about five seconds each. */
-export const KEEPSAKE = {
-  title: 'A memory comes back',
-  panels: [
-    'A stream behind a house, the summer you were small.',
-    '"Hold it gently," your grandmother says. "Cut away from you."',
-    'It floats. The little wooden boat actually floats.',
-    '"Let it go," she laughs. "It knows the way."',
-  ],
-  after: 'In your satchel, where nothing was before, there is a small carved wooden boat.',
-};
-
 export const ECHOES = [
-  'Someone is humming beside a stream. You know the tune before it ends.',
+  'The stone hums a tune somebody whistled here, long ago, waiting for the snow.',
   '"Every river is in a hurry to get home," a voice laughs. "Even when home moves."',
-  'Small hands, wet sleeves. A paper boat, folded badly, sinking. Someone helps you fold it again.',
-  '"You\'ll go far one day," the voice says. It doesn\'t sound sad. It sounds proud.',
+  'Rain, and a lantern swinging. Footsteps that never stop, always one valley ahead.',
+  'Two children and a kite, a very long time ago. One of them is Tor\'s grandfather.',
   'Ink on a thumb. A letter, folded into a boat, pushed gently out onto the water.',
 ];
 
 export const NOT_YET = {
   thinRiver: 'The river is too thin to carry Fold. It scrapes along the stones.',
   edgeEarly: 'Far below, the home light blinks. But the river is too thin to carry you yet.',
-  winterEarly: "Not yet. The wind would still strip the ridges bare. Help the snow stay first.",
+  winterEarly: 'Not yet. Light the three lanterns first: the wind, the fences, and the long night.',
+  notGathered: 'Ysolde keeps the fire. Bring everyone here before the snow comes.',
 };

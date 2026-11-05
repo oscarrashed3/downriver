@@ -6,6 +6,7 @@ import type { CamPose } from '../systems/skyView';
 import { CHAPTERS, LETTER, OPENING } from '../data/story';
 import { PK } from '../world/peaks';
 import { smoothstep } from '../world/noise';
+import { stormPanel } from './panels';
 
 export const LETTER_TEXT = LETTER;
 
@@ -21,7 +22,27 @@ function lerpPose(a: CamPose, b: CamPose, k: number): CamPose {
   return { pos: a.pos.clone().lerp(b.pos, k), look: a.look.clone().lerp(b.look, k), up: a.up.clone().lerp(b.up, k).normalize() };
 }
 
-/** Rill wakes in the grass by the almost-dry spring. Five seconds of quiet, then a drop falls into the lantern. */
+/** The storm: three painted panels. A paper boat in the sky, the keeper in a lightning flash, the fall. */
+export function stormBeats(g: Game): Beat[] {
+  const panels = [0, 1, 2].map(i => stormPanel(i));
+  return OPENING.storm.map((cap, i) => ({
+    dur: i === 1 ? 5.5 : 4.8,
+    enter: () => {
+      g.hud.setFade(1, '#06081a');
+      g.hud.showPanel(panels[i], cap, 0);
+      g.sound.sfxPlay(i === 1 ? 'whoosh' : 'soft');
+    },
+    tick: (k: number) => {
+      let a = smoothstep(0, 0.18, k) * (1 - smoothstep(0.86, 1, k));
+      // the lightning: two hard flashes, and the figure is there in between
+      if (i === 1) { const f = Math.max(0, 1 - Math.abs(k - 0.12) * 30) + Math.max(0, 1 - Math.abs(k - 0.2) * 40); a = Math.min(1, a + f); }
+      g.hud.showPanel(panels[i], cap, a);
+    },
+    exit: () => { if (i === 2) g.hud.showPanel(null); },
+  }));
+}
+
+/** Nilo wakes in the snow beside the sleeping Hollo. Five seconds of quiet, then a drop falls into the lantern. */
 export function wakeBeats(g: Game): Beat[] {
   const p = g.planets[0], pl = g.player;
   let drop: THREE.Mesh | null = null;
@@ -36,6 +57,7 @@ export function wakeBeats(g: Game): Beat[] {
     };
   };
   return [
+    ...stormBeats(g),
     {
       dur: 1.6,
       enter: () => {
@@ -47,7 +69,7 @@ export function wakeBeats(g: Game): Beat[] {
         pl.pose = { lie: 1 };
         pl.sync();
         g.day.setLocal(pl.up, 0.3);
-        g.rig.faceDir(pl.up, p.surfacePoint(p.dirRiver(40, -12)).sub(pl.pos));
+        g.rig.faceDir(pl.up, p.surfacePoint(p.dirRiver(PK.spring[0], PK.spring[1])).sub(pl.pos));
         g.rig.snap();
         g.cutCam = closeShot(0);
         (g.contents[0].refs.spring.userData.drop as THREE.Object3D).visible = false;
