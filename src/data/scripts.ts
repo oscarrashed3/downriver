@@ -5,51 +5,52 @@ import type { Script } from '../systems/connection';
 
 export const SCRIPTS: Record<string, Script> = {
   ysolde: {
-    id: 'ysolde', name: 'Ysolde', title: 'the Ice Listener',
+    id: 'ysolde', name: 'Ysolde', title: 'who keeps the spring',
     start: { trust: 0.32, worry: 0.6, openness: 0.3 },
     hint: 'Ysolde speaks slowly. She seems to want someone who listens all the way through.',
     nodes: [
       { type: 'branch', ifFlag: 'peaks-healed', then: [
-        { type: 'say', text: 'Did you see? This winter I carved my stone farther down the valley.' },
-        { type: 'say', text: 'First time in my life the ice came back toward us.' },
-        { type: 'silence', seconds: 2.2, reward: 'My mother would have laughed out loud. So I did it for her.' },
+        { type: 'say', text: 'I had stopped carrying water up to the spring. This morning I carried a cup.' },
+        { type: 'say', text: "Silly. It didn't need my cup anymore." },
+        { type: 'silence', seconds: 2.2, reward: 'I think I did.' },
         { type: 'give', items: ['journal:stone-returns'] },
+        { type: 'say', text: "Odo will want to see you. He's been folding paper all winter." },
       ], else: [
-        { type: 'say', text: 'Another traveler. They all climb up here for the view.' },
-        { type: 'say', text: 'Never for the stones.' },
-        { type: 'say', text: 'Every winter I carve one. Each marks where the ice ended that year.' },
-        { type: 'silence', seconds: 2.6, reward: 'My mother carved the first one. Back then, the ice touched our door.' },
+        { type: 'say', text: 'Another traveler. You came down from the spring?' },
+        { type: 'say', text: 'Then you heard it. Barely a whisper now.' },
+        { type: 'say', text: "I've kept that spring sixty years. I've stopped expecting it to wake." },
+        { type: 'silence', seconds: 2.6, reward: 'My grandmother used to say the spring remembers everyone who drinks from it.' },
         { type: 'ask', cards: [
-          { kind: 'open', text: 'What do the stones tell you?', reply: ['That the ice is walking away from us.', 'A little farther every year.'] },
-          { kind: 'leading', text: 'So the ice melts because of people, right?', reply: ['You came with your answer already.', "Then you don't need my stones."] },
-          { kind: 'judging', text: 'Why carve stones instead of doing something?', reply: ['Carving is how I remember.', 'Remembering is doing something.'] },
+          { kind: 'open', text: 'Why is the river so thin?', reply: ["Snow is the mountain's water jar. Winter fills it.", "Summer pours it out slowly. That's our spring."] },
+          { kind: 'leading', text: "It's because of the warming, isn't it?", reply: ['Maybe. You came with your answer already.', "I'd rather you came with your eyes."] },
+          { kind: 'judging', text: "Why didn't anyone fix it?", reply: ['We tried. Then we got old and tired.', 'Tired is not the same as not caring.'] },
         ] },
-        { type: 'say', text: "Snow is the mountain's water jar. Winter fills it." },
-        { type: 'say', text: "Summer pours it out slowly. That's our spring." },
         { type: 'say', text: 'Less snow, thinner spring. Thinner spring, thirstier river.' },
-        { type: 'silence', seconds: 2.2, reward: 'All the way down to the sea. Everyone below drinks what we keep up here.' },
+        { type: 'say', text: 'Now the wind steals the snow off the ridges and throws it into the sky.' },
+        { type: 'silence', seconds: 2.2, reward: 'Everyone below drinks what we keep up here. All the way down to the sea.' },
         { type: 'ask', cards: [
           { kind: 'open', text: 'What would help the snow stay?', gives: ['flag:knows-fences'],
-            reply: ['The wind steals it off the ridges and throws it into the sky.', "Herders used to build fences so it would drop. But you'd need to see the wind."] },
-          { kind: 'open', text: 'How did people keep water here before?', gives: ['flag:knows-stupas'],
+            reply: ['My husband built fences on the windy ridges. Snow drops behind them.', "Tor knows where the old posts are. He's afraid to go up there, though."] },
+          { kind: 'open', text: 'How did people store water before?', gives: ['flag:knows-stupas'],
             reply: ['My grandmother froze winter water into tall cones of ice.', 'They melt slowly, right when the spring needs them most.'] },
           { kind: 'leading', text: "Can't we just make it snow more?", reply: ['Ha. If you find the lever, tell me.'] },
         ] },
-        { type: 'gate', minTrust: 0.48, fail: ['The light is going.', "Come back when you've learned to sit with a stone."], pass: [
+        { type: 'gate', minTrust: 0.48, fail: ["The light's going, and so is my patience.", "Come back when you've learned to sit with someone."], pass: [
           { type: 'say', text: 'Here. Look up, and breathe slowly.' },
           { type: 'say', text: 'Watch how the air moves. The sky is always telling you something.' },
           { type: 'give', items: ['power:skyreading', 'map:valley', 'journal:snow-jar', 'flag:knows-fences', 'quest:snowpack'] },
-          { type: 'say', text: 'If you build ice cones, ask Bram first. Winter water feeds his meadow.' },
+          { type: 'say', text: "Go up to Kite Ridge, past Odo's bridge, and read the wind. You'll see where the snow goes." },
+          { type: 'say', text: 'And if you build ice cones, ask Bram first. His goats drink that water.' },
         ] },
       ] },
     ],
-    after: ['The stones are patient. So am I.', 'Watch the wind on the ridges. It shows you where snow wants to fall.'],
+    after: ['The spring remembers everyone who drinks from it.', "Kite Ridge is east, over Odo's bridge. Read the wind up there."],
   },
 
   bram: {
-    id: 'bram', name: 'Bram', title: 'the Goatherd',
-    start: { trust: 0.45, worry: 0.7, openness: 0.4 },
-    hint: 'Bram keeps glancing at his goats. Maybe ask him what worries him.',
+    id: 'bram', name: 'Bram', title: 'the goatherd',
+    start: { trust: 0.42, worry: 0.7, openness: 0.35 },
+    hint: 'Bram keeps glancing at the west cliffs. Maybe ask him what he needs.',
     nodes: [
       { type: 'branch', ifFlag: 'stupa-without-asking', then: [
         { type: 'say', text: "You took my meadow's winter water for your ice towers." },
@@ -60,66 +61,141 @@ export const SCRIPTS: Record<string, Script> = {
           { kind: 'neutral', text: 'The spring needed it more.', reply: ['Maybe. My goats needed it too.'] },
         ] },
       ] },
-      { type: 'say', text: 'Careful, the goats bite. Only the brown one, really.' },
-      { type: 'say', text: 'Soon I move them up to the summer pasture.' },
-      { type: 'say', text: 'Two roads up. The east road is short and pretty. The west road is long.' },
-      { type: 'ask', cards: [
-        { kind: 'open', text: 'What worries you about the roads?', gives: ['quest:route'],
-          reply: ['Some years snow piles up on the east slope.', 'When it gets heavy, the whole slope can let go.'] },
-        { kind: 'open', text: 'What do the goats need the meadow for?', gives: ['flag:knows-meadow'],
-          reply: ['Its winter water keeps the grass alive under the snow.', 'Without it, they go hungry by spring.'] },
-        { kind: 'judging', text: 'Just take the short road, surely?', reply: ["Says someone who's never dug a goat out of the snow."] },
+      { type: 'branch', ifFlag: 'goat-home', then: [
+        { type: 'say', text: "Pebble's home. She bit me, so she's fine." },
+        { type: 'say', text: "...Thank you. I don't say that much. The goats can confirm." },
+      ], else: [
+        { type: 'say', text: 'Careful, the goats bite. Only the brown one, really.' },
+        { type: 'say', text: 'Outsiders come up here, take our water, take our pictures, and leave.' },
+        { type: 'ask', cards: [
+          { kind: 'open', text: 'What do you need most right now?', gives: ['quest:goat'],
+            reply: ['My smallest goat ran off up the west cliffs.', "She won't come for me. Too stubborn. Like me."] },
+          { kind: 'open', text: 'What does the meadow water do?', gives: ['flag:knows-meadow'],
+            reply: ['Its winter water keeps the grass alive under the snow.', 'Without it, the goats go hungry by spring.'] },
+          { kind: 'judging', text: "You don't like strangers much.", reply: ['I like strangers fine. From a distance.'] },
+        ] },
       ] },
       { type: 'ask', cards: [
-        { kind: 'open', text: 'Could some winter water go into ice cones for the spring?', requires: ['flag:knows-stupas'], hiddenIf: ['flag:asked-bram'], gives: ['flag:asked-bram'],
-          reply: ['Take it from the high channel, not the low one.', 'My goats can share, if the spring comes back stronger.'] },
+        { kind: 'open', text: 'Could some winter water go into ice towers for the spring?', requires: ['flag:knows-stupas'], hiddenIf: ['flag:asked-bram'], gives: ['flag:asked-bram'],
+          reply: ['Take it from the high channel, not the low one.', "Ask first. That's all anyone wants."] },
+        { kind: 'open', text: "Where's your runaway goat?", requires: ['quest:goat'], hiddenIf: ['goat-home'], reply: ['Up the west cliffs, past the dry meadow.', "Walk slow and speak soft. Don't chase her."] },
         { kind: 'neutral', text: 'Good luck with the goats.', reply: ['Luck is for people without goats.'] },
       ] },
       { type: 'branch', ifFlag: 'power:skyreading', then: [
         { type: 'say', text: 'You have the look of someone who reads the sky.' },
         { type: 'ask', cards: [
-          { kind: 'neutral', text: 'Take the west road. The wind is loading the east slope.', hiddenIf: ['flag:route-chosen'], gives: ['flag:route-west', 'flag:route-chosen', 'journal:wind-loading', 'map:pasture'],
-            reply: ['West it is. Long, but we all arrive.', 'Here, my map of the pastures. Fair trade.'] },
-          { kind: 'neutral', text: 'The east road looks fine to me.', hiddenIf: ['flag:route-chosen'], gives: ['flag:route-east', 'flag:route-chosen', 'map:pasture'],
-            reply: ['East, then. Quick as we can.', 'Take my pasture map, in case we get separated.'] },
+          { kind: 'neutral', text: 'Take the west road. The wind is loading the east slope.', hiddenIf: ['flag:route-chosen'], gives: ['flag:route-west', 'flag:route-chosen', 'journal:wind-loading'],
+            reply: ['West it is. Long, but we all arrive.'] },
+          { kind: 'neutral', text: 'The east road looks fine to me.', hiddenIf: ['flag:route-chosen'], gives: ['flag:route-east', 'flag:route-chosen'],
+            reply: ['East, then. Quick as we can.'] },
           { kind: 'neutral', text: 'Nothing new to tell you.', reply: ['Then sit a while. The goats like company.'] },
         ] },
-      ], else: [{ type: 'say', text: 'If only I knew what the wind was doing up there.' }] },
+      ] },
     ],
-    after: ['The goats send their regards. Mostly the brown one.'],
+    after: ['The goats send their regards. Mostly the brown one.', "Ask first. That's all anyone wants."],
   },
 
   nima: {
-    id: 'nima', name: 'Nima', title: 'who listens to the chimes',
-    start: { trust: 0.55, worry: 0.3, openness: 0.6 },
-    hint: 'Nima hushed you. Maybe stay quiet a little longer next time.',
+    id: 'nima', name: 'Nima', title: 'who names the clouds',
+    start: { trust: 0.5, worry: 0.3, openness: 0.55 },
+    hint: 'Nima went quiet. Maybe she wanted to be taken seriously.',
     nodes: [
-      { type: 'say', text: 'Shh. Listen to the chimes.' },
-      { type: 'silence', seconds: 2.6, reward: 'They sound lower every year. Grandpa says the icicles are getting shorter.' },
-      { type: 'ask', cards: [
-        { kind: 'open', text: 'What do you think it means?', gives: ['item:bottle', 'quest:cloud'], reply: ['Less ice. Less cold. Less snow?', 'I want to catch a cloud and look inside one.'] },
-        { kind: 'leading', text: "It means it's getting warmer, doesn't it?", gives: ['item:bottle', 'quest:cloud'], reply: ['Probably. You sound like the grown-ups.'] },
+      { type: 'branch', ifFlag: 'journal:cloud', then: [
+        { type: 'say', text: 'You let it rain! On the dry meadow!' },
+        { type: 'say', text: 'I named that cloud Pip. Pip did a good job.' },
+      ], else: [
+        { type: 'say', text: "Shh. Don't move. That one's called Mrs. Fluff." },
+        { type: 'say', text: "Everyone thinks I'm just lying around. I'm working." },
+        { type: 'silence', seconds: 2.6, reward: 'Clouds drop their snow where the wind slows down. Behind rocks. Behind fences.' },
+        { type: 'ask', cards: [
+          { kind: 'open', text: 'How do you know where they drop it?', gives: ['flag:knows-lee', 'item:bottle', 'quest:cloud'],
+            reply: ['You watch! Nobody watches anymore.', 'Take this bottle. A baby cloud sleeps on the tall peak. Bring it to the dry meadow.'] },
+          { kind: 'leading', text: 'Clouds are just water vapor, you know.', gives: ['item:bottle', 'quest:cloud'],
+            reply: ["I KNOW. That's not the point.", "Fine. Take this bottle anyway. There's a little cloud on the tall peak."] },
+        ] },
+        { type: 'gate', minTrust: 0.45, fail: ['...'], pass: [{ type: 'give', items: ['map:chimes'] }] },
       ] },
-      { type: 'say', text: 'Here, take a bottle. Clouds sleep on the tall peak, east of the river.' },
-      { type: 'gate', minTrust: 0.4, fail: ['...'], pass: [{ type: 'give', items: ['map:chimes'] }] },
     ],
-    after: ['Did you catch one? What does a cloud feel like?'],
+    after: ['Nobody watches anymore. Except me. And now you.'],
   },
 
   tor: {
-    id: 'tor', name: 'Tor', title: 'who measured the snow',
+    id: 'tor', name: 'Tor', title: 'who builds kites',
     start: { trust: 0.5, worry: 0.45, openness: 0.5 },
+    hint: 'Tor looks up at the ridge, then quickly away.',
     nodes: [
-      { type: 'say', text: 'For forty winters I measured the snow at the old poles.' },
-      { type: 'say', text: 'My knees retired before I did.' },
-      { type: 'ask', cards: [
-        { kind: 'open', text: 'What did the poles show you?', gives: ['quest:markers'],
-          reply: ['Go and read them yourself. Three poles, striped every half meter.', 'Numbers you find mean more than numbers you are told.'] },
-        { kind: 'judging', text: 'Does measuring snow really matter?', gives: ['quest:markers'], reply: ['Ask the river in August.', 'There are three poles. Go and read them.'] },
+      { type: 'branch', ifFlag: 'kite-flown', then: [
+        { type: 'say', text: 'Did you see it? It went higher than the clouds! Well. Almost.' },
+        { type: 'say', text: 'You can see the whole world from up there. I forgot.' },
+      ], else: [
+        { type: 'branch', ifFlag: 'item:spar', then: [
+          { type: 'say', text: "That's a willow branch! Straight as a ruler." },
+          { type: 'say', text: 'There. Fixed. Grandpa would say it flies better than before.' },
+          { type: 'silence', seconds: 2, reward: "...Will you come up the ridge with me? I don't want to go alone." },
+          { type: 'give', items: ['flag:tor-follow'] },
+        ], else: [
+          { type: 'say', text: "Don't step on the string! ...Sorry. There's no string. It broke." },
+          { type: 'say', text: 'This was Grandpa\'s kite. He built the snow fences on the ridges, too.' },
+          { type: 'say', text: 'I fell off Kite Ridge last winter. Now I just fix things down here.' },
+          { type: 'silence', seconds: 2.4, reward: 'I miss the top. You can see the whole world from there.' },
+          { type: 'ask', cards: [
+            { kind: 'open', text: 'What happened to the kite?', gives: ['quest:kite'],
+              reply: ['The long spar snapped. I need a straight willow branch.', 'The old tree by the spring drops good ones.'] },
+            { kind: 'open', text: "Tell me about your grandpa's fences.", gives: ['flag:tor-fences', 'quest:markers'],
+              reply: ['His posts are still up there, on the windy side of the ridges.', 'Put up the rails and the snow piles up behind them. Easy. If you go up.'] },
+            { kind: 'judging', text: "It's only a little ridge.", reply: ["Says you. You didn't fall off it."] },
+          ] },
+          { type: 'ask', cards: [
+            { kind: 'open', text: "Tell me about your grandpa's fences.", hiddenIf: ['flag:tor-fences'], gives: ['flag:tor-fences', 'quest:markers'],
+              reply: ['His posts are still up there, on the windy side of the ridges.', 'Put up the rails and the snow piles up behind them.'] },
+            { kind: 'open', text: 'What happened to the kite?', hiddenIf: ['quest:kite'], gives: ['quest:kite'],
+              reply: ['The long spar snapped. I need a straight willow branch.', 'The old tree by the spring drops good ones.'] },
+            { kind: 'neutral', text: 'See you later, Tor.', reply: ['Mind the string. The invisible one.'] },
+          ] },
+          { type: 'give', items: ['map:poles'] },
+        ] },
       ] },
-      { type: 'give', items: ['map:poles'] },
     ],
-    after: ['Read all three poles? Write it down. Always write it down.'],
+    after: ["Grandpa's snow poles are still out there. He measured the snow for forty winters."],
+  },
+
+  odo: {
+    id: 'odo', name: 'Odo', title: 'who keeps the old bridge',
+    start: { trust: 0.55, worry: 0.3, openness: 0.6 },
+    nodes: [
+      { type: 'branch', ifFlag: 'boat-ready', then: [
+        { type: 'say', text: 'Your boat is ready when you are. Say goodbye properly. It matters.' },
+      ], else: [
+        { type: 'branch', ifFlag: 'peaks-healed', then: [
+          { type: 'branch', ifFlag: 'journal:stone-returns', then: [
+            { type: 'say', text: "Hear that? The river's got its voice back." },
+            { type: 'say', text: 'Now it can carry you. Let me see that boat of yours.' },
+            { type: 'say', text: 'Mm. Good paper. Old ink. Hold still, little one.' },
+            { type: 'silence', seconds: 2, reward: "There. Folded properly, she'll float to the end of the world." },
+            { type: 'give', items: ['boat-ready', 'map:bridge'] },
+            { type: 'say', text: 'Gather your friends at the bridge. Nobody leaves my valley without a goodbye.' },
+          ], else: [
+            { type: 'say', text: "The river's waking up! Have you told Ysolde? She's waited sixty years to hear it." },
+          ] },
+        ], else: [
+          { type: 'say', text: "A traveler! On my bridge! I'd stopped putting the kettle on." },
+          { type: 'say', text: 'Where are you headed?' },
+          { type: 'ask', cards: [
+            { kind: 'open', text: 'Home. I think it is down there, by the sea.', reply: ['Down the river, then. All the way.', "But the river's too thin to carry anything right now."] },
+            { kind: 'neutral', text: "I don't know yet.", reply: ['Ah. The best kind of traveler.'] },
+          ] },
+          { type: 'say', text: 'Is that a paper boat in your satchel? May I?' },
+          { type: 'silence', seconds: 2.4, reward: 'I know this fold. I taught it to one child only, long ago, on this very bridge.' },
+          { type: 'ask', cards: [
+            { kind: 'open', text: 'Who was the child?', gives: ['clue:odo', 'journal:the-fold'],
+              reply: ["My memory isn't what it was.", 'But the child said they were writing a letter to the sea.'] },
+            { kind: 'neutral', text: 'Just a boat I found.', gives: ['clue:odo'], reply: ['Nothing is just a boat.'] },
+          ] },
+          { type: 'say', text: "When the spring wakes up, come back. I'll fold her properly for you." },
+        ] },
+      ] },
+    ],
+    after: ['Nothing is just a boat.', "Come back when the river's strong. I'll be folding."],
   },
 
   // ---- Journey sketch keepers ----

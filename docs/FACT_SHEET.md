@@ -15,3 +15,5 @@ Each claim appears in the game's dialogue, journal or systems. Flag anything tha
 | 9 | Roots hold soil; clearing forest for a single crop increases erosion and muddy rivers. | Oro (sketch) | Standard soil science. |
 | 10 | Wetlands absorb floodwater; walls alone do not solve flooding. | Cassian (sketch) | Nature-based flood management. |
 | 11 | Rising seas push salt water into wells and fields. | Maren (sketch) | Saltwater intrusion. |
+| 12 | Around one in six people on Earth depend on water that began as snow or glacier ice. | Journal "The mountain's water jar" | Barnett, Adam & Lettenmaier (2005), *Nature* 438: more than one-sixth of the world's population relies on glaciers and seasonal snowpack for water supply. |
+| 13 | Snow settles where the wind slows down: behind ridges, rocks and fences (the lee side). | Nima, Skyreading on Kite Ridge, journal "Where the snow goes" | Standard snow drift physics; same basis as claims 3 and 4. |

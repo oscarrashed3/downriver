@@ -1,3 +1,4 @@
+import { PEAKS } from '../render/palette';
 import * as THREE from 'three';
 
 export type Shape = 'peaks' | 'pines' | 'jungle' | 'desert' | 'city' | 'sea';
@@ -22,7 +23,7 @@ export interface WorldConfig {
   ocean?: number;
   valleyWidth?: number;
   palette: {
-    low: string; mid: string; high: string; rock: string; bank?: string;
+    low: string; mid: string; high: string; rock: string; bank?: string; moss?: string; dab?: string; path?: string;
     snow?: string; ice?: string; water: string; waterDeep: string;
     light: string; ambient: string; fog: string; skyTop: string; skyHorizon: string;
   };
@@ -41,9 +42,10 @@ export const WORLDS: WorldConfig[] = [
     center: placeAt(0), radius: 62, seed: 11, detail: 70, amplitude: 17, valleyWidth: 20,
     riverStartLat: 14, meander: 16, meanderWaves: 3, riverWidth: 2.4, riverBed: 1.0, bankWidth: 5, waterDepth: 0.55,
     palette: {
-      low: '#8a97c4', mid: '#b9c2e6', high: '#e6eaf8', rock: '#6a6290', bank: '#93a0c8',
-      snow: '#ffffff', ice: '#a9dcff', water: '#9fe3ff', waterDeep: '#3d7fb8',
-      light: '#ffe2c4', ambient: '#7c86c4', fog: '#c9c3e6', skyTop: '#4c5aa8', skyHorizon: '#ffd2b0',
+      low: PEAKS.meadowLow, mid: PEAKS.meadowMid, high: PEAKS.heights, rock: PEAKS.rock, bank: PEAKS.bank,
+      moss: PEAKS.moss, dab: PEAKS.dab, path: PEAKS.path,
+      snow: PEAKS.snow, ice: PEAKS.ice, water: PEAKS.water, waterDeep: PEAKS.waterDeep,
+      light: PEAKS.sunlight, ambient: PEAKS.skyAmbient, fog: PEAKS.haze, skyTop: PEAKS.skyTop, skyHorizon: PEAKS.skyHorizon,
     },
     music: 'bells',
   },

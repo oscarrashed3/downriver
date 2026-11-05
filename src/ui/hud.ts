@@ -14,16 +14,26 @@ export class Hud {
   dlg = $(`<div class="dlg hidden"><div class="who"><span class="nm"></span><span class="tt"></span></div><div class="tx"></div><div class="cards"></div><div class="listen"><div class="ring"></div><span>Hold <b>Space</b> to listen</span></div></div>`);
   story = $(`<div class="story hidden"><div class="st"></div><div class="sk">press Space</div></div>`);
   help = $(`<div class="help hidden"></div>`);
+  caption = $(`<div class="caption"><div class="cw"></div><div class="ct"></div><div class="ck">Space</div></div>`);
+  chapter = $(`<div class="chapter"><div class="cn"></div><div class="cti"></div><div class="cs"></div></div>`);
+  goal = $(`<div class="goal"><div class="gk">On my way home</div><div class="gt"></div></div>`);
+  letter = $(`<div class="letter hidden"><div class="paper"><div class="lt"></div><div class="lk">E to fold it away</div></div></div>`);
+  panel = $(`<div class="kpanel hidden"><div class="frame"></div><div class="kc"></div></div>`);
+  hold = $(`<div class="hold"><svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" class="bg"/><circle cx="22" cy="22" r="18" class="fg"/></svg><span></span></div>`);
+  labels = $(`<div class="labels"></div>`);
+  goalHidden = false;
+  private chapterT = 0;
   private toastQ: string[] = [];
   private toastT = 0;
   private bannerT = 0;
 
   constructor() {
-    this.root.append(this.sky, this.frost, this.fade, this.banner, this.prompt, this.toast, this.dlg, this.story, this.help);
+    this.root.append(this.sky, this.frost, this.labels, this.goal, this.banner, this.prompt, this.toast, this.hold, this.caption, this.dlg, this.story, this.panel, this.letter, this.chapter, this.fade, this.help);
     this.help.innerHTML = `<h2>How to travel</h2>
-      <p><b>W A S D</b> walk &nbsp; <b>Shift</b> run &nbsp; <b>Space</b> jump &nbsp; <b>Mouse</b> look (click to capture, or hold right button and drag) &nbsp; <b>Arrows</b> turn</p>
-      <p><b>E</b> talk, use, board Fold &nbsp; <b>Q</b> Skyreading (once learned)</p>
-      <p><b>M</b> your map &nbsp; <b>J</b> journal &nbsp; <b>H</b> this help &nbsp; <b>N</b> sound on/off</p>
+      <p><b>W A S D</b> walk &nbsp; <b>Shift</b> run &nbsp; <b>Space</b> jump (hold to glide, once you have the kite) &nbsp; <b>Mouse</b> look (click to capture, or hold right button and drag) &nbsp; <b>Arrows</b> turn</p>
+      <p><b>E</b> talk, use, sit, board Fold &nbsp; <b>Q</b> Skyreading (once learned) &nbsp; <b>F</b> whistle</p>
+      <p><b>Tab</b> or <b>scroll out</b> see all the worlds &nbsp; <b>M</b> map &nbsp; <b>J</b> journal &nbsp; <b>G</b> hide the goal line</p>
+      <p><b>P</b> picture quality &nbsp; <b>N</b> sound on/off &nbsp; <b>H</b> this help</p>
       <p>In conversation, <b>hold Space</b> while someone speaks. Letting go early is interrupting.<br/>When they fall silent, staying present is sometimes the kindest thing.</p>
       <p>On the river, <b>E</b> unfolds Fold into a raft. Downstream always leads on.</p>
       <p class="dim">Press H to close</p>`;
@@ -84,7 +94,46 @@ export class Hud {
   toggleHelp(force?: boolean) { this.help.classList.toggle('hidden', force === undefined ? undefined : !force); }
   helpOpen() { return !this.help.classList.contains('hidden'); }
 
+  // ---- story pieces ----
+  showCaption(who: string | null, text: string | null) {
+    this.caption.classList.toggle('on', !!text);
+    if (!text) return;
+    (this.caption.querySelector('.cw') as HTMLElement).textContent = who ?? '';
+    (this.caption.querySelector('.ct') as HTMLElement).innerHTML = text;
+  }
+  showChapter(n: string, title: string, sub = '', secs = 5) {
+    (this.chapter.querySelector('.cn') as HTMLElement).textContent = n;
+    (this.chapter.querySelector('.cti') as HTMLElement).textContent = title;
+    (this.chapter.querySelector('.cs') as HTMLElement).textContent = sub;
+    this.chapter.classList.add('on'); this.chapterT = secs;
+  }
+  setGoal(text: string | null) {
+    const t = this.goal.querySelector('.gt') as HTMLElement;
+    if (text && t.textContent !== text) { t.textContent = text; this.goal.classList.remove('pulse'); void this.goal.offsetWidth; this.goal.classList.add('pulse'); }
+    this.goal.classList.toggle('on', !!text && !this.goalHidden);
+  }
+  showLetter(text: string | null) {
+    this.letter.classList.toggle('hidden', !text);
+    if (text) (this.letter.querySelector('.lt') as HTMLElement).textContent = text;
+  }
+  showPanel(canvas: HTMLCanvasElement | null, caption = '', alpha = 1) {
+    this.panel.classList.toggle('hidden', !canvas);
+    if (!canvas) return;
+    const f = this.panel.querySelector('.frame') as HTMLElement;
+    if (f.firstChild !== canvas) { f.innerHTML = ''; f.append(canvas); }
+    (this.panel.querySelector('.kc') as HTMLElement).textContent = caption;
+    this.panel.style.opacity = String(alpha);
+  }
+  setHold(progress: number | null, label = '') {
+    this.hold.classList.toggle('on', progress !== null);
+    if (progress === null) return;
+    const fg = this.hold.querySelector('.fg') as SVGCircleElement;
+    fg.style.strokeDashoffset = String(113 * (1 - progress));
+    (this.hold.querySelector('span') as HTMLElement).innerHTML = label;
+  }
+
   update(dt: number) {
+    if (this.chapterT > 0) { this.chapterT -= dt; if (this.chapterT <= 0) this.chapter.classList.remove('on'); }
     this.toastT -= dt;
     if (this.toastT <= 0) {
       const next = this.toastQ.shift();

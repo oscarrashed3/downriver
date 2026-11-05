@@ -6,6 +6,10 @@ export class Input {
   mouseHeld = false;
   locked = false;
   enabled = true;
+  wheel = 0;
+  clicks: { x: number; y: number }[] = [];
+  /** When false, clicking does not capture the mouse (sky view, overlays). */
+  allowLock = true;
 
   constructor(private canvas: HTMLCanvasElement) {
     addEventListener('keydown', e => {
@@ -17,8 +21,8 @@ export class Input {
     addEventListener('keyup', e => this.down.delete(e.code));
     addEventListener('blur', () => this.down.clear());
     canvas.addEventListener('mousedown', e => {
-      if (e.button === 0) this.mouseHeld = true;
-      if (this.enabled && !this.locked && document.pointerLockElement !== canvas) {
+      if (e.button === 0) { this.mouseHeld = true; this.clicks.push({ x: e.clientX / innerWidth * 2 - 1, y: -(e.clientY / innerHeight) * 2 + 1 }); }
+      if (this.enabled && this.allowLock && !this.locked && document.pointerLockElement !== canvas) {
         try { const r = canvas.requestPointerLock?.() as unknown as Promise<void> | undefined; r?.catch?.(() => {}); } catch { /* sandboxed: right-drag still looks around */ }
       }
     });
@@ -29,6 +33,7 @@ export class Input {
       else if (e.buttons & 2) { this.mouseDX += e.movementX; this.mouseDY += e.movementY; }
     });
     canvas.addEventListener('contextmenu', e => e.preventDefault());
+    addEventListener('wheel', e => { this.wheel += Math.sign(e.deltaY); }, { passive: true });
   }
 
   key(code: string) { return this.down.has(code); }
@@ -37,5 +42,5 @@ export class Input {
     return (pos.some(k => this.down.has(k)) ? 1 : 0) - (neg.some(k => this.down.has(k)) ? 1 : 0);
   }
   unlock() { if (document.pointerLockElement) document.exitPointerLock(); }
-  endFrame() { this.pressed.clear(); this.mouseDX = 0; this.mouseDY = 0; }
+  endFrame() { this.pressed.clear(); this.mouseDX = 0; this.mouseDY = 0; this.wheel = 0; this.clicks.length = 0; }
 }

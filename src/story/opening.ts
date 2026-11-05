@@ -1,0 +1,142 @@
+// The first three minutes: the title over the cloud sea, waking by the spring, the letter, and the home light.
+import * as THREE from 'three';
+import type { Game } from '../game';
+import type { Beat } from './sequencer';
+import type { CamPose } from '../systems/skyView';
+import { CHAPTERS, LETTER, OPENING } from '../data/story';
+import { PK } from '../world/peaks';
+import { smoothstep } from '../world/noise';
+
+export const LETTER_TEXT = LETTER;
+
+/** A slow drift over the cloud sea: all six worlds hang below, and far down one light blinks. */
+export function titleCamera(g: Game, t: number): CamPose {
+  const c = g.skyView.center;
+  const a = 0.6 + t * 0.012;
+  const pos = c.clone().add(new THREE.Vector3(Math.cos(a) * 980, 380 + Math.sin(t * 0.05) * 30, Math.sin(a) * 980));
+  return { pos, look: c.clone().add(new THREE.Vector3(0, -140, 0)), up: new THREE.Vector3(0, 1, 0) };
+}
+
+function lerpPose(a: CamPose, b: CamPose, k: number): CamPose {
+  return { pos: a.pos.clone().lerp(b.pos, k), look: a.look.clone().lerp(b.look, k), up: a.up.clone().lerp(b.up, k).normalize() };
+}
+
+/** Rill wakes in the grass by the almost-dry spring. Five seconds of quiet, then a drop falls into the lantern. */
+export function wakeBeats(g: Game): Beat[] {
+  const p = g.planets[0], pl = g.player;
+  let drop: THREE.Mesh | null = null;
+  let from: CamPose | null = null;
+  // From above, looking straight down at him lying in the grass, head at the top of the frame.
+  const closeShot = (k: number): CamPose => {
+    const up = pl.up, side = new THREE.Vector3().crossVectors(up, pl.facing).normalize();
+    const body = pl.pos.clone().addScaledVector(pl.facing, -0.55).addScaledVector(up, 0.25);
+    return {
+      pos: body.clone().addScaledVector(up, 2.4 + k * 4).addScaledVector(side, 0.5 + k * 1.2).addScaledVector(pl.facing, 0.3 + k),
+      look: body, up: pl.facing.clone().negate(),
+    };
+  };
+  return [
+    {
+      dur: 1.6,
+      enter: () => {
+        g.hud.setFade(1, '#fff8ee');
+        const d = p.dirRiver(PK.wake[0], PK.wake[1]);
+        pl.placeAt(p, d);
+        pl.facing.copy(p.surfacePoint(p.dirRiver(PK.spring[0], PK.spring[1])).sub(pl.pos).projectOnPlane(pl.up).normalize().negate());
+        pl.hasDrop = false;
+        pl.pose = { lie: 1 };
+        pl.sync();
+        g.day.setLocal(pl.up, 0.3);
+        g.rig.faceDir(pl.up, p.surfacePoint(p.dirRiver(40, -12)).sub(pl.pos));
+        g.rig.snap();
+        g.cutCam = closeShot(0);
+        (g.contents[0].refs.spring.userData.drop as THREE.Object3D).visible = false;
+      },
+      tick: k => g.hud.setFade(1 - smoothstep(0.1, 1, k), '#fff8ee'),
+    },
+    {
+      // Five seconds. No words. Wind in the grass, the chimes in the old tree.
+      dur: 5,
+      enter: () => {
+        drop = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), new THREE.MeshBasicMaterial({ color: '#dff8ff' }));
+        g.scene.add(drop);
+      },
+      tick: k => {
+        g.cutCam = closeShot(smoothstep(0, 1, k) * 0.35);
+        if (!drop) return;
+        const target = pl.lantern.getWorldPosition(new THREE.Vector3());
+        const f = smoothstep(0.5, 0.95, k);
+        drop.visible = k > 0.5;
+        drop.position.copy(target).addScaledVector(pl.up, (1 - f) * 14);
+        drop.scale.setScalar(1 + Math.sin(k * 40) * 0.1);
+      },
+      exit: () => {
+        if (drop) { g.scene.remove(drop); drop = null; }
+        pl.hasDrop = true;
+        g.flags.add('has-drop');
+        g.sound.sfxPlay('chime');
+        g.fold.hop();
+      },
+    },
+    {
+      dur: 2.6,
+      enter: () => { from = closeShot(0.35); },
+      tick: k => {
+        pl.pose = { lie: 1 - smoothstep(0, 0.6, k), sit: smoothstep(0.2, 0.6, k) * (1 - smoothstep(0.75, 1, k)) };
+        const goal: CamPose = { pos: g.rig.pos.clone(), look: g.rig.look.clone(), up: g.rig.smoothUp.clone() };
+        g.cutCam = lerpPose(from!, goal, smoothstep(0.3, 1, k));
+      },
+      exit: () => { pl.pose = {}; pl.satchelGlow = 1; g.cutCam = null; },
+    },
+  ];
+}
+
+/** After the letter: "Look down." The camera swings out past the edge of the world to the home light far below. */
+export function lookDownBeats(g: Game): Beat[] {
+  const p0 = g.planets[0], sea = g.planets[5], pl = g.player;
+  const dirH = sea.center.clone().sub(p0.center).setY(0).normalize();
+  const out: CamPose = {
+    pos: p0.center.clone().addScaledVector(dirH, p0.R + 125).add(new THREE.Vector3(0, 30, 0)),
+    look: g.beaconPos.clone(), up: new THREE.Vector3(0, 1, 0),
+  };
+  let from: CamPose | null = null;
+  return [
+    {
+      line: { text: OPENING.lookDown }, dur: 2.4,
+      enter: () => { pl.lookAt = g.beaconPos.clone(); },
+      tick: k => { pl.pose = { listen: smoothstep(0, 1, k) }; },
+    },
+    {
+      line: { text: OPENING.homeLight }, dur: 7.5,
+      enter: () => { from = { pos: g.camera.position.clone(), look: g.rig.look.clone(), up: g.camera.up.clone() }; },
+      tick: k => {
+        const e = smoothstep(0, 0.45, k);
+        const pose = lerpPose(from!, out, e);
+        pose.pos.addScaledVector(from!.up, Math.sin(e * Math.PI) * 40);
+        g.cutCam = pose;
+        g.fogK = e;
+        g.beacon.scale.setScalar(0.018 + 0.02 * smoothstep(0.35, 0.6, k));
+      },
+    },
+    {
+      dur: 2.4,
+      tick: k => {
+        const back: CamPose = { pos: g.rig.pos.clone(), look: g.rig.look.clone(), up: g.rig.smoothUp.clone() };
+        g.cutCam = lerpPose(out, back, smoothstep(0, 1, k));
+        g.fogK = 1 - smoothstep(0, 0.8, k);
+        pl.pose = { touchChest: smoothstep(0.5, 1, k) };
+      },
+      exit: () => { g.cutCam = null; g.fogK = 0; pl.lookAt = null; },
+    },
+    {
+      dur: 4.6,
+      enter: () => { g.hud.showChapter(CHAPTERS[0].n, CHAPTERS[0].title, '', 4.4); g.sound.sfxPlay('power'); },
+      exit: () => { pl.pose = {}; },
+    },
+    {
+      dur: 4.2,
+      enter: () => g.showJournal(true),
+      exit: () => g.showJournal(false),
+    },
+  ];
+}

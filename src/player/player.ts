@@ -1,15 +1,16 @@
 import * as THREE from 'three';
 import type { Planet } from '../world/planet';
 import { toon } from '../world/props';
+import { Person, type PoseInput } from './person';
 import { orientTo, anyTangent } from '../world/sphere';
 import { clamp, lerp } from '../world/noise';
 
 export type MoveMode = 'walk' | 'climb' | 'raft' | 'ride' | 'still';
 
-/** Rill: a small traveler in a hooded cloak, carrying the last drop of the spring. */
+/** Rill: a young traveler far from home, in a coat a little too big for him. */
 export class Player {
   root = new THREE.Group();
-  body = new THREE.Group();
+  person: Person;
   lantern = new THREE.Group();
   lanternLight: THREE.PointLight;
   dropMesh: THREE.Mesh;
@@ -29,42 +30,40 @@ export class Player {
   stepTimer = 0;
   raftT = 0;
   raftSide = 0;
+  /** Gliding under the kite (after Tor's gift). */
+  canGlide = false;
+  gliding = false;
+  /** Pose requests from the story and small joys. */
+  pose: Partial<PoseInput> = {};
+  lookAt: THREE.Vector3 | null = null;
+  windLocal = new THREE.Vector3();
+  satchelGlow = 0;
   onStep?: (surface: string) => void;
   onLand?: (impact: number) => void;
   onJump?: () => void;
-  private bob = 0;
-  private cloak: THREE.Mesh;
+  private lastSpeed = 0;
+  private lastVUp = 0;
+  private satchelMat: THREE.MeshToonMaterial;
 
   constructor() {
-    const cloakM = toon('#2f6f7a');
-    this.cloak = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.25, 10), cloakM);
-    this.cloak.position.y = 0.62;
-    const hood = new THREE.Mesh(new THREE.SphereGeometry(0.36, 14, 10), cloakM);
-    hood.position.y = 1.32;
-    const face = new THREE.Mesh(new THREE.SphereGeometry(0.25, 12, 8), toon('#1d1a2a'));
-    face.position.set(0, 1.3, 0.16);
-    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.45, 8), cloakM);
-    tip.position.set(0, 1.62, -0.12); tip.rotation.x = -0.7;
-    const scarf = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.08, 6, 14), toon('#e8b04a'));
-    scarf.position.y = 1.08; scarf.rotation.x = Math.PI / 2;
-    const eyes = new THREE.Group();
-    for (const x of [-0.08, 0.08]) {
-      const e = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 4), new THREE.MeshBasicMaterial({ color: '#fff4d8' }));
-      e.position.set(x, 1.33, 0.39); eyes.add(e);
-    }
-    this.body.add(this.cloak, hood, face, tip, scarf, eyes);
-
-    // Lantern with the drop.
-    const glass = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 8), new THREE.MeshBasicMaterial({ color: '#dff6ff', transparent: true, opacity: 0.35 }));
-    this.dropMesh = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), new THREE.MeshBasicMaterial({ color: '#bfeeff' }));
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 0.06, 8), toon('#8a6a4a'));
-    cap.position.y = 0.15;
-    this.lantern.add(glass, this.dropMesh, cap);
-    this.lantern.position.set(0.42, 0.78, 0.18);
+    this.person = new Person({
+      skin: '#f2c8a2', hair: '#3b2a22', hairStyle: 'messy', top: '#efe4cc', coat: '#c4693a', coatLen: 0.78,
+      trousers: '#46506e', boots: '#5a3a28', scarf: '#3f86b8', satchel: true,
+    });
+    this.root.add(this.person.root);
+    // Lantern with the drop, hanging from the satchel strap at his right hip.
+    const glass = new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 8), new THREE.MeshBasicMaterial({ color: '#dff6ff', transparent: true, opacity: 0.35 }));
+    this.dropMesh = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), new THREE.MeshBasicMaterial({ color: '#bfeeff' }));
+    const lcap = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.045, 0.035, 8), toon('#8a6a4a'));
+    lcap.position.y = 0.08;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.02, 0.006, 4, 8), toon('#8a6a4a')); ring.position.y = 0.11;
+    this.lantern.add(glass, this.dropMesh, lcap, ring);
+    this.lantern.position.set(0.02, -0.1, 0.02);
     this.lanternLight = new THREE.PointLight('#bfefff', 0, 7, 2);
     this.lantern.add(this.lanternLight);
-    this.body.add(this.lantern);
-    this.root.add(this.body);
+    this.person.hipR.add(this.lantern);
+    this.satchelMat = toon('#8a5a34').clone();
+    this.person.satchel?.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh && !m.userData.isOutline && (m.material as THREE.MeshToonMaterial).color?.getHexString() === '8a5a34') m.material = this.satchelMat; });
   }
 
   placeAt(planet: Planet, dir: THREE.Vector3) {
@@ -76,7 +75,7 @@ export class Player {
   }
 
   /** Movement on a small round world: gravity points to the planet's center. */
-  update(dt: number, planet: Planet, moveDir: THREE.Vector3, wantJump: boolean, run: boolean) {
+  update(dt: number, planet: Planet, moveDir: THREE.Vector3, wantJump: boolean, run: boolean, wantGlide = false) {
     const toC = this.pos.clone().sub(planet.center);
     this.up.copy(toC).normalize();
     const surfR = planet.surfaceRadius(this.up);
@@ -111,6 +110,13 @@ export class Player {
       this.squash = -0.25; this.onJump?.();
     }
 
+    // Gliding under the kite: hold Space while falling from a height.
+    this.gliding = this.canGlide && !this.grounded && wantGlide && vU < 0;
+    if (this.gliding) {
+      vU = Math.max(vU, -2.2);
+      if (moveDir.lengthSq() > 0.01) vTan.lerp(moveDir.clone().normalize().multiplyScalar(7.5), 1 - Math.exp(-2 * dt));
+    }
+    this.lastVUp = vU;
     this.vel.copy(vTan).addScaledVector(this.up, vU);
     this.pos.addScaledVector(this.vel, dt);
 
@@ -136,12 +142,12 @@ export class Player {
     } else this.warmth = 1;
 
     if (moveDir.lengthSq() > 0.01) this.facing.lerp(moveDir.clone().normalize(), 1 - Math.exp(-10 * dt));
+    this.facing.projectOnPlane(this.up).normalize();
     const sp = vTan.length();
     if (this.grounded && sp > 0.5) {
       this.stepTimer -= dt * sp * 0.42;
       if (this.stepTimer <= 0) { this.stepTimer = 1; this.onStep?.(planet.cfg.shape); }
     }
-    this.bob += dt * sp * 1.6;
     this.animate(dt, sp, climbing);
     this.sync();
   }
@@ -157,18 +163,24 @@ export class Player {
 
   animate(dt: number, sp: number, climbing: boolean) {
     this.squash = lerp(this.squash, 0, 1 - Math.exp(-9 * dt));
-    const s = 1 - this.squash;
-    this.body.scale.set(1 / Math.sqrt(Math.max(0.5, s)), s, 1 / Math.sqrt(Math.max(0.5, s)));
-    const wob = Math.sin(this.bob * 2) * clamp(sp / 8) * 0.06;
-    this.cloak.rotation.z = wob;
-    this.body.position.y = Math.abs(Math.sin(this.bob * 2)) * clamp(sp / 8) * 0.08;
-    this.body.rotation.x = climbing ? -0.35 : clamp(sp / 9) * 0.12;
+    const sq = 1 - this.squash;
+    this.person.root.scale.set(1 / Math.sqrt(Math.max(0.5, sq)), sq, 1 / Math.sqrt(Math.max(0.5, sq)));
+    this.lastSpeed = sp;
+    const cold = this.hasDrop && this.warmth < 0.45 ? clamp((0.45 - this.warmth) / 0.35) : 0;
+    this.person.animate(dt, {
+      speed: sp, grounded: this.grounded, climbing, vUp: this.lastVUp,
+      shiver: Math.max(cold, this.pose.shiver ?? 0),
+      lookAt: this.lookAt, windLocal: this.windLocal,
+      ...this.pose,
+    } as PoseInput);
     const t = performance.now() / 1000;
-    this.lantern.position.y = 0.78 + Math.sin(t * 2 + this.bob) * 0.03;
+    this.lantern.rotation.z = Math.sin(t * 2.2) * 0.12 + clamp(sp / 9) * Math.sin(t * 9) * 0.15;
     const glow = this.hasDrop ? (0.25 + this.dropGlow * 0.75) * (0.35 + 0.65 * this.warmth) : 0;
-    this.lanternLight.intensity = glow * 3.2;
+    this.lanternLight.intensity = glow * 2.2;
     (this.dropMesh.material as THREE.MeshBasicMaterial).color.setHSL(0.54, 0.9, 0.35 + glow * 0.55);
     this.dropMesh.visible = this.hasDrop;
+    this.satchelMat.emissive.set('#ffd890');
+    this.satchelMat.emissiveIntensity = this.satchelGlow * (0.55 + 0.45 * Math.sin(t * 3));
   }
 
   sync() {

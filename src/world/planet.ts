@@ -4,6 +4,7 @@ import { Noise, smoothstep, clamp, lerp } from './noise';
 import { dirLatLon, angleBetween } from './sphere';
 import type { WorldConfig } from './worlds';
 import { makeWaterMaterial } from './water';
+import { paint, softRamp } from '../render/paint';
 
 export interface Flatten { dir: THREE.Vector3; radius: number; height: number; blend: number }
 
@@ -25,8 +26,14 @@ export class Planet {
   ocean?: THREE.Mesh;
   /** World-specific extra state set by builders. */
   extras: Record<string, any> = {};
-  private colorParams = { snowline: 0.55, glacier: 0.3 };
+  private colorParams = { snowline: 0.55, glacier: 0.3, winter: 0 };
   flowWidth = 1;
+  /** Worn footpaths (polylines of directions) painted into the ground; grass avoids them. */
+  paths: { pts: THREE.Vector3[]; width: number }[] = [];
+  /** Places kept clear of grass (house floors, the campfire ring). */
+  clearings: { dir: THREE.Vector3; r: number }[] = [];
+  /** Grass density per terrain vertex (0..1), filled by recolor(). */
+  grassW: Float32Array | null = null;
 
   constructor(public cfg: WorldConfig, public index: number, riverLon: number) {
     this.center = cfg.center.clone();
@@ -130,8 +137,11 @@ export class Planet {
     const valley = smoothstep(w + this.cfg.bankWidth, w + this.cfg.bankWidth + vw, dist);
     h = lerp(Math.min(h, this.cfg.riverBed + 1.5 + h * 0.15), h, valley);
     const bed = this.cfg.riverBed;
+    // Banks never dip below the water, so the river always sits in its own channel.
+    const bank = smoothstep(w + this.cfg.bankWidth + 4, w + 0.4, dist);
+    if (bank > 0) h = Math.max(h, lerp(h, bed + this.cfg.waterDepth + 0.45, bank));
     const k = smoothstep(w + this.cfg.bankWidth, w * 0.6, dist);
-    if (k > 0) h = lerp(h, Math.min(h, bed), k);
+    if (k > 0) h = lerp(h, bed, k);
     return h;
   }
 
@@ -174,7 +184,7 @@ export class Planet {
     geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(pos.count * 3), 3));
     geo.computeVertexNormals();
     geo.userData.heights = heights;
-    const mat = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonRamp() });
+    const mat = paint(new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: softRamp() }), { variation: 0.8, rim: 0.25 });
     this.terrain = new THREE.Mesh(geo, mat);
     this.terrain.receiveShadow = false;
     this.group.add(this.terrain);
@@ -194,10 +204,29 @@ export class Planet {
     }
   }
 
-  setSnow(snowline: number, glacier: number) {
+  /** snowline: height (0..1 of amplitude) above which snow lies. glacier: snowpack for the ice tongue. winter: 0..1 blanket. */
+  setSnow(snowline: number, glacier: number, winter = 0) {
     this.colorParams.snowline = snowline;
     this.colorParams.glacier = glacier;
+    this.colorParams.winter = winter;
     this.recolor();
+  }
+
+  /** Angular distance (world units) from a direction to the nearest worn path, and that path's width. */
+  pathDist(d: THREE.Vector3): { dist: number; width: number } {
+    let best = Infinity, w = 1;
+    const ab = new THREE.Vector3(), ap = new THREE.Vector3();
+    for (const pth of this.paths) {
+      for (let i = 0; i < pth.pts.length - 1; i++) {
+        const a = pth.pts[i], b = pth.pts[i + 1];
+        ab.subVectors(b, a); ap.subVectors(d, a);
+        const t = clamp(ap.dot(ab) / Math.max(1e-9, ab.lengthSq()));
+        const q = a.clone().addScaledVector(ab, t);
+        const dist = q.distanceTo(d) * this.R;
+        if (dist < best) { best = dist; w = pth.width; }
+      }
+    }
+    return { dist: best, width: w };
   }
 
   recolor() {
@@ -211,27 +240,65 @@ export class Planet {
     const low = new THREE.Color(P.low), mid = new THREE.Color(P.mid), high = new THREE.Color(P.high);
     const rock = new THREE.Color(P.rock), snow = new THREE.Color(P.snow ?? '#ffffff');
     const ice = new THREE.Color(P.ice ?? '#bfe3ff'), bank = new THREE.Color(P.bank ?? P.low);
+    const moss = new THREE.Color(P.moss ?? P.mid), dab = new THREE.Color(P.dab ?? P.low), path = new THREE.Color(P.path ?? P.bank ?? P.low);
     const A = this.cfg.amplitude;
+    const peaks = this.cfg.shape === 'peaks';
+    if (!geo.userData.cache) {
+      // River and path distances never change; compute them once.
+      const rd = new Float32Array(pos.count), pd = new Float32Array(pos.count), lo = new Float32Array(pos.count);
+      for (let i = 0; i < pos.count; i++) {
+        d.fromBufferAttribute(pos, i).normalize();
+        const rn = this.riverNearest(d);
+        rd[i] = rn.dist;
+        const pp = this.paths.length ? this.pathDist(d) : { dist: 99, width: 1 };
+        pd[i] = pp.dist / pp.width;
+        const ll = Math.atan2(d.z, d.x) * 180 / Math.PI;
+        const lat = Math.acos(clamp(d.y, -1, 1)) * 180 / Math.PI;
+        lo[i] = ((ll - this.lonAtLat(lat) + 540) % 360) - 180;
+      }
+      geo.userData.cache = { rd, pd, lo };
+    }
+    const { rd, pd, lo } = geo.userData.cache as { rd: Float32Array; pd: Float32Array; lo: Float32Array };
+    if (!this.grassW) this.grassW = new Float32Array(pos.count);
+    const gw = this.grassW;
+    const winter = this.colorParams.winter;
     for (let i = 0; i < pos.count; i++) {
       d.fromBufferAttribute(pos, i).normalize();
       n.fromBufferAttribute(nor, i);
       const h = heights[i] / A;
       const flat = clamp(n.dot(d));
       const jitter = this.noise.n3(d.x * 30, d.y * 30, d.z * 30) * 0.05;
-      if (h < 0.5) c.copy(low).lerp(mid, smoothstep(0, 0.5, h + jitter));
+      const big = this.noise.n3(d.x * 7 + 3, d.y * 7, d.z * 7);
+      if (h < 0.5) c.copy(low).lerp(mid, smoothstep(0, 0.5, h + jitter + big * 0.12));
       else c.copy(mid).lerp(high, smoothstep(0.5, 1, h + jitter));
-      c.lerp(rock, smoothstep(0.86, 0.6, flat) * 0.9);
-      const rd = this.riverNearest(d).dist;
-      c.lerp(bank, smoothstep(this.cfg.riverWidth + this.cfg.bankWidth + 1.5, this.cfg.riverWidth, rd) * 0.6);
-      if (this.cfg.shape === 'peaks') {
-        const snowAmt = smoothstep(this.colorParams.snowline + 0.05, this.colorParams.snowline - 0.08, 1 - h + jitter * 2) * smoothstep(0.55, 0.8, flat);
+      // painted dabs of brighter grass
+      c.lerp(dab, smoothstep(0.25, 0.55, big) * 0.35 * smoothstep(0.6, 0.3, h));
+      const rocky = smoothstep(0.86, 0.6, flat);
+      const rk = rock.clone().lerp(moss, smoothstep(0.62, 0.8, flat) * 0.55 * (peaks ? 1 : 0.3));
+      c.lerp(rk, rocky * 0.9);
+      const rdist = rd[i];
+      const bankK = smoothstep(this.cfg.riverWidth + this.cfg.bankWidth + 1.5, this.cfg.riverWidth, rdist);
+      c.lerp(bank, bankK * 0.6);
+      const pathK = smoothstep(1.0, 0.45, pd[i]);
+      c.lerp(path, pathK * 0.85);
+      let snowAmt = 0;
+      if (peaks) {
+        snowAmt = smoothstep(this.colorParams.snowline - 0.04, this.colorParams.snowline + 0.06, h + jitter * 2) * smoothstep(0.45, 0.75, flat);
+        snowAmt = Math.max(snowAmt, winter * smoothstep(0.4, 0.7, flat));
         c.lerp(snow, snowAmt);
+        // a tongue of ice in the side valley above Ysolde's stones
         const glacierLat = Math.acos(clamp(d.y, -1, 1)) * 180 / Math.PI;
         const edge = glacierEdgeLat(this.colorParams.glacier);
-        const g = smoothstep(edge + 2, edge - 2, glacierLat);
+        const band = smoothstep(5, 9, lo[i]) * smoothstep(34, 26, lo[i]);
+        const g = smoothstep(edge + 2, edge - 2, glacierLat) * band;
         c.lerp(ice, g * 0.85);
+        snowAmt = Math.max(snowAmt, g);
       }
       col.setXYZ(i, c.r, c.g, c.b);
+      let w = (1 - snowAmt) * smoothstep(0.8, 0.93, flat) * smoothstep(this.cfg.riverWidth + 1.2, this.cfg.riverWidth + this.cfg.bankWidth + 0.5, rdist) * (1 - pathK * 0.9);
+      w *= smoothstep(0.92, 0.7, h);
+      for (const cl of this.clearings) { const a = angleBetween(d, cl.dir) * this.R; if (a < cl.r + 1.5) w *= smoothstep(cl.r, cl.r + 1.5, a); }
+      gw[i] = w;
     }
     col.needsUpdate = true;
   }

@@ -7,11 +7,13 @@ export interface MapPiece { id: string; world: string; label: string; lat: [numb
 export interface Landmark { world: string; name: string; lat: number; lon: number; icon: 'stone' | 'hut' | 'peak' | 'spring' | 'pole' | 'fire' | 'arch' | 'tower' | 'person' | 'cloud' }
 
 export const PIECES: MapPiece[] = [
-  { id: 'map:valley', world: 'peaks', label: 'The Valley of Stones and the high ridges', lat: [0, 52], lon: [-75, 75] },
-  { id: 'map:chimes', world: 'peaks', label: 'The village and the chimes', lat: [44, 82], lon: [-70, 30] },
-  { id: 'map:poles', world: 'peaks', label: 'The old snow poles', lat: [36, 112], lon: [-60, 65] },
-  { id: 'map:pasture', world: 'peaks', label: 'The roads to the summer pasture', lat: [26, 70], lon: [-120, -30] },
-  { id: 'map:start', world: 'peaks', label: 'The river near you', lat: [50, 72], lon: [-22, 22] },
+  { id: 'map:start', world: 'peaks', label: 'The spring and the path down', lat: [0, 62], lon: [-30, 22] },
+  { id: 'map:valley', world: 'peaks', label: 'The village, the stones and the high ridges', lat: [0, 70], lon: [-75, 75] },
+  { id: 'map:chimes', world: 'peaks', label: 'Cloud Meadow and the tall peak', lat: [28, 70], lon: [40, 110] },
+  { id: 'map:poles', world: 'peaks', label: "Grandpa's snow poles", lat: [36, 112], lon: [-60, 65] },
+  { id: 'map:pasture', world: 'peaks', label: 'The goat terraces and the west cliffs', lat: [26, 80], lon: [-120, -25] },
+  { id: 'map:ridge', world: 'peaks', label: 'Kite Ridge', lat: [30, 70], lon: [20, 75] },
+  { id: 'map:bridge', world: 'peaks', label: 'The old bridge and the way down to the edge', lat: [60, 180], lon: [-40, 40] },
   { id: 'map:pines', world: 'pines', label: 'The Ember Pines', lat: [0, 180], lon: [-70, 70] },
   { id: 'map:deep', world: 'deep', label: 'The Green Deep', lat: [0, 180], lon: [-70, 70] },
   { id: 'map:desert', world: 'desert', label: 'The Glass Desert', lat: [0, 180], lon: [-70, 70] },

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { Planet } from './planet';
 import * as P from './props';
-import { glacierEdgeLat } from './planet';
+import { preparePeaks, populatePeaks } from './peaks';
 import { orientTo } from './sphere';
 import { Npc, LOOKS } from '../systems/npc';
 import { SCRIPTS } from '../data/scripts';
@@ -15,6 +15,8 @@ export interface Interactable {
   /** Prompt text, or null when there is nothing to do here right now. */
   label: () => string | null;
   act: () => void;
+  /** Seconds E must be held (listening at an echo stone, calming a goat). */
+  hold?: number;
 }
 
 export interface WorldContent {
@@ -30,14 +32,7 @@ export function prepare(p: Planet) {
   const f = (lat: number, lon: number, radius: number, height: number, blend = 8) =>
     p.flattens.push({ dir: p.dirRiver(lat, lon), radius, height, blend });
   switch (p.cfg.id) {
-    case 'peaks':
-      f(13.5, 0, 6, p.cfg.riverBed + 0.5, 6);        // the spring
-      f(60, -17, 12, 4.2, 10);                        // the village shelf
-      f(78, 21, 6, 4.5, 8);                           // Tor's hut
-      f(38, 14, 5, 6.5, 8);                           // Ysolde's seat by the stones
-      f(40, 80, 2.5, p.cfg.amplitude * 1.45, 16);     // the tall peak where clouds sleep
-      f(176, 0, 9, p.cfg.riverBed + 1.2, 8);          // the edge
-      break;
+    case 'peaks': preparePeaks(p); break;
     case 'pines': f(70, 22, 6, 3, 6); f(92, -18, 10, 2.5, 8); f(176, 0, 9, 1.5, 6); break;
     case 'deep': f(86, 16, 7, 3, 6); f(176, 0, 9, 1.5, 6); break;
     case 'desert': f(86, -26, 14, 1.6, 8); f(176, 0, 9, 1.2, 6); break;
@@ -52,6 +47,7 @@ export function populate(p: Planet, scene: THREE.Scene, index: number): WorldCon
     const d = p.dirRiver(lat, lon);
     p.surfacePoint(d, offset - sink, obj.position);
     let fwd: THREE.Vector3;
+    obj.traverse(m => { if ((m as THREE.Mesh).isMesh) (m as THREE.Mesh).castShadow = true; });
     if (face === 'river') fwd = p.surfacePoint(p.dirRiver(lat, 0)).sub(obj.position);
     else if (face) fwd = face.clone();
     else fwd = p.surfacePoint(p.dirRiver(lat + 1, lon)).sub(obj.position);
@@ -91,55 +87,7 @@ export function populate(p: Planet, scene: THREE.Scene, index: number): WorldCon
   if (p.cfg.id !== 'sea') { const a = put(P.edgeArch(p.cfg.palette.rock), 176.5, 0, 0, 'river'); c.refs.edge = a; lm('The edge', 176, 0, 'arch'); }
 
   switch (p.cfg.id) {
-    case 'peaks': {
-      const spring = put(P.spring(), 13.2, 0, 0); c.refs.spring = spring;
-      lm('The spring', 13, 0, 'spring');
-      // Ysolde's valley of stones. Older generations of stones sit higher, nearer where the ice once reached.
-      c.refs.stones = [] as THREE.Object3D[];
-      for (let i = 0; i < 9; i++) put(P.stone(1.6 + P.rand() * 0.6, false), 27 + i * 0.8, 18 + (P.rand() - 0.5) * 5, 0);
-      const hist = [0.62, 0.55, 0.49, 0.42, 0.36, 0.3];
-      hist.forEach((v, i) => c.refs.stones.push(put(P.stone(2.2, true), glacierEdgeLat(v) + 1, 16 + (i % 2) * 2.5, 0)));
-      lm("Ysolde's stones", 22, 17, 'stone');
-      npc('ysolde', 38.5, 12.5);
-      // Village
-      put(P.hut(), 58, -24, 0, 'river'); put(P.hut('#c8b0a0', '#5a6a9a'), 63.5, -13, 0, 'river'); put(P.hut('#b0a8b8'), 55, -12.5, 0, 'river');
-      const fire = put(P.campfire(), 60.2, -17.5, 0); c.refs.fire = fire;
-      c.animate.push((_dt, t) => { fire.userData.flame.scale.y = 1 + Math.sin(t * 13) * 0.12 + Math.sin(t * 7.3) * 0.08; fire.userData.light.intensity = 26 + Math.sin(t * 17) * 4; });
-      lm('The village', 60, -17, 'hut');
-      const ch = put(P.chimes(), 56.5, -20, 0, 'river'); c.refs.chimes = ch;
-      c.animate.push((_dt, t) => (ch.userData.icicles as THREE.Mesh[]).forEach((ic, i) => (ic.rotation.z = Math.sin(t * 1.3 + i) * 0.08)));
-      npc('nima', 57.5, -22.5);
-      npc('bram', 64.5, -24);
-      for (let i = 0; i < 5; i++) put(P.goat(), 66 + P.rand() * 4, -26 - P.rand() * 8, 0, undefined, 0.05);
-      // Tor
-      put(P.hut('#a8b0b8', '#3a5a6a'), 79.5, 23.5, 0, 'river');
-      npc('tor', 77, 18.5);
-      lm("Tor's hut", 78, 21, 'hut');
-      // Snow poles
-      c.refs.poles = [[46, -38], [72, 40], [98, -28]].map(([la, lo], i) => { lm(`Pole ${i + 1}`, la, lo, 'pole'); return { obj: put(P.pole(), la, lo, 0), lat: la, lon: lo }; });
-      // Fence sites (cairns) and stupa sites
-      const fenceSpots: Record<string, [number, number]> = {
-        'fence-north-ridge': [30, -40], 'fence-saddle': [44, 52], 'fence-east-shoulder': [60, 44],
-        'fence-lee-hollow': [52, -58], 'fence-south-bowl': [86, -48], 'stupa-west': [18, -11], 'stupa-east': [18, 11],
-      };
-      c.refs.siteSpots = fenceSpots;
-      c.refs.cairns = {} as Record<string, THREE.Object3D>;
-      for (const [id, [la, lo]] of Object.entries(fenceSpots)) c.refs.cairns[id] = put(P.cairn(id.startsWith('stupa') ? '#9fdcff' : '#ffd27a'), la, lo, 0);
-      // The tall peak with a sleeping cloud
-      const wisp = put(P.cloudWisp(), 40, 80, 3.5); c.refs.wisp = wisp;
-      c.animate.push((_dt, t) => { wisp.children.forEach((ch2, i) => (ch2.position.y += Math.sin(t * 0.8 + i) * 0.003)); });
-      lm('The tall peak', 40, 80, 'cloud');
-      // Dry meadow by the village
-      c.refs.meadow = [] as THREE.Mesh[];
-      for (let i = 0; i < 26; i++) { const g = P.sprout(); (g.material as THREE.MeshToonMaterial) = P.toon('#c8b06a'); put(g, 66 + P.rand() * 6, -36 - P.rand() * 10, 0, undefined, 0.05); c.refs.meadow.push(g); }
-      lm('Dry meadow', 69, -41, 'hut');
-      // The wind-loaded east slope of the pasture road
-      const cornice = new THREE.Mesh(new THREE.SphereGeometry(6, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), P.toon('#ffffff'));
-      cornice.scale.set(1.4, 0.5, 0.8);
-      c.refs.cornice = put(cornice, 42, -92, 0.3);
-      lm('East road', 44, -90, 'peak'); lm('West road', 50, -112, 'peak');
-      break;
-    }
+    case 'peaks': populatePeaks(p, scene, c, put, npc, lm); break;
     case 'pines': {
       scatter(160, () => P.pine(6 + P.rand() * 6, P.rand() < 0.25), [8, 170], 8);
       scatter(60, () => P.sprout(), [20, 160], 6);

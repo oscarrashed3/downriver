@@ -1,12 +1,12 @@
 import * as THREE from 'three';
-import { toonRamp } from './planet';
+import { paint, softRamp } from '../render/paint';
 
 const mats = new Map<string, THREE.Material>();
 export function toon(color: string, emissive?: string, ei = 0.6): THREE.MeshToonMaterial {
   const key = color + (emissive ?? '') + ei;
   let m = mats.get(key) as THREE.MeshToonMaterial | undefined;
   if (!m) {
-    m = new THREE.MeshToonMaterial({ color, gradientMap: toonRamp() });
+    m = paint(new THREE.MeshToonMaterial({ color, gradientMap: softRamp() }));
     if (emissive) { m.emissive = new THREE.Color(emissive); m.emissiveIntensity = ei; }
     mats.set(key, m);
   }
@@ -23,7 +23,7 @@ export function rand() { seed = (seed * 16807) % 2147483647; return seed / 21474
 // ---- Spring Peaks ----
 export function stone(height: number, carved: boolean): THREE.Group {
   const g = new THREE.Group();
-  const s = mesh(new THREE.BoxGeometry(0.9, height, 0.45, 1, 3, 1), toon('#8e8aa8'), 0, height / 2, 0);
+  const s = mesh(new THREE.BoxGeometry(0.9, height, 0.45, 1, 3, 1), toon('#a7a199'), 0, height / 2, 0);
   s.rotation.y = (rand() - 0.5) * 0.4; s.rotation.z = (rand() - 0.5) * 0.08;
   g.add(s);
   if (carved) {
@@ -94,7 +94,7 @@ export function cairn(glow: string): THREE.Group {
   let y = 0;
   for (let i = 0; i < 4; i++) {
     const r = 0.55 - i * 0.1;
-    g.add(mesh(new THREE.DodecahedronGeometry(r), toon('#77708f'), (rand() - 0.5) * 0.1, y + r, 0));
+    g.add(mesh(new THREE.DodecahedronGeometry(r), toon('#9a948c'), (rand() - 0.5) * 0.1, y + r, 0));
     y += r * 1.6;
   }
   const ring = mesh(new THREE.TorusGeometry(1.6, 0.06, 6, 32), new THREE.MeshBasicMaterial({ color: glow, transparent: true, opacity: 0 }), 0, 0.1, 0);
