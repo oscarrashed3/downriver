@@ -184,3 +184,7 @@ canvas#game { display: block; width: 100vw; height: 100vh; }
 .menusheet .row input[type=range] { width: 200px; accent-color: #2f3550; }
 .help2 p { margin: 8px 0; }
 .help2 b { font-family: system-ui, sans-serif; font-size: 13px; padding: 1px 6px; border: 1px solid rgba(43,37,64,.35); border-radius: 5px; }
+
+/* names over people's heads */
+.nametags > div { position: absolute; transform: translate(-50%, -100%); white-space: nowrap; font-size: 15px; font-style: italic; color: #fffaf0; text-shadow: 0 1px 6px rgba(30,20,50,.95), 0 0 2px rgba(30,20,50,.9); pointer-events: none; transition: opacity .3s; }
+.nametags > div b { font-style: normal; font-weight: 600; font-size: 17px; }

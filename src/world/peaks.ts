@@ -12,10 +12,10 @@ import { leafClump } from '../render/foliage';
 
 /** Where everything in Chapter One stands: [lat from the north pole, degrees of longitude from the river]. */
 export const PK = {
-  spring: [13.2, 0], wake: [21.5, -5.2], holloFire: [21.0, -9.6], ysoldeSpring: [19.2, -2.4], tree: [10.6, 7.2], spar: [12.8, 9.6], benchSpring: [17.0, 6.6],
+  spring: [13.2, 0], wake: [21.5, -5.2], holloFire: [21.0, -9.6], ysoldeSpring: [19.2, -2.4], tree: [10.6, 7.2], spar: [16.5, 20], benchSpring: [17.0, 6.6],
   fire: [60.2, -17.5], ysoldeHouse: [56.6, -26.5], ysoldeBench: [58.4, -22.6], bramHouse: [65.8, -28.8], torHouse: [65.6, -9.4],
   house4: [54.2, -11.4], house5: [67.6, -19.5], windmill: [51.8, -24.5], garden: [55.8, -16.8], laundry: [62.4, -25.6],
-  woodpile: [63.0, -13.2], workbench: [63.3, -11.6], tor: [62.6, -12.6], bram: [66.0, -25.2], pen: [69.5, -31.5],
+  woodpile: [60.4, -11.6], workbench: [59.2, -13.0], tor: [58.6, -14.2], bram: [66.0, -25.2], pen: [69.5, -31.5],
   bridge: [72.5, 0], odo: [72.9, 6.2], boathouse: [75.2, 11.5], dock: [77.0, 3.4],
   ridge: [50, 47], ridgeBench: [49.0, 43.6], nima: [46.5, 66], tallPeak: [40, 80], dryMeadow: [69, -41], runaway: [41, -64],
   edge: [176.5, 0],
@@ -108,6 +108,13 @@ export function populatePeaks(p: Planet, scene: THREE.Scene, c: WorldContent,
   put(Q.gardenPatch(), PK.garden[0], PK.garden[1], 0, faceTo(PK.garden, PK.fire));
   put(Q.woodpile(), PK.woodpile[0], PK.woodpile[1], 0, faceTo(PK.woodpile, PK.fire));
   put(Q.workbench(), PK.workbench[0], PK.workbench[1], 0, faceTo(PK.workbench, PK.tor));
+  // Grandpa's kite lies broken on the bench until the willow branch fixes it
+  const bk = Q.torKite(); bk.scale.setScalar(0.55);
+  const wb = at(PK.workbench), wup = wb.clone().sub(p.center).normalize();
+  bk.position.copy(wb).addScaledVector(wup, 0.98);
+  orientTo(bk, wup, faceTo(PK.workbench, PK.tor)); bk.rotateX(-Math.PI / 2 + 0.12); bk.rotateZ(0.5);
+  (bk.userData.tail as THREE.Object3D[]).forEach((t, i) => (t.rotation.x = i ? 0.5 : 0.2));
+  scene.add(bk); R.benchKite = bk;
   const cloth: THREE.Object3D[] = [];
   const lnd = put(Q.laundry(4.2), PK.laundry[0], PK.laundry[1], 0, faceTo(PK.laundry, PK.fire)); cloth.push(...lnd.userData.cloth);
   const lnd2 = put(Q.laundry(3.4), 64.2, -15.2, 0, faceTo([64.2, -15.2], PK.fire)); cloth.push(...lnd2.userData.cloth);
@@ -125,6 +132,14 @@ export function populatePeaks(p: Planet, scene: THREE.Scene, c: WorldContent,
   R.lanterns = PK.lanterns.map(ll => put(Q.lanternPost(), ll[0], ll[1], 0, faceTo(ll, [ll[0], 0])));
   for (let i = 0; i < 3; i++) put(Q.stoneWall(5), 68 + i * 2.2, -30 - i * 4, 0, faceTo([68 + i * 2.2, -30 - i * 4], [68 + i * 2.2, -20]));
   put(Q.goatShed(), PK.pen[0] + 1.5, PK.pen[1] - 5, 0, faceTo([PK.pen[0] + 1.5, PK.pen[1] - 5], PK.fire));
+
+  // ---- little stone cairns mark the way from the bridge up to Kite Ridge
+  const route = PATHS[2];
+  for (let i = 0; i + 1 < route.length; i++) for (let t = 0.35; t < 1; t += 0.5) {
+    const la = route[i][0] + (route[i + 1][0] - route[i][0]) * t, lo = route[i][1] + (route[i + 1][1] - route[i][1]) * t;
+    const side = (i + (t > 0.5 ? 1 : 0)) % 2 ? 1.6 : -1.6;
+    put(Q.cairn(), la, lo + side, 0).scale.setScalar(1.7);
+  }
 
   // ---- benches (places to sit and look)
   R.benches = PK.benches.map((ll, i) => i === 3 ? put(Q.bench(), ll[0], ll[1], 0, faceTo(ll, PK.fire)) : put(Q.bench(), ll[0], ll[1], 0, faceTo(ll, i === 1 ? [70, 40] : [ll[0] + 10, ll[1]])));

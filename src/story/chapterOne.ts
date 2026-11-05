@@ -56,6 +56,11 @@ export class ChapterOne {
   springMat: THREE.Material;
   /** Where Hollo stands once he is awake: up on the high shoulder above the spring. */
   static HOLLO_HOME = [25, 16];
+  /** Nima running to find you with the snow news: 'wait' until you are free, then 'run'. */
+  nimaRun: 'wait' | 'run' | null = null;
+  nimaAway = false;
+  sparGlow: THREE.Sprite;
+  windPosts: Record<string, THREE.Mesh> = {};
 
   constructor(private g: Game) {
     this.p = g.planets[0];
@@ -112,6 +117,11 @@ export class ChapterOne {
       g.scene.add(e);
       this.vpMarkers.push(e);
     }
+    // a soft glow on the willow branch once Tor has asked for it
+    this.sparGlow = glowSprite('rgba(255,214,110,1)');
+    this.sparGlow.position.copy((this.R.spar as THREE.Object3D).position).addScaledVector((this.R.spar as THREE.Object3D).position.clone().sub(this.p.center).normalize(), 0.3);
+    this.sparGlow.scale.setScalar(3.2);
+    g.scene.add(this.sparGlow);
     this.postman = makePostman();
     this.postman.root.visible = false;
     g.scene.add(this.postman.root);
@@ -367,6 +377,7 @@ export class ChapterOne {
     (R.spring.userData.drop as THREE.Object3D).visible = false;
     if (this.has('peaks-healed')) this.holloAwake();
     if (this.has('quest:night') && !this.has('peaks-healed')) (R.holloFire as THREE.Object3D).visible = true;
+    if (this.has('quest:night') && !this.has('invited:nima')) this.nimaRun = 'wait';
   }
 
   /** Hollo up on the high shoulder, standing, eyes open; the spring free and running. */
@@ -391,6 +402,7 @@ export class ChapterOne {
     const g = this.g;
     if (id === 'tor' && this.has('flag:tor-follow')) bagTake(g.bag, 'item:spar');
     if (id === 'bram' && this.has('flag:tor-fences') && !this.has('got-rails')) { g.flags.add('got-rails'); g.give('item:rails'); }
+    if (id === 'nima' && this.has('invited:nima') && this.has('quest:night')) this.nimaAway = true;
     if (id === 'tor' && this.has('flag:tor-follow') && !this.has('kite-flown')) {
       g.flags.add('flag:tor-follow-active');
       g.hud.notify(NOTE.torFollows);
@@ -446,7 +458,7 @@ export class ChapterOne {
         const mv = pb.position.clone().sub(prev);
         if (mv.lengthSq() > 1e-6) orientTo(pb, this.pebbleDir, mv);
         pb.position.addScaledVector(this.pebbleDir, Math.abs(Math.sin(g.time * 10)) * 0.04 * clamp(mv.length() * 30));
-        if (pb.position.distanceTo(this.npc('bram').root.position) < 7) {
+        if (g.mode === 'play' && pb.position.distanceTo(this.npc('bram').root.position) < 7) {
           g.flags.delete('goat-following');
           g.give('goat-home'); g.give('map:pasture');
           g.sound.sfxPlay('bleat');
@@ -479,6 +491,13 @@ export class ChapterOne {
       }
     }
     if (this.has('kite-flown') && !this.torAway && g.mode === 'play' && tor.root.position.distanceTo(pl.pos) > 45) this.sendHome(tor);
+    this.updateNima(dt);
+    if (this.nimaAway && g.mode === 'play' && this.npc('nima').root.position.distanceTo(pl.pos) > 45) { this.nimaAway = false; this.sendHome(this.npc('nima')); }
+    // the broken kite waits on the bench; the willow branch glows once Tor needs it
+    (this.R.benchKite as THREE.Object3D).visible = !this.has('flag:tor-follow') && !this.has('kite-flown');
+    const sparWanted = this.has('quest:kite') && !this.has('item:spar') && !this.has('kite-flown');
+    (this.sparGlow.material as THREE.SpriteMaterial).opacity = sparWanted ? 0.8 + Math.sin(g.time * 2.4) * 0.2 : 0;
+    this.sparGlow.visible = sparWanted;
     if (this.peopleAway && g.mode !== 'cut' && g.player.pos.distanceTo(this.at(PK.bridge)) > 45) {
       this.peopleAway = false;
       for (const n of this.c.npcs) this.sendHome(n);
@@ -499,6 +518,7 @@ export class ChapterOne {
         (this.R.holloFire as THREE.Object3D).visible = true;
         g.sound.sfxPlay('chime');
         g.hud.notify(NOTE.lantern2);
+        this.nimaRun = 'wait';
         g.save();
       }, 2500);
       g.save();
@@ -512,6 +532,37 @@ export class ChapterOne {
     if (this.has('flag:route-east') && !this.has('avalanche')) { g.flags.add('avalanche'); this.avalancheT = 0; }
     this.updateAvalanche(dt);
     this.updateCairns();
+  }
+
+  /** Once the fences are done, Nima comes running with the news. She finds you; you don't have to find her. */
+  updateNima(dt: number) {
+    const g = this.g, pl = g.player, p = this.p, nima = this.npc('nima');
+    if (!this.nimaRun || this.has('invited:nima')) { this.nimaRun = null; return; }
+    if (g.mode !== 'play') return;
+    if (this.nimaRun === 'wait') {
+      // she appears out of sight up the path behind you, about 26 m away, and runs in
+      const back = pl.facing.clone().negate().projectOnPlane(pl.up).normalize();
+      const d = pl.up.clone().applyAxisAngle(new THREE.Vector3().crossVectors(pl.up, back).normalize(), 26 / p.R);
+      const pos = p.surfacePoint(d, -0.05);
+      nima.place(pos, d, pl.pos.clone().sub(pos));
+      nima.pose = {};
+      this.nimaRun = 'run';
+    }
+    const td = nima.root.position.clone().sub(p.center).normalize();
+    const gap = nima.root.position.distanceTo(pl.pos);
+    if (gap < 2.4) {
+      this.nimaRun = null; nima.speedShown = 0; nima.faceOverride = null;
+      g.startTalk(nima);
+      return;
+    }
+    const gd = pl.pos.clone().sub(p.center).normalize();
+    const ang = td.angleTo(gd), step = Math.min(1, (6 * dt / p.R) / Math.max(ang, 1e-6));
+    const prev = td.clone();
+    td.lerp(gd, step).normalize();
+    nima.up.copy(td);
+    p.surfacePoint(td, -0.05, nima.root.position);
+    nima.speedShown = 6;
+    nima.faceOverride = td.clone().sub(prev).multiplyScalar(1e3);
   }
 
   /** The bridge lanterns, and the golden beam over the next place to go. */
@@ -550,6 +601,7 @@ export class ChapterOne {
         return next ? (this.R.cairns[next.id] as THREE.Object3D).position.clone() : null;
       }
       case 'night': {
+        if (this.nimaRun) return npcAt('nima');
         const who = FRIENDS.find(f => !this.has('invited:' + f));
         return who ? npcAt(who) : (this.R.holloFire as THREE.Object3D).position.clone();
       }
@@ -571,6 +623,22 @@ export class ChapterOne {
       if (s.kind !== 'fence') target = 0;
       m.opacity = lerp(m.opacity, target, 0.08);
       ring.scale.setScalar(1 + Math.sin(g.time * 2 + s.windExposure * 5) * 0.06);
+    }
+    // Skyreading shows each windward spot as a tall glowing post
+    for (const s of g.snow.sites) {
+      if (s.kind !== 'fence' || s.windExposure < 0.5) continue;
+      let post = this.windPosts[s.id];
+      if (!post) {
+        const at = (this.R.cairns[s.id] as THREE.Object3D).position, up = at.clone().sub(this.p.center).normalize();
+        post = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.6, 14, 12, 1, true), new THREE.MeshBasicMaterial({ color: '#9fd8ff', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+        post.position.copy(at).addScaledVector(up, 7);
+        post.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), up);
+        g.scene.add(post); this.windPosts[s.id] = post;
+      }
+      const m = post.material as THREE.MeshBasicMaterial;
+      const want = g.skyread.active && !s.built && this.has('flag:tor-fences') ? 0.8 + Math.sin(g.time * 3 + s.windExposure * 4) * 0.2 : 0;
+      m.opacity = lerp(m.opacity, want, 0.1);
+      post.visible = m.opacity > 0.01;
     }
     const cor = this.R.cornice as THREE.Mesh;
     (cor.material as THREE.MeshToonMaterial).emissive?.set(g.skyread.active && !this.has('avalanche') ? '#ff9a7a' : '#000000');
@@ -927,4 +995,13 @@ export class ChapterOne {
     });
     return beats;
   }
+}
+
+/** A soft round glow that always faces the camera. */
+function glowSprite(color: string): THREE.Sprite {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const x = c.getContext('2d')!, gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, color); gr.addColorStop(1, 'rgba(255,220,140,0)');
+  x.fillStyle = gr; x.fillRect(0, 0, 64, 64);
+  return new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
 }

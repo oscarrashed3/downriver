@@ -26,7 +26,7 @@ export const SCRIPTS: Record<string, Script> = {
         ], else: [
           { type: 'branch', ifFlag: 'quest:hollo', then: [
             { type: 'say', text: 'He still breathes. Slow, like the tide.' },
-            { type: 'say', text: 'Find Tor at his workbench, down the path in the village.' },
+            { type: 'say', text: 'Walk down the path to the village. Tor is at his workbench by the fire.' },
           ], else: [
             { type: 'say', text: "Shh. You'll wake him. ...No. You won't. Nothing does anymore." },
             { type: 'say', text: 'This is Hollo. Each spring he climbs to the peaks, and the water follows.' },
@@ -47,7 +47,7 @@ export const SCRIPTS: Record<string, Script> = {
                   reply: ['Then you need the river. And the river needs him.', "Each thing you do lights a lantern on Odo's bridge."] },
               ] },
               { type: 'say', text: "Start with the wind. Tor has his grandfather's kite." },
-              { type: 'say', text: 'Find Tor at his workbench, down the path in the village.' },
+              { type: 'say', text: 'Walk down the path to the village. Tor is at his workbench by the fire.' },
             ] },
           ] },
         ] },
@@ -119,9 +119,10 @@ export const SCRIPTS: Record<string, Script> = {
         { type: 'branch', ifFlag: 'invited:nima', then: [
           { type: 'say', text: "I'm bringing a blanket and a list of cloud names. A long list." },
         ], else: [
-          { type: 'say', text: "See the heavy grey one over the ridge? That's Big Marguerite." },
+          { type: 'say', text: "Snow! Snow's coming! See the heavy grey one? That's Big Marguerite." },
           { type: 'say', text: 'She carries snow. Lots. Tonight.' },
-          { type: 'say', text: 'A fire beside Hollo, under Big Marguerite? Yes. Yes yes yes.' },
+          { type: 'say', text: 'Hollo needs everyone beside him tonight. I ran all the way to tell you.' },
+          { type: 'say', text: "I'm coming. Go and ask the others. I'll bring blankets." },
           { type: 'give', items: ['invited:nima'] },
         ] },
       ], else: [
@@ -162,7 +163,8 @@ export const SCRIPTS: Record<string, Script> = {
       ], else: [
         { type: 'branch', ifFlag: 'kite-flown', then: [
           { type: 'say', text: 'Did you see it? It went higher than the clouds! Well. Almost.' },
-          { type: 'say', text: 'Ask Bram at the goat pen for fence wood. He has Grandpa\'s rails.' },
+          { type: 'say', text: 'Bram, the goat man, lives at the west end of the village.' },
+          { type: 'say', text: "Ask him for fence wood. He has Grandpa's old rails." },
         ], else: [
           { type: 'branch', ifFlag: 'item:spar', then: [
             { type: 'say', text: "A willow branch! Straight as a ruler." },
@@ -188,7 +190,7 @@ export const SCRIPTS: Record<string, Script> = {
               { kind: 'neutral', text: 'See you later, Tor.', hiddenIf: ['quest:kite'], reply: ['Mind the string. The invisible one.'] },
             ] },
             { type: 'branch', ifFlag: 'quest:kite', then: [
-              { type: 'say', text: 'Get one from the old tree by the spring. The big one you passed.' },
+              { type: 'say', text: 'Get one from the old tree. The big one you passed by the spring.' },
             ] },
             { type: 'give', items: ['map:poles'] },
           ] },

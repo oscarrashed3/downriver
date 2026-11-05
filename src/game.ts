@@ -37,6 +37,7 @@ import { Life } from './systems/life';
 import { Sequencer, type Beat } from './story/sequencer';
 import { currentStep, activeSideQuests, stepDetail, lanternsLit, knownAs, nextPerson, type QuestCtx } from './story/quests';
 import { Menu, MENU_TABS, type MenuTab, type GoalInfo } from './ui/menu';
+import { AREAS } from './data/areas';
 import { NOTE, PROMPT, NEW_GOAL, WHERE } from './data/words';
 import { BackpackView, ITEMS, bagAdd, doTrade } from './systems/backpack';
 import { foldMood } from './player/fold';
@@ -116,6 +117,14 @@ export class Game {
   menuByLock = -1;
   /** Set while starting over, so nothing writes the old journey back. */
   saveOff = false;
+  /** The first time you come near someone, the camera looks at them for a moment. */
+  meet: { npc: Npc; t: number; from: CamPose } | null = null;
+  nameTags: HTMLElement;
+  /** Playtests can record the route walked, to draw it on the map. */
+  trailOn = false;
+  trailT = 0;
+  renderEvery = 1;
+  frameN = 0;
   bag: string[] = [];
   sketches: { id: string; label: string; img: string }[] = [];
   sent: Record<string, string> = {};
@@ -207,6 +216,8 @@ export class Game {
     this.journalEl.className = 'overlay hidden';
     document.getElementById('ui')!.append(this.journalEl);
     this.menu = new Menu(document.getElementById('ui')!);
+    this.nameTags = document.createElement('div'); this.nameTags.className = 'nametags';
+    document.getElementById('ui')!.prepend(this.nameTags);
     this.menu.onTab = t => { if (this.mode === 'play' || this.mode === 'overlay') this.openTab(t); };
     this.menu.onClose = () => this.closeOverlay();
     this.menu.onQuality = () => { const l = this.quality.cycle(); this.applyQuality(); this.hud.notify(NOTE.quality(l)); this.menu.showSettings(this.settingsInfo()); };
@@ -802,6 +813,11 @@ export class Game {
         const north = new THREE.Vector3(0, 1, 0).projectOnPlane(up).normalize();
         const east = new THREE.Vector3().crossVectors(north, up).normalize();
         const heading = Math.atan2(f.dot(east), f.dot(north));
+        const c = this.questCtx();
+        this.map.people = this.flags.has('quest:night') && !this.flags.has('peaks-healed') ? this.contents[this.cur].npcs.filter(n => this.flags.has('invited:' + n.id)).map(n => {
+          const d = n.root.position.clone().sub(this.planet.center).normalize(), l = latLonOf(d);
+          return { name: knownAs(c, n.id), lat: l.lat, lonOff: wrapDeg(l.lon - this.planet.lonAtLat(l.lat)) };
+        }) : [];
         this.map.draw(this.planet, this.flags, { lat: ll.lat, lonOff: wrapDeg(ll.lon - this.planet.lonAtLat(ll.lat)), heading });
         this.map.show(true); break;
       }
@@ -854,6 +870,67 @@ export class Game {
       fx.gesture = d < 9 && spd > 6 ? 'wary' : 'sit';
       orientTo(fx.f.root, fx.dir, this.player.pos.clone().sub(fx.f.root.position));
       fx.t += dt; (fx as any).pose(dt);
+    }
+  }
+
+  /** Entering a named area for the first time shows its name. */
+  updateAreas() {
+    if (!this.flags.has('read-letter')) return;
+    const up = this.player.up;
+    for (const a of AREAS) {
+      if (a.world !== this.cur || this.flags.has('area:' + a.id)) continue;
+      if (up.angleTo(this.planet.dirRiver(a.at[0], a.at[1])) * this.planet.R > a.r) continue;
+      if (this.meet || this.hud.banner.classList.contains('on') || this.hud.chapter.classList.contains('on')) continue;
+      this.flags.add('area:' + a.id);
+      this.hud.showBanner(a.name, a.sub); this.sound.sfxPlay('chime');
+    }
+  }
+
+  /** The first time you come near someone on the main path, the camera turns to them for about a second. */
+  updateMeet(dt: number) {
+    if (this.meet) {
+      const m = this.meet, up = this.player.up;
+      m.t += dt;
+      if (m.npc.root.position.distanceTo(this.player.pos) > 12) m.t = Math.max(m.t, 1.8);
+      const head = m.npc.root.position.clone().addScaledVector(m.npc.up, 1.45);
+      const across = m.npc.root.position.clone().sub(this.player.pos).projectOnPlane(up).normalize();
+      const side = new THREE.Vector3().crossVectors(up, across).normalize();
+      // a close, slightly low portrait of their face, from the side you are coming from
+      const frame = { pos: head.clone().addScaledVector(across, -3.4).addScaledVector(side, 1.3).addScaledVector(up, 0.15), look: head.clone().addScaledVector(up, -0.15), up };
+      const k = smoothstep(0, 0.45, m.t) * (1 - smoothstep(1.35, 1.8, m.t));
+      this.cutCam = { pos: m.from.pos.clone().lerp(frame.pos, k), look: m.from.look.clone().lerp(frame.look, k), up };
+      if (m.t > 1.8) { this.meet = null; this.cutCam = null; this.rig.override = null; }
+      return;
+    }
+    if (this.cur !== 0 || !this.flags.has('read-letter')) return;
+    for (const n of this.contents[0].npcs) {
+      if (this.flags.has('met:' + n.id) || this.flags.has('talked:' + n.id)) continue;
+      if (n.root.position.distanceTo(this.player.pos) > 9) continue;
+      this.flags.add('met:' + n.id);
+      const fwd = this.camera.getWorldDirection(new THREE.Vector3());
+      this.meet = { npc: n, t: 0, from: { pos: this.camera.position.clone(), look: this.camera.position.clone().addScaledVector(fwd, 6), up: this.player.up.clone() } };
+      break;
+    }
+  }
+
+  /** Names over people's heads when you are close: "Tor, who builds kites", or how you'd describe them. */
+  updateNameTags() {
+    const show = this.mode === 'play' && this.cur === 0;
+    const npcs = show ? this.contents[0].npcs.filter(n => n.root.position.distanceTo(this.player.pos) < 9) : [];
+    const els = this.nameTags.children;
+    while (els.length < npcs.length) this.nameTags.append(document.createElement('div'));
+    const c = this.questCtx();
+    for (let i = 0; i < els.length; i++) {
+      const el = els[i] as HTMLElement, n = npcs[i];
+      if (!n) { el.style.display = 'none'; continue; }
+      const p = n.root.position.clone().addScaledVector(n.up, 2.25).project(this.camera);
+      if (p.z > 1) { el.style.display = 'none'; continue; }
+      const s = SCRIPTS[n.id], name = knownAs(c, n.id);
+      const known = name === s.name;
+      el.style.display = '';
+      el.innerHTML = known ? `<b>${esc(s.name)}</b>, ${esc(s.title)}` : esc(name.charAt(0).toUpperCase() + name.slice(1));
+      el.style.left = `${(p.x * 0.5 + 0.5) * 100}%`; el.style.top = `${(-p.y * 0.5 + 0.5) * 100}%`;
+      el.style.opacity = String(clamp((9 - n.root.position.distanceTo(this.player.pos)) / 3));
     }
   }
 
@@ -1017,7 +1094,7 @@ export class Game {
           this.cut(Opening.lookDownBeats(this), () => { this.hud.notify(OPENING.walkHint); this.save(); });
         }
         break;
-      case 'play': this.updatePlay(dt); break;
+      case 'play': this.updatePlay(dt); this.updateAreas(); this.updateMeet(dt); break;
       case 'raft': this.updateRaft(dt); break;
       case 'talk': this.updateTalk(dt); break;
       case 'ride': this.updateRide(dt); break;
@@ -1119,6 +1196,11 @@ export class Game {
       }
     }
     if (this.mode === 'play' || this.mode === 'raft') { const lv = this.quality.sample(dt); if (lv) { this.applyQuality(); this.hud.notify(NOTE.qualityAuto(lv)); } }
+    this.updateNameTags();
+    if (this.trailOn && this.mode !== 'title') {
+      this.trailT -= dt;
+      if (this.trailT <= 0) { this.trailT = 1; const l = latLonOf(this.player.up); this.map.trail.push({ lat: l.lat, lonOff: wrapDeg(l.lon - this.planet.lonAtLat(l.lat)) }); }
+    }
     this.hud.update(dt);
     this.finish.mat.uniforms.uTime.value = this.time;
     this.finish.mat.uniforms.uNight.value = 1 - Math.max(this.day.day, far);
@@ -1133,7 +1215,8 @@ export class Game {
       const e = this.day.sun.dot(this.player.up);
       U.uMist.value = (0.12 + 0.75 * smoothstep(-0.12, 0.04, e) * (1 - smoothstep(0.1, 0.38, e))) * (1 - far);
     }
-    this.composer.render();
+    // Playtests can skip drawing some frames so the world runs at full speed in a slow test browser.
+    if (++this.frameN % this.renderEvery === 0) this.composer.render();
     inp.endFrame();
   }
 
@@ -1142,7 +1225,7 @@ export class Game {
     const { f, r } = this.rig.basis(pl.up);
     const mv = f.multiplyScalar(inp.axis(['KeyS', 'ArrowDown'], ['KeyW', 'ArrowUp'])).add(r.multiplyScalar(inp.axis(['KeyA'], ['KeyD'])));
     if (mv.lengthSq() > 1) mv.normalize();
-    if (this.hud.helpOpen()) mv.set(0, 0, 0);
+    if (this.hud.helpOpen() || this.meet) mv.set(0, 0, 0);
     // Esc, or the browser letting go of the mouse (which is what Esc does while looking around), opens the menu.
     if (inp.lockLost) { inp.lockLost = false; this.menuByLock = this.time; this.openTab('goal'); return; }
     if (inp.hit('Escape')) { this.openTab('goal'); return; }

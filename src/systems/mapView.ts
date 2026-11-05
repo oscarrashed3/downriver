@@ -123,6 +123,11 @@ export class MapView {
     return c;
   }
 
+  /** A line of footsteps to draw over the map (playtests record the route here). */
+  trail: { lat: number; lonOff: number }[] = [];
+  /** People to mark on the map, such as everyone invited to the long night. */
+  people: { name: string; lat: number; lonOff: number }[] = [];
+
   draw(p: Planet, owned: Set<string>, playerLatLon: { lat: number; lonOff: number; heading?: number } | null) {
     const ctx = this.canvas.getContext('2d')!;
     (this.el.querySelector('.mt') as HTMLElement).textContent = p.cfg.name;
@@ -176,6 +181,18 @@ export class MapView {
       ctx.font = 'italic 15px Georgia, serif';
       ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(245,238,220,0.85)'; ctx.strokeText(lm.name, q.x + 10, q.y + 4);
       ctx.fillStyle = '#3a2e22'; ctx.fillText(lm.name, q.x + 10, q.y + 4);
+    }
+    if (this.trail.length > 1) {
+      ctx.save(); ctx.strokeStyle = 'rgba(176,64,48,.85)'; ctx.lineWidth = 3; ctx.setLineDash([2, 6]); ctx.lineCap = 'round';
+      ctx.beginPath(); this.trail.forEach((t, i) => { const q = toXY(t.lat, t.lonOff); if (i) ctx.lineTo(q.x, q.y); else ctx.moveTo(q.x, q.y); }); ctx.stroke(); ctx.restore();
+    }
+    for (const pp of this.people) {
+      const q = toXY(pp.lat, pp.lonOff);
+      ctx.fillStyle = '#e8b04a'; ctx.strokeStyle = '#3a2e22'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(q.x, q.y - 6, 4, 0, 7); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(q.x - 6, q.y + 6); ctx.quadraticCurveTo(q.x, q.y - 4, q.x + 6, q.y + 6); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.font = '13px system-ui, sans-serif'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(245,238,220,0.9)'; ctx.strokeText(pp.name, q.x + 9, q.y + 4);
+      ctx.fillStyle = '#5a3a14'; ctx.fillText(pp.name, q.x + 9, q.y + 4);
     }
     for (const pin of this.pins[p.cfg.id] ?? []) { ctx.fillStyle = '#c4524a'; ctx.beginPath(); ctx.arc(pin.x, pin.y, 6, 0, 7); ctx.fill(); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(pin.x - 2, pin.y - 2, 2, 0, 7); ctx.fill(); }
     if (playerLatLon) {

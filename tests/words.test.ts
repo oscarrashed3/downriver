@@ -49,9 +49,9 @@ function playthrough() {
   flags.delete('goat-following'); set('goat-home');
   talk('bram');
   set('fence:a'); set('fence:b'); set('fence:c');
-  heard.push('Someone is shouting from the meadow: snow tonight!');
   set('fences-done', 'quest:night');
-  for (const id of WORLD1) talk(id);
+  talk('nima'); // she runs to you with the news
+  for (const id of WORLD1) if (id !== 'nima') talk(id);
   set('gathered');
   set('peaks-healed');
   talk('ysolde');

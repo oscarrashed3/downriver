@@ -352,6 +352,18 @@ export function workbench(): THREE.Group {
   return g;
 }
 
+/** A small stack of flat stones that marks a path. */
+export function cairn(): THREE.Group {
+  const g = new THREE.Group();
+  const m = toon('#a8a29a', '#8a847c');
+  [[0.36, 0.16], [0.28, 0.14], [0.2, 0.12], [0.12, 0.1]].reduce((y, [r, h], i) => {
+    const s = mesh(new THREE.CylinderGeometry(r * 0.9, r, h, 7), m, (i % 2 ? 0.03 : -0.02), y + h / 2, (i % 2 ? -0.02 : 0.03));
+    s.rotation.y = i * 1.3; g.add(s); return y + h;
+  }, 0);
+  ink(g, 0.02);
+  return g;
+}
+
 /** Tor's kite (the real one): a red diamond with a long tail. */
 export function torKite(): THREE.Group {
   const g = new THREE.Group();
