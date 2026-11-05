@@ -153,7 +153,7 @@ export function spring(): THREE.Group {
 
 export function cloudWisp(): THREE.Group {
   const g = new THREE.Group();
-  const m = new THREE.MeshLambertMaterial({ color: '#ffffff', emissive: '#dfe6ff', emissiveIntensity: 0.5, transparent: true, opacity: 0.92 });
+  const m = toon('#f8faff', '#dfe6ff', 0.25);
   for (let i = 0; i < 6; i++) {
     const s = 1.2 + rand() * 1.4;
     const p = mesh(new THREE.IcosahedronGeometry(s, 2), m, (rand() - 0.5) * 5, (rand() - 0.2) * 1.5, (rand() - 0.5) * 3);

@@ -46,7 +46,7 @@ export interface Hollo {
 export function makeHollo(shells = 0): Hollo {
   const root = new THREE.Group();
   const body = new THREE.Group(); root.add(body);
-  const white = '#f4f6ff';
+  const white = '#e9edf8';
   const bodyGeo = new THREE.SphereGeometry(1, 28, 20);
   const core = new THREE.Mesh(bodyGeo, toon(white)); core.castShadow = true; core.receiveShadow = true;
   core.scale.set(2.7, 1.75, 3.3); core.position.y = 1.5;
@@ -60,14 +60,14 @@ export function makeHollo(shells = 0): Hollo {
   // Fur as big soft lumps over the back, like a cumulus cloud: the ink pass outlines each one.
   let sd = 17; const rr = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
   const lumpGeo = new THREE.IcosahedronGeometry(1, 2);
-  const shades = ['#f6f8ff', '#eef1fc', '#e6eaf8'];
-  for (let i = 0; i < 46; i++) {
-    const th = rr() * Math.PI * 2, ph = Math.acos(1 - rr() * 1.15);
+  const shades = ['#eef1fb', '#e6eaf6', '#dde3f2'];
+  for (let i = 0; i < 78; i++) {
+    const th = rr() * Math.PI * 2, ph = Math.acos(1 - rr() * 1.45);
     const nx = Math.sin(ph) * Math.cos(th), ny = Math.cos(ph), nz = Math.sin(ph) * Math.sin(th);
     if (nz > 0.45 && ny < 0.8) continue; // keep the face and chest clear
     const lump = new THREE.Mesh(lumpGeo, toon(shades[i % 3]));
-    const rad = 0.55 + rr() * 0.5;
-    lump.position.set(nx * 2.55, 1.5 + ny * 1.6, nz * 3.1);
+    const rad = 0.8 + rr() * 0.55;
+    lump.position.set(nx * 2.45, 1.5 + ny * 1.55, nz * 2.95);
     lump.scale.set(rad * 1.2, rad * 0.85, rad * 1.2);
     lump.castShadow = true;
     body.add(lump);

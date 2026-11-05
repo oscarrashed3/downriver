@@ -60,8 +60,15 @@ export function makeWaterMaterial(color: string, deep: string, ocean = false): T
           float flow = vUv.y * 0.35 - uTime * (1.2 + uSpeed);
           float stripes = n2(vec2(vUv.x * 3.0, flow)) * 0.6 + n2(vec2(vUv.x * 7.0, flow * 2.3)) * 0.4;
           float edge = smoothstep(0.62, 1.0, abs(vUv.x));
-          col = mix(uDeep, uColor, 0.35 + 0.45 * stripes);
-          col = mix(col, vec3(1.0), edge * 0.55 + smoothstep(0.78, 0.95, stripes) * 0.35);
+          // painted: three flat value bands, darker down the middle, like gouache
+          float band = floor((0.35 + 0.5 * stripes - (1.0 - abs(vUv.x)) * 0.18) * 3.0) / 3.0;
+          col = mix(uDeep, uColor, clamp(band + 0.2, 0.0, 1.0));
+          // brush dashes: short white strokes that ride the current
+          float dash = n2(vec2(vUv.x * 16.0, flow * 5.0));
+          float stroke = smoothstep(0.86, 0.9, dash) * smoothstep(0.98, 0.9, abs(vUv.x));
+          // foam along the banks, broken into dabs
+          float foam = edge * smoothstep(0.35, 0.6, n2(vec2(vUv.x * 9.0, flow * 3.0)));
+          col = mix(col, vec3(0.97, 0.98, 1.0), clamp(stroke * 0.75 + foam * 0.8, 0.0, 1.0));
           a = mix(0.78, 0.95, edge);
         }
         float spec = pow(max(dot(reflect(-uSun, N), V), 0.0), 40.0);

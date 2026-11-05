@@ -34,12 +34,18 @@ export class FinishPass extends Pass {
         uShadowTint: { value: new THREE.Vector3(0.86, 0.9, 1.14) },
         uHighTint: { value: new THREE.Vector3(1.04, 1.0, 0.95) },
         uNight: { value: 0 },
+        uSun: { value: new THREE.Vector2(0.5, 0.8) },
+        uSunVis: { value: 0 },
+        uSunCol: { value: new THREE.Color('#ffe2a8') },
+        uMist: { value: 0 },
+        uMistCol: { value: new THREE.Color('#dfe8f4') },
       },
       vertexShader: /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
       fragmentShader: /* glsl */ `
         #include <packing>
         uniform sampler2D tDiffuse, tDepth;
-        uniform vec2 uRes; uniform float uNear, uFar, uTime, uInkK, uLineW, uHatch, uGrain, uVignette, uSat, uNight;
+        uniform vec2 uRes; uniform float uNear, uFar, uTime, uInkK, uLineW, uHatch, uGrain, uVignette, uSat, uNight, uSunVis, uMist;
+        uniform vec2 uSun; uniform vec3 uSunCol, uMistCol;
         uniform vec3 uInk, uShadowTint, uHighTint;
         varying vec2 vUv;
         float lin(vec2 uv){
@@ -75,6 +81,19 @@ export class FinishPass extends Pass {
           float diag = abs(fract((gl_FragCoord.x + gl_FragCoord.y) / (5.0 * uLineW)) - 0.5) * 2.0;
           float hatch = smoothstep(0.55, 0.85, diag) * (1.0 - smoothstep(0.03, 0.16, luma)) * solid * fade * uHatch * 0.22;
           col = mix(col, uInk * 0.6, hatch);
+          // Morning mist: soft, pale, thicker with distance, only on solid ground.
+          float mist = (1.0 - exp(-dc * 0.0045)) * uMist * solid;
+          col = mix(col, uMistCol, mist * 0.55);
+          // Sun shafts: march toward the sun and gather open sky, so light spills past hills and clouds.
+          if (uSunVis > 0.01) {
+            vec2 dlt = (uSun - vUv) / 22.0;
+            vec2 uv2 = vUv; float acc = 0.0, w = 1.0;
+            for (int i = 0; i < 22; i++) { uv2 += dlt; float sky = step(uFar * 0.9, lin(clamp(uv2, 0.001, 0.999))); acc += sky * w; w *= 0.93; }
+            float fall = 1.0 - smoothstep(0.0, 0.9, length((vUv - uSun) * vec2(uRes.x / uRes.y, 1.0)));
+            col += uSunCol * acc / 12.0 * fall * uSunVis * 0.35;
+          }
+          // Teal night: shadows lean blue-green, lights stay warm.
+          col = mix(col, col * vec3(0.78, 1.02, 1.08) + vec3(0.0, 0.015, 0.03), uNight * 0.8);
           // Ink on top.
           vec3 inkCol = mix(uInk, vec3(0.05, 0.08, 0.16), uNight);
           col = mix(col, inkCol * (0.6 + 0.4 * luma), clamp(ink, 0.0, 0.92));

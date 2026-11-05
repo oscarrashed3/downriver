@@ -1065,6 +1065,17 @@ export class Game {
     this.hud.update(dt);
     this.finish.mat.uniforms.uTime.value = this.time;
     this.finish.mat.uniforms.uNight.value = 1 - Math.max(this.day.day, far);
+    {
+      const U = this.finish.mat.uniforms;
+      const sp = this.camera.position.clone().addScaledVector(this.day.sun, 900).project(this.camera);
+      const camDir = this.camera.getWorldDirection(new THREE.Vector3());
+      const facing = camDir.dot(this.day.sun);
+      U.uSun.value.set(sp.x * 0.5 + 0.5, sp.y * 0.5 + 0.5);
+      const onScreen = 1 - smoothstep(1.1, 1.6, Math.max(Math.abs(sp.x), Math.abs(sp.y)));
+      U.uSunVis.value = facing > 0.1 ? onScreen * smoothstep(0.1, 0.5, facing) * this.day.day * (1 - far) : 0;
+      const e = this.day.sun.dot(this.player.up);
+      U.uMist.value = (0.12 + 0.75 * smoothstep(-0.12, 0.04, e) * (1 - smoothstep(0.1, 0.38, e))) * (1 - far);
+    }
     this.composer.render();
     inp.endFrame();
   }
