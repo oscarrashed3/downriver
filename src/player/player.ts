@@ -47,8 +47,9 @@ export class Player {
 
   constructor() {
     this.person = new Person({
-      skin: '#b88a68', hair: '#3a261c', hairStyle: 'short', top: '#2f3550', coat: '#c8a47c', coatLen: 0.82, facets: true,
-      trousers: '#4a3428', boots: '#7a4a2c', scarf: '#2c3456', satchel: true, hood: '#c8a47c', glowEyes: '#ffc85a', head: 1.12,
+      wanderer: true,
+      skin: '#7a5038', hair: '#2e1e18', hairStyle: 'messy', top: '#2a3048', coat: '#c49a6c', facets: true,
+      trousers: '#3e2a24', boots: '#7a4a2c', scarf: '#2e3456', satchel: true, hood: '#c49a6c', glowEyes: '#ffc24a',
       props: ['boatPeek'],
     });
     this.root.add(this.person.root);
@@ -61,8 +62,10 @@ export class Player {
     lcap.position.y = 0.08;
     const ring = new THREE.Mesh(new THREE.TorusGeometry(0.02, 0.006, 4, 8), toon('#b88a3a')); ring.position.y = 0.11;
     this.lantern.add(glass, this.dropMesh, lcap, ring);
-    this.lantern.position.set(0, -0.06, 0.03);
+    this.lantern.position.set(0, -0.1, 0.03);
+    this.lantern.scale.setScalar(1.15);
     this.lanternLight = new THREE.PointLight('#ffd690', 0, 7, 2);
+    this.lanternLight.position.z = 0.18;
     this.lantern.add(this.lanternLight);
     this.person.strapPoint.add(this.lantern);
     this.satchelMat = toon('#8a5a34').clone();

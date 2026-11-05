@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { toon } from '../world/props';
 import { addOutlines } from '../render/paint';
 import { clamp, lerp } from '../world/noise';
+import { buildWanderer } from './wanderer';
 
 /** How someone looks. Every person in the game is built from this, so they share one style. */
 export interface PersonLook {
@@ -38,6 +39,8 @@ export interface PersonLook {
   barefoot?: boolean;
   rolledSleeves?: boolean;
   props?: PersonProp[];
+  /** Nilo's own build: the hooded wanderer from the turnaround sheet. */
+  wanderer?: boolean;
 }
 
 export type PersonProp = 'stick' | 'tinCup' | 'kettle' | 'notebook' | 'goggles' | 'bell' | 'lavender' | 'brooch' | 'kneePads' | 'boatPeek' | 'kiteString' | 'towel';
@@ -65,19 +68,19 @@ export interface PoseInput {
   windLocal?: THREE.Vector3;
 }
 
-const cap = (r: number, len: number) => new THREE.CapsuleGeometry(r, len, 4, 10);
-const sph = (r: number, w = 14, h = 10) => new THREE.SphereGeometry(r, w, h);
-function mk(g: THREE.BufferGeometry, color: string, x = 0, y = 0, z = 0) {
+export const cap = (r: number, len: number) => new THREE.CapsuleGeometry(r, len, 4, 10);
+export const sph = (r: number, w = 14, h = 10) => new THREE.SphereGeometry(r, w, h);
+export function mk(g: THREE.BufferGeometry, color: string, x = 0, y = 0, z = 0) {
   const m = new THREE.Mesh(g, toon(color)); m.position.set(x, y, z); m.castShadow = true; return m;
 }
 const flatMats = new Map<string, THREE.MeshToonMaterial>();
-function toonFlat(color: string) {
+export function toonFlat(color: string) {
   let m = flatMats.get(color);
   if (!m) { m = toon(color).clone(); m.side = THREE.DoubleSide; m.onBeforeCompile = toon(color).onBeforeCompile; m.customProgramCacheKey = () => 'dbl' + toon(color).customProgramCacheKey(); flatMats.set(color, m); }
   return m;
 }
 /** Faceted, like folded paper: split the vertices so every face gets its own flat normal. */
-function mkFlat(g: THREE.BufferGeometry, color: string, x = 0, y = 0, z = 0) {
+export function mkFlat(g: THREE.BufferGeometry, color: string, x = 0, y = 0, z = 0) {
   const fg = g.index ? g.toNonIndexed() : g; fg.computeVertexNormals();
   const m = new THREE.Mesh(fg, toonFlat(color)); m.position.set(x, y, z); m.castShadow = true; return m;
 }
@@ -90,14 +93,14 @@ export class Person {
   neck = new THREE.Group();
   head = new THREE.Group();
   hair = new THREE.Group();
-  coat: THREE.Mesh | null = null;
+  coat: THREE.Object3D | null = null;
   legs: { thigh: THREE.Group; knee: THREE.Group }[] = [];
   arms: { sh: THREE.Group; el: THREE.Group; hand: THREE.Mesh }[] = [];
   eyes: THREE.Group[] = [];
   brows: THREE.Mesh[] = [];
-  mouthFlat: THREE.Mesh;
-  mouthSmile: THREE.Mesh;
-  mouthO: THREE.Mesh;
+  mouthFlat!: THREE.Mesh;
+  mouthSmile!: THREE.Mesh;
+  mouthO!: THREE.Mesh;
   scarfTail: THREE.Group[] = [];
   satchel: THREE.Group | null = null;
   hipR = new THREE.Group();
@@ -111,7 +114,9 @@ export class Person {
   private blinkT = 2;
   private headYaw = 0;
   private headPitch = 0;
-  private hipY: number;
+  hipY: number;
+  /** How this body sits: hip height, thigh and knee angles. */
+  sitHip = 0.2; sitThigh = -1.5; sitKnee = 1.45; sitArm = -0.9;
   private glanceT = 3;
   private glance = 0;
   private sm: Record<string, number> = {};
@@ -126,6 +131,7 @@ export class Person {
     this.body.add(this.hips);
     this.hips.position.y = this.hipY;
     this.body.scale.setScalar(H);
+    if (look.wanderer) { buildWanderer(this, look); addOutlines(this.root, '#2a1e24', 0.011); return; }
 
     // Legs
     for (const s of [-1, 1]) {
@@ -452,13 +458,13 @@ export class Person {
       knee = lerp(knee, 0.9, air);
       thigh = lerp(thigh, Math.sin(t * 6 + o) * 0.5 - 0.3, climb);
       knee = lerp(knee, 0.7 + Math.sin(t * 6 + o) * 0.4, climb);
-      thigh = lerp(thigh, -1.5, sit); knee = lerp(knee, 1.45, sit);
+      thigh = lerp(thigh, this.sitThigh, sit); knee = lerp(knee, this.sitKnee, sit);
       L.thigh.rotation.x = thigh; L.knee.rotation.x = knee;
       L.thigh.rotation.z = lerp(0, (i ? 1 : -1) * 0.08, sit);
     }
     // Body bob and lean.
     const bob = Math.abs(Math.sin(ph)) * moving * (0.035 + run * 0.03) * (1 - air);
-    this.hips.position.y = lerp(this.hipY + bob - moving * 0.02, 0.2, sit);
+    this.hips.position.y = lerp(this.hipY + bob - moving * 0.02, this.sitHip, sit);
     const breath = Math.sin(t * 1.7) * 0.012;
     let lean = moving * 0.06 + run * 0.16 - air * 0.05 + climb * 0.35 + listen * 0.08 + (this.look.hunch ?? 0) * 0.3;
     lean = lerp(lean, -0.12, sit);
@@ -498,7 +504,7 @@ export class Person {
       // shiver: hug yourself
       x = lerp(x, -0.6, shiver * 0.8); el = lerp(el, -1.9, shiver * 0.8); z = lerp(z, -0.5 * s, shiver * 0.8);
       // sitting: hands on knees
-      x = lerp(x, -0.9, sit); el = lerp(el, -0.4, sit);
+      x = lerp(x, this.sitArm, sit); el = lerp(el, -0.4, sit);
       if (i === 1) {
         // right arm: wave, shield eyes, touch chest
         x = lerp(x, -0.3, wave); z = lerp(z, 2.6 + Math.sin(t * 9) * 0.25 * 0, wave); el = lerp(el, -0.6 + Math.sin(t * 9) * 0.45, wave);
