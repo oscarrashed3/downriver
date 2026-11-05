@@ -13,15 +13,16 @@ function furNoise(): THREE.DataTexture {
   if (furTex) return furTex;
   const N = 128, data = new Uint8Array(N * N * 4);
   let s = 3; const r = () => ((s = (s * 16807) % 2147483647) / 2147483647);
-  for (let i = 0; i < N * N; i++) { const v = Math.floor(r() * 255); data.set([v, v, v, 255], i * 4); }
+  const base = new Float32Array(N * N).map(() => r());
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { let a = 0; for (let k = -2; k <= 2; k++) a += base[((y + k + N) % N) * N + x] + base[y * N + ((x + k + N) % N)]; const v = Math.floor(Math.min(1, Math.max(0, (a / 10 - 0.5) * 3 + 0.5)) * 255); data.set([v, v, v, 255], (y * N + x) * 4); }
   furTex = new THREE.DataTexture(data, N, N, THREE.RGBAFormat);
-  furTex.wrapS = furTex.wrapT = THREE.RepeatWrapping; furTex.magFilter = THREE.NearestFilter; furTex.needsUpdate = true;
+  furTex.wrapS = furTex.wrapT = THREE.RepeatWrapping; furTex.magFilter = THREE.LinearFilter; furTex.needsUpdate = true;
   return furTex;
 }
 
 function furShell(color: string, layer: number, layers: number) {
   const m = paint(new THREE.MeshToonMaterial({ color, gradientMap: softRamp(), alphaMap: furNoise(), alphaTest: 0.25 + (layer / layers) * 0.7 }), { variation: 0.15, rim: 1.6 });
-  m.alphaMap!.repeat.set(14, 10);
+  m.alphaMap!.repeat.set(5, 4);
   return m;
 }
 
@@ -42,7 +43,7 @@ export interface Hollo {
   update(dt: number, t: number): void;
 }
 
-export function makeHollo(shells = 8): Hollo {
+export function makeHollo(shells = 0): Hollo {
   const root = new THREE.Group();
   const body = new THREE.Group(); root.add(body);
   const white = '#f4f6ff';
@@ -52,18 +53,24 @@ export function makeHollo(shells = 8): Hollo {
   body.add(core);
   for (let i = 1; i <= shells; i++) {
     const sh = new THREE.Mesh(bodyGeo, furShell(white, i, shells));
-    const k = 1 + i * 0.022;
+    const k = 1 + i * 0.012;
     sh.scale.set(2.7 * k, 1.75 * k, 3.3 * k); sh.position.y = 1.5; sh.userData.noOutline = true;
     body.add(sh);
   }
-  // a mane of tufts along the back, so the silhouette reads as fur
-  for (let i = 0; i < 26; i++) {
-    const a = (i / 26) * Math.PI * 2;
-    const tuft = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.8, 5), toon(white));
-    tuft.position.set(Math.sin(a) * 2.6, 1.5 + Math.cos(a * 2) * 0.2 + 1.2 * Math.abs(Math.cos(a * 0.5)), Math.cos(a) * 3.0);
-    tuft.lookAt(tuft.position.clone().multiplyScalar(2).setY(tuft.position.y + 3));
-    tuft.rotateX(Math.PI / 2);
-    body.add(tuft);
+  // Fur as big soft lumps over the back, like a cumulus cloud: the ink pass outlines each one.
+  let sd = 17; const rr = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+  const lumpGeo = new THREE.IcosahedronGeometry(1, 2);
+  const shades = ['#f6f8ff', '#eef1fc', '#e6eaf8'];
+  for (let i = 0; i < 46; i++) {
+    const th = rr() * Math.PI * 2, ph = Math.acos(1 - rr() * 1.15);
+    const nx = Math.sin(ph) * Math.cos(th), ny = Math.cos(ph), nz = Math.sin(ph) * Math.sin(th);
+    if (nz > 0.45 && ny < 0.8) continue; // keep the face and chest clear
+    const lump = new THREE.Mesh(lumpGeo, toon(shades[i % 3]));
+    const rad = 0.55 + rr() * 0.5;
+    lump.position.set(nx * 2.55, 1.5 + ny * 1.6, nz * 3.1);
+    lump.scale.set(rad * 1.2, rad * 0.85, rad * 1.2);
+    lump.castShadow = true;
+    body.add(lump);
   }
   // paws
   const paws: THREE.Object3D[] = [];
@@ -75,7 +82,7 @@ export function makeHollo(shells = 8): Hollo {
     body.add(pw); paws.push(pw);
   }
   // head
-  const head = new THREE.Group(); head.position.set(0, 1.7, 3.2); body.add(head);
+  const head = new THREE.Group(); head.position.set(0, 1.7, 3.35); head.scale.setScalar(1.35); body.add(head);
   const skull = new THREE.Mesh(new THREE.SphereGeometry(1.35, 24, 18), toon(white)); skull.scale.set(1.1, 0.95, 1.0); skull.castShadow = true;
   head.add(skull);
   for (let i = 1; i <= Math.ceil(shells / 2); i++) { const sh = new THREE.Mesh(skull.geometry, furShell(white, i * 2, shells)); const k = 1 + i * 0.03; sh.scale.set(1.1 * k, 0.95 * k, 1.0 * k); sh.userData.noOutline = true; head.add(sh); }
@@ -94,7 +101,7 @@ export function makeHollo(shells = 8): Hollo {
     const ear = new THREE.Group(); ear.position.set(1.0 * s, 0.75, -0.1);
     const e = new THREE.Mesh(new THREE.CapsuleGeometry(0.32, 1.1, 4, 10), toon(white)); e.position.y = -0.6; e.castShadow = true; ear.add(e);
     const inner = new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 0.8, 4, 8), toon('#dfe4f6')); inner.position.set(0, -0.6, 0.2); inner.userData.noOutline = true; ear.add(inner);
-    ear.rotation.z = 2.2 * s; head.add(ear); ears.push(ear);
+    ear.rotation.z = 0.55 * s; ear.rotation.x = -0.25; head.add(ear); ears.push(ear);
   }
   // a short round tail
   const tail = new THREE.Mesh(new THREE.SphereGeometry(0.7, 12, 10), toon(white)); tail.position.set(0, 1.6, -3.4); body.add(tail);
@@ -114,7 +121,7 @@ export function makeHollo(shells = 8): Hollo {
       // breathing: slow, deep, a little slower when asleep
       const br = Math.sin(t * (asleep > 0.5 ? 0.9 : 1.4));
       core.scale.y = 1.75 * (1 + br * 0.035);
-      body.position.y = -0.9 * asleep + h.rise * 0.6 + Math.abs(Math.sin(h.walk * 3)) * 0.12 * h.rise;
+      body.position.y = -0.45 * asleep + h.rise * 0.6 + Math.abs(Math.sin(h.walk * 3)) * 0.12 * h.rise;
       body.rotation.z = 0.12 * asleep;
       head.rotation.x = 0.35 * asleep - 0.1 * h.rise + Math.sin(t * 0.5) * 0.03;
       head.position.y = 1.7 - 0.7 * asleep;

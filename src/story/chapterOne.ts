@@ -559,6 +559,15 @@ export class ChapterOne {
     return { pos: center.clone().addScaledVector(up, h).addScaledVector(t1, Math.cos(a) * r).addScaledVector(t2, Math.sin(a) * r), look: center.clone().addScaledVector(up, 1.1), up };
   }
 
+  /** A shot from the far side of a fire, looking back across it at Hollo, so the giant fills the background. */
+  fireCam(fire: THREE.Vector3, hollo: THREE.Vector3, r: number, h: number, swing: number): CamPose {
+    const up = fire.clone().sub(this.p.center).normalize();
+    const away = fire.clone().sub(hollo).projectOnPlane(up).normalize().applyAxisAngle(up, swing);
+    const pos = fire.clone().addScaledVector(away, r).addScaledVector(up, h);
+    const look = fire.clone().lerp(hollo, 0.35).addScaledVector(up, 1.6);
+    return { pos, look, up };
+  }
+
   kiteFlight(): Beat[] {
     const g = this.g, tor = this.npc('tor'), pl = g.player, kite = this.R.torKite as THREE.Group;
     const ridge = this.at(PK.ridge);
@@ -627,7 +636,6 @@ export class ChapterOne {
     };
     const F = PK.holloFire;
     const seat = (i: number) => { const a = i / 6 * Math.PI * 2 + 0.3; return [F[0] + Math.cos(a) * 2.2, F[1] + Math.sin(a) * 2.6]; };
-    const mid = fire.clone().lerp(holloAt, 0.5);
     let before = 0;
     const [hl, ho] = ChapterOne.HOLLO_HOME;
     const startDir = holloAt.clone().sub(this.p.center).normalize();
@@ -643,7 +651,7 @@ export class ChapterOne {
         pl.pose = { sit: 1 }; pl.sync();
         g.day.frozen = true;
         g.day.setLocal(pl.up, -0.3, false);
-        g.cutCam = this.orbit(fire, 5.2, 3.4, 0);
+        g.cutCam = this.fireCam(fire, holloAt, 6, 2.6, -0.5);
         this.peopleAway = true;
       },
       tick: k => g.hud.setFade(1 - smoothstep(0.3, 1, k), '#1a1830'),
@@ -651,7 +659,7 @@ export class ChapterOne {
     CAMPFIRE.forEach((l, i) => beats.push({
       line: l,
       enter: () => { const n = this.npc(order[i]); n.smileT = 2.5; n.pose = { sit: 1, talking: true } as Npc['pose']; },
-      tick: k => { g.cutCam = this.orbit(fire, 5.6, 3.2, 0.3 + (i + k) * 0.5); },
+      tick: k => { g.cutCam = this.fireCam(fire, holloAt, 5.5, 2.2, -0.6 + (i + k) * 0.25); },
       exit: () => { this.npc(order[i]).pose = { sit: 1 }; },
     }));
     beats.push({
@@ -660,14 +668,14 @@ export class ChapterOne {
       tick: (k, dt) => {
         setWinter(smoothstep(0, 0.7, k));
         g.day.t = (g.day.t + dt * 0.2 * g.seq.speed) % 1;
-        g.cutCam = this.orbit(mid, 9 + k * 14, 4 + k * 12, 2.8 + k * 0.6);
+        g.cutCam = this.fireCam(fire, holloAt, 8 + k * 14, 3 + k * 12, 0.4 - k * 0.3);
       },
     });
     beats.push({
       line: { text: WINTER_LINES[1] }, dur: 6,
       tick: (k, dt) => {
         g.day.t = (g.day.t + dt * 0.15 * g.seq.speed) % 1;
-        g.cutCam = this.orbit(mid, 23 - k * 12, 16 - k * 10, 3.4 + k * 0.4);
+        g.cutCam = this.fireCam(fire, holloAt, 22 - k * 10, 15 - k * 9, 0.1 - k * 0.3);
       },
       exit: () => {
         passWinter(g.snow);
@@ -702,7 +710,7 @@ export class ChapterOne {
         if (w > 0 && mv.lengthSq() > 1e-8) { orientTo(h.root, d, mv); h.walk += mv.length() * 0.9; }
         else if (k > 0.15) orientTo(h.root, d, this.at([hl, ho]).sub(h.root.position));
         setWinter(1 - smoothstep(0.2, 1, k) * 0.5);
-        g.cutCam = this.orbit(holloAt.clone().lerp(h.root.position, 0.5), 18 + k * 6, 7 + k * 5, 1.4 + k * 0.7);
+        g.cutCam = this.fireCam(fire, h.root.position, 14 + k * 8, 4 + k * 5, -0.3 + k * 0.4);
         const face = h.head.getWorldPosition(new THREE.Vector3());
         for (const id of order) this.npc(id).lookAt = face;
         pl.lookAt = face;
@@ -725,7 +733,7 @@ export class ChapterOne {
         g.grass.bloom = smoothstep(0.3, 1, k);
         g.day.t = (g.day.t + dt * 0.012 * g.seq.speed) % 1;
         const spring = this.at(PK.spring);
-        g.cutCam = this.orbit(spring, 9 - k * 3, 5 - k * 2, 0.6 + k * 0.6);
+        g.cutCam = this.fireCam(spring, h.root.position, 9 - k * 2, 3.5 - k, 0.5 + k * 0.4);
       },
     });
     beats.push({
@@ -752,7 +760,7 @@ export class ChapterOne {
     const spots: Record<string, number[]> = { ysolde: [74.0, -5.6], bram: [75.4, -6.4], nima: [74.8, -4.6], tor: [76.0, -4.8], odo: [73.6, 4.8] };
     const meet = this.at([74.4, -3.2]);
     const panel = letterPanel(POSTMAN.letter, POSTMAN.sign);
-    const land = this.p.dirRiver(74.2, -1.6);
+    const land = this.p.dirRiver(75.4, -3.6);
     const landPos = this.p.surfacePoint(land, -0.05);
     const pmPlace = (h: number, spin: number) => {
       pm.root.position.copy(landPos).addScaledVector(land, h);

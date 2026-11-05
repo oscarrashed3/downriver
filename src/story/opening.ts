@@ -28,17 +28,17 @@ export function stormBeats(g: Game): Beat[] {
   return OPENING.storm.map((cap, i) => ({
     dur: i === 1 ? 5.5 : 4.8,
     enter: () => {
-      g.hud.setFade(1, '#06081a');
-      g.hud.showPanel(panels[i], cap, 0);
+      g.hud.setFade(0, '#ffffff');
+      g.hud.showPanel(panels[i], cap, 1);
       g.sound.sfxPlay(i === 1 ? 'whoosh' : 'soft');
     },
     tick: (k: number) => {
-      let a = smoothstep(0, 0.18, k) * (1 - smoothstep(0.86, 1, k));
-      // the lightning: two hard flashes, and the figure is there in between
-      if (i === 1) { const f = Math.max(0, 1 - Math.abs(k - 0.12) * 30) + Math.max(0, 1 - Math.abs(k - 0.2) * 40); a = Math.min(1, a + f); }
-      g.hud.showPanel(panels[i], cap, a);
+      // the lightning: two hard white flashes, and then the figure is just there
+      if (i === 1) g.hud.setFade(Math.min(1, Math.max(0, 1 - Math.abs(k - 0.04) * 25) + Math.max(0, 1 - Math.abs(k - 0.14) * 30)), '#ffffff');
+      const fr = panels[i].parentElement as HTMLElement | null;
+      if (fr) fr.style.opacity = String(smoothstep(0, 0.12, k) * (1 - smoothstep(0.9, 1, k)));
     },
-    exit: () => { if (i === 2) g.hud.showPanel(null); },
+    exit: () => { if (i === 2) { g.hud.showPanel(null); g.hud.setFade(1, '#fff8ee'); } },
   }));
 }
 

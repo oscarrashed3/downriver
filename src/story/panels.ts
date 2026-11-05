@@ -18,17 +18,21 @@ function grad(x: CanvasRenderingContext2D, stops: [number, string][]) {
   x.fillStyle = g; x.fillRect(0, 0, W, H);
 }
 
-/** A storm cloud bank: lumpy ink-edged shapes, darker underneath. */
+/** A cumulus bank: overlapping puffs, outlined only on the outside (stroke every puff, then fill over the strokes). */
 function cloudBank(x: CanvasRenderingContext2D, y: number, col: string, belly: string, r: () => number) {
-  x.save();
-  x.beginPath(); x.moveTo(-20, y + 60);
-  let cx = -20;
-  while (cx < W + 40) { const rad = 30 + r() * 50; x.arc(cx + rad, y + (r() - 0.5) * 30, rad, Math.PI, 0); cx += rad * 1.6; }
-  x.lineTo(W + 40, y + 120); x.lineTo(-20, y + 120); x.closePath();
-  const g = x.createLinearGradient(0, y - 60, 0, y + 80); g.addColorStop(0, col); g.addColorStop(1, belly);
-  x.fillStyle = g; x.fill();
-  x.strokeStyle = INK; x.lineWidth = 2; x.stroke();
-  x.restore();
+  const puffs: number[][] = [];
+  for (let cx = -30; cx < W + 60;) { const rad = 34 + r() * 46; puffs.push([cx, y + (r() - 0.3) * 34 - rad * 0.3, rad]); cx += rad * 1.15; }
+  for (let cx = -30; cx < W + 60;) { const rad = 40 + r() * 30; puffs.push([cx, y + 50 + r() * 20, rad]); cx += rad * 1.3; }
+  const g = x.createLinearGradient(0, y - 80, 0, y + 90); g.addColorStop(0, col); g.addColorStop(1, belly);
+  const body = (fill: boolean) => {
+    for (const [cx, cy, rad] of puffs) { x.beginPath(); x.arc(cx, cy, rad, 0, Math.PI * 2); if (fill) x.fill(); else x.stroke(); }
+    x.beginPath(); x.rect(-40, y + 50, W + 80, 120); if (fill) x.fill(); else x.stroke();
+  };
+  x.strokeStyle = INK; x.lineWidth = 5; body(false);
+  x.fillStyle = g; body(true);
+  // a few inner crease lines, like ink on a comic cloud
+  x.strokeStyle = 'rgba(20,14,30,0.35)'; x.lineWidth = 1.5;
+  for (const [cx, cy, rad] of puffs.slice(0, 8)) { x.beginPath(); x.arc(cx + rad * 0.2, cy + rad * 0.25, rad * 0.6, 0.2, 1.4); x.stroke(); }
 }
 
 function rain(x: CanvasRenderingContext2D, r: () => number, alpha = 0.35) {

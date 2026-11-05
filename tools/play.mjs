@@ -12,7 +12,7 @@ if (process.env.FRESH) await page.addInitScript(() => { if (!sessionStorage.getI
 await page.goto((process.env.URL ?? 'http://localhost:5173/downriver/') + '?fast');
 await page.waitForTimeout(9000);
 let n = 0;
-const shot = async (label) => { await page.screenshot({ path: `shots/${scenario}-${++n}-${label}.png` }); };
+const shot = async (label) => { await page.screenshot({ path: `shots/${scenario}-${++n}-${label}.png`, timeout: 120000 }); };
 const ev = (js) => page.evaluate(js);
 const key = async (k, ms = 80) => { await page.keyboard.down(k); await page.waitForTimeout(ms); await page.keyboard.up(k); };
 const steps = {

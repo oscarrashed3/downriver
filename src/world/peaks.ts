@@ -11,7 +11,7 @@ import { makeHollo } from './hollo';
 
 /** Where everything in Chapter One stands: [lat from the north pole, degrees of longitude from the river]. */
 export const PK = {
-  spring: [13.2, 0], wake: [21.5, -5.2], holloFire: [18.4, -8.6], ysoldeSpring: [19.2, -2.4], tree: [10.6, 7.2], spar: [12.8, 9.6], benchSpring: [17.0, 6.6],
+  spring: [13.2, 0], wake: [21.5, -5.2], holloFire: [21.0, -9.6], ysoldeSpring: [19.2, -2.4], tree: [10.6, 7.2], spar: [12.8, 9.6], benchSpring: [17.0, 6.6],
   fire: [60.2, -17.5], ysoldeHouse: [56.6, -26.5], ysoldeBench: [58.4, -22.6], bramHouse: [65.8, -28.8], torHouse: [65.6, -9.4],
   house4: [54.2, -11.4], house5: [67.6, -19.5], windmill: [51.8, -24.5], garden: [55.8, -16.8], laundry: [62.4, -25.6],
   woodpile: [63.0, -13.2], workbench: [63.3, -11.6], tor: [62.6, -12.6], bram: [66.0, -25.2], pen: [69.5, -31.5],
@@ -67,9 +67,9 @@ export function populatePeaks(p: Planet, scene: THREE.Scene, c: WorldContent,
   const spring = put(Q.springBasin(), PK.spring[0], PK.spring[1], 0); R.spring = spring;
   lm('The spring', 13, 0, 'spring');
   // Hollo, asleep on the spring
-  const hollo = makeHollo(8); R.hollo = hollo;
+  const hollo = makeHollo(); R.hollo = hollo;
   put(hollo.root, PK.spring[0], PK.spring[1], 0, faceTo(PK.spring, PK.wake), 0.2);
-  hollo.root.scale.setScalar(1.15);
+  hollo.root.scale.setScalar(1.45);
   anim((dt, t) => hollo.update(dt, t));
   // the fire Ysolde will light beside it on the long night
   const hf = put(P.campfire(), PK.holloFire[0], PK.holloFire[1], 0); R.holloFire = hf; hf.visible = false;

@@ -245,7 +245,11 @@ export function bridge(span = 9, width = 2.4): THREE.Group {
     for (let i = 0; i <= 12; i++) { const t = i / 12; pts.push(new THREE.Vector3(-span / 2 + t * span, 1.95 + Math.sin(t * Math.PI) * 1.1, z)); }
     g.add(mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 24, 0.05, 5), dark));
   }
-  for (const x of [-span / 2 - 0.3, span / 2 + 0.3]) g.add(mesh(new THREE.BoxGeometry(1.4, 1.4, width + 0.8), stone, x, 0.4, 0));
+  // abutments: piles of rounded stones, sunk into the bank
+  for (const x of [-span / 2 - 0.3, span / 2 + 0.3]) for (let k = 0; k < 7; k++) {
+    const st = mesh(new THREE.DodecahedronGeometry(0.55 + (k % 3) * 0.12, 0), texToon('#b8b0a8', stoneTex), x + ((k * 37) % 5 - 2) * 0.18, 0.05 + (k % 2) * 0.35, -width / 2 - 0.2 + (k / 6) * (width + 0.4));
+    st.rotation.set(k, k * 2.1, k * 0.7); st.scale.y = 0.75; g.add(st);
+  }
   ink(g, 0.03);
   return g;
 }

@@ -120,7 +120,7 @@ export class Hud {
     this.panel.classList.toggle('hidden', !canvas);
     if (!canvas) return;
     const f = this.panel.querySelector('.frame') as HTMLElement;
-    if (f.firstChild !== canvas) { f.innerHTML = ''; f.append(canvas); }
+    if (f.firstChild !== canvas) { f.innerHTML = ''; f.append(canvas); f.style.opacity = '1'; }
     (this.panel.querySelector('.kc') as HTMLElement).textContent = caption;
     this.panel.style.opacity = String(alpha);
   }
