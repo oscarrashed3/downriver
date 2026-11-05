@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { toon } from '../world/props';
 import type { Person, PersonLook } from './person';
 import { cap, sph, mk, mkFlat, toonFlat } from './person';
+import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { RoundedBoxGeometry as RoundedBox } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
 /**
  * Nilo, built from Oscar's turnaround sheet: a tall pointed paper-like hood, glowing amber eyes under messy bangs,
@@ -50,6 +52,22 @@ function warp(g: THREE.BufferGeometry, f: (v: THREE.Vector3) => void) {
 
 const ang = (v: THREE.Vector3) => Math.atan2(v.x, v.z); // 0 = straight ahead, ±π = behind
 
+/** Weld the vertices and give soft normals, so cloth reads as soft folds, not hard facets. */
+function soften(g: THREE.BufferGeometry) {
+  const src = new THREE.BufferGeometry(); src.setAttribute('position', g.getAttribute('position'));
+  if (g.index) src.setIndex(g.index);
+  const m = mergeVertices(src, 1e-4); m.computeVertexNormals();
+  return m;
+}
+/** A soft, double-sided cloth mesh. */
+function mkSoft(g: THREE.BufferGeometry, color: string, x = 0, y = 0, z = 0) {
+  const m = new THREE.Mesh(soften(g), toonFlat(color)); m.position.set(x, y, z); m.castShadow = true; return m;
+}
+/** Resample a profile into many rows with a smooth curve, so lathes bend instead of kinking. */
+function fine(prof: THREE.Vector2[], n: number) {
+  const c = new THREE.SplineCurve(prof); return c.getPoints(n);
+}
+
 export function buildWanderer(P: Person, look: PersonLook) {
   P.hipY = 0.7;
   P.hips.position.y = P.hipY;
@@ -63,14 +81,15 @@ export function buildWanderer(P: Person, look: PersonLook) {
     const knee = new THREE.Group(); knee.position.y = -0.35;
     knee.add(mk(cap(0.095, 0.08), C.trousers, 0, -0.04, 0));
     // the trousers bunch over the boot tops
-    const bunch = mkFlat(new THREE.CylinderGeometry(0.11, 0.1, 0.07, 7), C.trousers, 0, -0.09, 0); knee.add(bunch);
+    const bunch = mkSoft(new THREE.SphereGeometry(0.11, 14, 8), C.trousers, 0, -0.09, 0); bunch.scale.set(1, 0.55, 1); knee.add(bunch);
     // boot shaft, cuff, foot and sole
-    knee.add(mkFlat(new THREE.CylinderGeometry(0.098, 0.102, 0.17, 7), C.boots, 0, -0.2, 0));
-    knee.add(mkFlat(new THREE.CylinderGeometry(0.108, 0.104, 0.04, 7), C.boots, 0, -0.12, 0));
-    const foot = mkFlat(new THREE.SphereGeometry(0.11, 7, 5), C.boots, 0, -0.29, 0.06); foot.scale.set(1.08, 0.66, 1.6); knee.add(foot);
-    const sole = mk(new THREE.BoxGeometry(0.21, 0.035, 0.34), C.bootDark, 0, -0.335, 0.06); knee.add(sole);
+    knee.add(mkSoft(new THREE.CylinderGeometry(0.098, 0.104, 0.17, 14), C.boots, 0, -0.2, 0));
+    const cuffB = mkSoft(new THREE.TorusGeometry(0.1, 0.018, 6, 16), C.boots, 0, -0.12, 0); cuffB.rotation.x = Math.PI / 2; knee.add(cuffB);
+    const foot = mkSoft(new THREE.SphereGeometry(0.11, 16, 10), C.boots, 0, -0.29, 0.06); foot.scale.set(1.08, 0.66, 1.6); knee.add(foot);
+    const toe = mkSoft(new THREE.SphereGeometry(0.085, 14, 8), C.boots, 0, -0.295, 0.18); toe.scale.set(1.15, 0.72, 0.9); knee.add(toe);
+    const sole = mkSoft(new THREE.CylinderGeometry(0.105, 0.105, 0.035, 16), C.bootDark, 0, -0.335, 0.06); sole.scale.set(1, 1, 1.75); knee.add(sole);
     for (const y of [-0.17, -0.245]) {
-      const strap = mkFlat(new THREE.CylinderGeometry(0.106, 0.106, 0.025, 7), C.bootDark, 0, y, 0); knee.add(strap);
+      const strap = mkSoft(new THREE.TorusGeometry(0.103, 0.014, 5, 18), C.bootDark, 0, y, 0); strap.rotation.x = Math.PI / 2; knee.add(strap);
       const buckle = mk(new THREE.BoxGeometry(0.035, 0.035, 0.012), C.brass, 0.07 * s, y, 0.075); buckle.rotation.y = 0.75 * s; buckle.userData.noOutline = true; knee.add(buckle);
     }
     thigh.add(knee);
@@ -88,21 +107,21 @@ export function buildWanderer(P: Person, look: PersonLook) {
     new THREE.Vector2(0.13, 0.67), new THREE.Vector2(0.22, 0.64), new THREE.Vector2(0.275, 0.57), new THREE.Vector2(0.27, 0.4),
     new THREE.Vector2(0.26, 0.27),
   ];
-  const upper = cut(new THREE.LatheGeometry(upperProf, 16), v => Math.abs(ang(v)) > 0.25);
+  const upper = soften(cut(new THREE.LatheGeometry(fine(upperProf, 10), 28), v => Math.abs(ang(v)) > 0.25));
   const coatUp = new THREE.Mesh(upper, toonFlat(C.coat)); coatUp.scale.set(1, 1, 0.8); coatUp.castShadow = true; P.torso.add(coatUp);
   // the skirt hangs from the waist on its own pivot, so it can swing and fold when Nilo sits
   const skirtPivot = new THREE.Group(); skirtPivot.position.y = 0.28; P.torso.add(skirtPivot);
   const skirtProf = [
     new THREE.Vector2(0.26, 0.0), new THREE.Vector2(0.29, -0.13), new THREE.Vector2(0.345, -0.29), new THREE.Vector2(0.4, -0.45),
   ];
-  const skirtG = warp(new THREE.LatheGeometry(skirtProf, 16), v => {
+  const skirtG = warp(new THREE.LatheGeometry(fine(skirtProf, 10), 28), v => {
     // the back hangs lower than the front, and the front corners flare a little
     const a = ang(v), k = Math.max(0, -v.y / 0.45);
     v.y -= (1 - Math.cos(a)) * 0.5 * 0.07 * k;
     if (Math.abs(a) < 0.9) v.x *= 1 + 0.08 * k;
   });
   // open at the front, a slit at the back from the hem up
-  const skirt = cut(skirtG, v => Math.abs(ang(v)) > 0.25);
+  const skirt = soften(cut(skirtG, v => Math.abs(ang(v)) > 0.25));
   const coat = new THREE.Mesh(skirt, toonFlat(C.coat)); coat.scale.set(1, 1, 0.82); coat.castShadow = true;
   skirtPivot.add(coat);
   // the back slit: a dark fold line from the hem up
@@ -112,13 +131,18 @@ export function buildWanderer(P: Person, look: PersonLook) {
   // ---- Arms: big sleeves with wide turned-back cuffs ----
   for (const s of [-1, 1]) {
     const sh = new THREE.Group(); sh.position.set(0.235 * s, 0.56, 0);
-    const up = mkFlat(new THREE.CylinderGeometry(0.09, 0.1, 0.24, 7), C.coat, 0, -0.12, 0); sh.add(up);
+    const up = mkSoft(new THREE.CylinderGeometry(0.09, 0.1, 0.24, 16), C.coat, 0, -0.12, 0); sh.add(up);
+    const shoulder = mkSoft(new THREE.SphereGeometry(0.092, 16, 10), C.coat, 0, -0.01, 0); sh.add(shoulder);
     const el = new THREE.Group(); el.position.y = -0.25;
-    el.add(mkFlat(new THREE.CylinderGeometry(0.1, 0.125, 0.2, 7), C.coat, 0, -0.08, 0));
-    el.add(mkFlat(new THREE.CylinderGeometry(0.138, 0.132, 0.08, 7), C.cuff, 0, -0.185, 0));
+    el.add(mkSoft(new THREE.CylinderGeometry(0.1, 0.125, 0.2, 16), C.coat, 0, -0.08, 0));
+    el.add(mkSoft(new THREE.SphereGeometry(0.1, 14, 8), C.coat, 0, 0.0, 0));
+    const cuff = mkSoft(new THREE.TorusGeometry(0.118, 0.032, 8, 20), C.cuff, 0, -0.185, 0); cuff.rotation.x = Math.PI / 2; el.add(cuff);
     el.add(mk(new THREE.CylinderGeometry(0.06, 0.06, 0.04, 8), C.shirt, 0, -0.22, 0));
-    const hand = mk(sph(0.062, 10, 8), C.hand, 0, -0.27, 0.01); hand.scale.set(0.85, 1.2, 0.75); el.add(hand);
-    const thumb = mk(sph(0.025, 6, 5), C.hand, -0.04 * s, -0.25, 0.035); thumb.userData.noOutline = true; el.add(thumb);
+    // a soft hand: palm, four fingers curled together, and a thumb
+    const hand = mk(sph(0.052, 14, 10), C.hand, 0, -0.255, 0.005); hand.scale.set(0.95, 1.05, 0.7); el.add(hand);
+    const fingers = mk(cap(0.026, 0.05), C.hand, 0, -0.305, 0.012); fingers.rotation.z = Math.PI / 2; fingers.scale.set(1, 1.15, 0.95);
+    fingers.rotation.x = 0.25; el.add(fingers);
+    const thumb = mk(cap(0.017, 0.035), C.hand, 0.043 * -s, -0.255, 0.03); thumb.rotation.set(0.5, 0, 0.5 * s); el.add(thumb);
     sh.add(el);
     sh.rotation.z = 0.1 * s;
     P.torso.add(sh);
@@ -131,7 +155,7 @@ export function buildWanderer(P: Person, look: PersonLook) {
   P.neck.add(mk(new THREE.CylinderGeometry(0.06, 0.07, 0.1, 8), C.face, 0, 0.02, 0));
   P.head.position.y = 0.06;
   P.neck.add(P.head);
-  const skull = mk(sph(0.155), C.face, 0, 0.17, 0); skull.scale.set(1, 1.04, 1); P.head.add(skull);
+  const skull = mk(sph(0.155, 20, 14), C.face, 0, 0.17, 0); skull.scale.set(1, 1.04, 1); P.head.add(skull);
   const jaw = mk(sph(0.115, 12, 8), C.face, 0, 0.1, 0.03); jaw.scale.set(1.08, 0.82, 1); P.head.add(jaw);
   
   // glowing eyes: narrow amber almonds, a little tilted, with a soft halo
@@ -154,9 +178,9 @@ export function buildWanderer(P: Person, look: PersonLook) {
   // messy bangs: dark spikes falling over the eyes, a few poking out at the sides of the hood
   P.head.add(P.hair);
   const spike = (x: number, y: number, z: number, len: number, rx: number, rz: number, w = 0.04) => {
-    const m = mkFlat(new THREE.ConeGeometry(w, len, 4), C.hair, x, y, z); m.rotation.set(rx, 0, rz); P.hair.add(m); P.hairClumps.push(m); return m;
+    const m = mkSoft(new THREE.ConeGeometry(w, len, 7), C.hair, x, y, z); m.rotation.set(rx, 0, rz); P.hair.add(m); P.hairClumps.push(m); return m;
   };
-  const cap1 = mkFlat(new THREE.SphereGeometry(0.162, 8, 6), C.hair, 0, 0.21, -0.01); cap1.scale.set(1.04, 0.86, 1.04); P.hair.add(cap1);
+  const cap1 = mkSoft(new THREE.SphereGeometry(0.162, 18, 12), C.hair, 0, 0.21, -0.01); cap1.scale.set(1.04, 0.86, 1.04); P.hair.add(cap1);
   const fr: [number, number, number][] = [[-0.1, 0.5, 0.12], [-0.055, 0.15, 0.15], [-0.01, -0.2, 0.15], [0.04, 0.25, 0.155], [0.085, -0.15, 0.14], [0.115, 0.45, 0.11]];
   fr.forEach(([x, tilt, len], i) => spike(x, 0.24 - (i % 2) * 0.012, 0.125, len, Math.PI - 0.45, tilt + (x > 0 ? -0.15 : 0.15), 0.045));
   for (const s of [-1, 1]) { spike(0.15 * s, 0.17, 0.06, 0.12, Math.PI - 0.2, -0.5 * s, 0.035); spike(0.145 * s, 0.24, 0.0, 0.1, Math.PI - 0.1, -0.9 * s, 0.03); }
@@ -166,48 +190,58 @@ export function buildWanderer(P: Person, look: PersonLook) {
   buildStrapAndSatchel(P, look);
 }
 
-/** The tall, pointed hood: a faceted shell, closed above the brow, with a face-shaped opening and a dark inside. */
+/** The tall, pointed hood: a soft shell, closed above the brow, with an arched face opening, a folded rim and a dark inside. */
 function buildHood(P: Person, look: PersonLook) {
   const col = look.hood ?? C.coat;
-  const prof = [
+  const prof = fine([
     new THREE.Vector2(0.255, -0.02), new THREE.Vector2(0.27, 0.06), new THREE.Vector2(0.275, 0.17), new THREE.Vector2(0.26, 0.28),
     new THREE.Vector2(0.21, 0.38), new THREE.Vector2(0.13, 0.47), new THREE.Vector2(0.04, 0.55), new THREE.Vector2(0.0, 0.58),
-  ];
-  const shape = (g: THREE.BufferGeometry) => warp(g, v => {
-    const a = ang(v), front = Math.max(0, Math.cos(a));
-    // the brow juts forward into a little visor, and the point leans back
-    const over = front * Math.max(0, Math.min(1, (v.y + 0.05) / 0.2)) * Math.max(0, Math.min(1, (0.45 - v.y) / 0.15));
+  ], 36);
+  // the brow juts forward into a soft visor, and the point leans back
+  const bend = (v: THREE.Vector3) => {
+    const front = Math.max(0, Math.cos(ang(v)));
+    const over = front * THREE.MathUtils.smoothstep(v.y, -0.05, 0.15) * THREE.MathUtils.smoothstep(0.45 - v.y, 0, 0.15);
     v.z += over * 0.06;
     const k = Math.max(0, (v.y - 0.22) / 0.28);
-    v.z -= k * k * 0.13;
-    v.z -= 0.02;
-  });
-  // the opening: a front window from the chin up to the brow, wider at the bottom
-  const open = (v: THREE.Vector3) => {
-    const a = Math.abs(ang(v));
-    // a pointed arch: tall in the middle, lower toward the sides
-    return a < 0.9 && v.y < (a < 0.5 ? 0.27 : 0.2);
+    v.z -= k * k * 0.13 + 0.02;
   };
-  const outer = cut(shape(new THREE.LatheGeometry(prof, 12)), v => !open(v));
+  // the opening: a rounded arch, tall in the middle and curving down to the cheeks
+  const W = 0.86;
+  const archY = (a: number) => 0.28 - 0.13 * Math.pow(Math.min(1, Math.abs(a) / W), 2.2);
+  const open = (v: THREE.Vector3) => { const a = Math.abs(ang(v)); return a < W && v.y < archY(a); };
+  const lathe = new THREE.LatheGeometry(prof, 36);
+  // judge each quad before bending, so the arch is cut on the round shape
+  const keep = cut(lathe, v => !open(v));
+  const outer = soften(warp(keep, bend));
   const hood = new THREE.Mesh(outer, toonFlat(col)); hood.castShadow = true;
   P.head.add(hood);
   const innerG = outer.clone(); innerG.scale(0.94, 0.97, 0.94);
   const inner = new THREE.Mesh(innerG, toonFlat(C.hoodIn)); inner.userData.noOutline = true;
   P.head.add(inner);
+  // the folded rim: a soft roll of cloth that follows the arch and runs down both cheeks to the scarf
+  const rAt = (y: number) => { for (let i = 1; i < prof.length; i++) if (prof[i].y >= y) { const a = prof[i - 1], b = prof[i]; return a.x + (b.x - a.x) * (y - a.y) / (b.y - a.y); } return 0; };
+  const pts: THREE.Vector3[] = [];
+  const edge = (a: number, y: number) => { const r = rAt(y) * 1.0; const v = new THREE.Vector3(Math.sin(a) * r, y, Math.cos(a) * r); bend(v); return v; };
+  for (let y = -0.02; y < archY(W); y += 0.03) pts.push(edge(-W, y));
+  for (let i = 0; i <= 24; i++) { const a = -W + (2 * W * i) / 24; pts.push(edge(a, archY(a))); }
+  for (let y = archY(W) - 0.03; y >= -0.02; y -= 0.03) pts.push(edge(W, y));
+  const rim = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 90, 0.03, 8, false), toonFlat(col));
+  rim.castShadow = true;
+  P.head.add(rim);
 }
 
 /** A thick navy scarf wound twice round the neck, with one tail hanging down the back on the right. */
 function buildScarf(P: Person, look: PersonLook) {
   const col = look.scarf ?? C.scarf;
-  const low = mkFlat(new THREE.TorusGeometry(0.2, 0.1, 6, 12), col, 0, 0.65, 0.0); low.rotation.x = Math.PI / 2; low.scale.set(1.0, 0.88, 1); P.torso.add(low);
-  const high = mkFlat(new THREE.TorusGeometry(0.135, 0.07, 6, 12), col, 0, 0.73, 0.0); high.rotation.set(Math.PI / 2 + 0.08, 0, 0); P.torso.add(high);
+  const low = mkSoft(new THREE.TorusGeometry(0.2, 0.1, 10, 24), col, 0, 0.65, 0.0); low.rotation.x = Math.PI / 2; low.scale.set(1.0, 0.88, 1); P.torso.add(low);
+  const high = mkSoft(new THREE.TorusGeometry(0.135, 0.07, 10, 24), col, 0, 0.73, 0.0); high.rotation.set(Math.PI / 2 + 0.08, 0, 0); P.torso.add(high);
   let parent: THREE.Object3D = P.torso;
   for (let i = 0; i < 4; i++) {
     const seg = new THREE.Group();
     if (i === 0) seg.position.set(-0.1, 0.66, -0.25); else seg.position.y = -0.1;
     const w = 0.13 - i * 0.008;
-    const m = mkFlat(new THREE.BoxGeometry(w, 0.11, 0.03), col, 0, -0.05, 0);
-    if (i === 3) { m.scale.y = 0.9; const notch = mkFlat(new THREE.ConeGeometry(w * 0.45, 0.06, 3), col, w * 0.25, -0.12, 0); notch.rotation.z = Math.PI; seg.add(notch); }
+    const m = mkSoft(new THREE.BoxGeometry(w, 0.11, 0.03, 2, 2, 1), col, 0, -0.05, 0);
+    if (i === 3) { m.scale.y = 0.9; const notch = mkSoft(new THREE.ConeGeometry(w * 0.45, 0.06, 3), col, w * 0.25, -0.12, 0); notch.rotation.z = Math.PI; seg.add(notch); }
     seg.add(m); parent.add(seg); parent = seg; P.scarfTail.push(seg);
   }
 }
@@ -220,14 +254,14 @@ function buildStrapAndSatchel(P: Person, look: PersonLook) {
     new THREE.Vector3(0.04, 0.38, -0.215), new THREE.Vector3(0.2, 0.18, -0.2), new THREE.Vector3(0.24, 0.12, -0.04),
   ];
   const curve = new THREE.CatmullRomCurve3(pts, true);
-  const strap = new THREE.Mesh(new THREE.TubeGeometry(curve, 48, 0.022, 4, true), toon(C.strap)); strap.scale.set(1, 1, 1); strap.castShadow = true;
+  const strap = new THREE.Mesh(new THREE.TubeGeometry(curve, 80, 0.022, 6, true), toon(C.strap));  strap.castShadow = true;
   P.torso.add(strap);
   const buckle = mk(new THREE.BoxGeometry(0.06, 0.05, 0.012), C.brass, -0.075, 0.47, 0.205); buckle.rotation.z = 0.8; buckle.userData.noOutline = true; P.torso.add(buckle);
   const hole = mk(new THREE.BoxGeometry(0.035, 0.028, 0.014), C.strap, -0.075, 0.47, 0.207); hole.rotation.z = 0.8; hole.userData.noOutline = true; P.torso.add(hole);
 
   const bag = new THREE.Group(); bag.position.set(0.25, 0.02, -0.2); bag.rotation.y = 0.8; bag.scale.setScalar(1.25);
-  const body = mkFlat(new THREE.BoxGeometry(0.22, 0.18, 0.09), C.satchel); bag.add(body);
-  const flap = mkFlat(new THREE.BoxGeometry(0.225, 0.09, 0.095), '#7a4a2a', 0, 0.06, 0.004); bag.add(flap);
+  const body = mk(new RoundedBox(0.22, 0.18, 0.09, 0.02), C.satchel); bag.add(body);
+  const flap = mk(new RoundedBox(0.226, 0.09, 0.097, 0.02), '#7a4a2a', 0, 0.06, 0.004); bag.add(flap);
   const bk = mk(new THREE.BoxGeometry(0.03, 0.035, 0.01), C.brass, 0, 0.02, 0.052); bk.userData.noOutline = true; bag.add(bk);
   P.torso.add(bag); P.satchel = bag;
   if (look.props?.includes('boatPeek')) {
