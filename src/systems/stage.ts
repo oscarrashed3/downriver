@@ -42,10 +42,10 @@ export function overShoulder(near: THREE.Vector3, far: THREE.Vector3, up: THREE.
  * Walk along the line from `a` (what the camera looks at) to `b` (the camera) and return the clear fraction:
  * 1 when nothing solid stands in the way, less when a house, tree trunk or rock is in between.
  */
-export function segmentClear(solids: Solid[], a: THREE.Vector3, b: THREE.Vector3, center: THREE.Vector3, steps = 20): number {
+export function segmentClear(solids: Solid[], a: THREE.Vector3, b: THREE.Vector3, center: THREE.Vector3, steps = 20, pad = true): number {
   const near = solids.filter(s => {
     if ((s.on && !s.on()) || !s.obj.visible) return false;
-    const r = (s.camPad ?? 0) + ((s.shape.kind === 'circle' ? s.shape.r : Math.hypot(s.shape.hw, s.shape.hd)) + (s.off ? Math.hypot(s.off[0], s.off[1]) : 0)) * s.obj.scale.x + 1;
+    const r = (pad ? s.camPad ?? 0 : 0) + ((s.shape.kind === 'circle' ? s.shape.r : Math.hypot(s.shape.hw, s.shape.hd)) + (s.off ? Math.hypot(s.off[0], s.off[1]) : 0)) * s.obj.scale.x + 1;
     const d = distToSegment(s.obj.position, a, b);
     return d < r;
   });
@@ -65,7 +65,7 @@ export function segmentClear(solids: Solid[], a: THREE.Vector3, b: THREE.Vector3
       const k = o.scale.x;
       if (s.off) v.addScaledVector(ax, -s.off[0] * k).addScaledVector(az, -s.off[1] * k);
       const shape = s.shape.kind === 'circle' ? { kind: 'circle' as const, r: s.shape.r * k } : { kind: 'box' as const, hw: s.shape.hw * k, hd: s.shape.hd * o.scale.z };
-      if (pushOut2(v.dot(ax), v.dot(az), 0.45 + (s.camPad ?? 0), shape)) return (i - 1) / steps;
+      if (pushOut2(v.dot(ax), v.dot(az), 0.45 + (pad ? s.camPad ?? 0 : 0), shape)) return (i - 1) / steps;
     }
   }
   return 1;

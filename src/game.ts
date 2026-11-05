@@ -239,7 +239,7 @@ export class Game {
     this.rig = new CameraRig(this.camera);
     // keep the camera out of houses, trunks and rocks: it pushes in toward Nilo instead
     // (the bridge only counts when choosing a talk shot: Nilo walks on it, so it must not shove the follow camera)
-    this.rig.block = (look, pos) => this.planet.solids.length ? segmentClear(this.planet.solids.filter(s => !s.camOnly), look, pos, this.planet.center) : 1;
+    this.rig.block = (look, pos) => !this.planet.solids.length ? 1 : this.talkCam || this.meet ? segmentClear(this.planet.solids, look, pos, this.planet.center) : segmentClear(this.planet.solids.filter(s => !s.camOnly), look, pos, this.planet.center);
     this.input = new Input(canvas);
     this.map = new MapView(this.contents.flatMap(c => c.landmarks));
     this.skyread = new Skyreading(this.scene);
@@ -538,6 +538,8 @@ export class Game {
       this.titleEl = null;
       if ((b as HTMLElement).dataset.a === 'continue' && saved.data) {
         this.load(saved.data);
+        // leave the title camera behind and start right behind Nilo
+        this.cutCam = null; this.rig.override = null; this.rig.faceDir(this.player.up, this.player.facing); this.rig.snap();
         this.mode = 'play';
         this.hud.showBanner(WORLDS[this.cur].name, CHAPTERS[this.cur].n + '. ' + CHAPTERS[this.cur].title);
       } else {
@@ -787,7 +789,6 @@ export class Game {
     const S = this.planet.solids, C = this.planet.center;
     const pick = chooseShot(eye, npcEye, this.player.up, (a, b) => this.cur === 0 ? segmentClear(S, a, b, C) : 1);
     this.talkCam = { side: pick.side, wide: pick.wide, lift: pick.lift, onNilo: false, t: 0, open: false };
-    this.rig.blockOverride = true;
     this.fold.root.visible = false; // Fold tucks himself away so he isn't between the two faces
     this.rig.easeFromHere(0.75);
     this.shownChars = 0; this.lineHold = 0; this.silenceGrace = 0; this.lastBlip = 0;
@@ -801,7 +802,7 @@ export class Game {
     this.sigs[npc.id] = this.sigFor(npc.id);
     npc.talking = false;
     this.hud.closeDialogue();
-    this.rig.override = null; this.talkCam = null; this.fold.root.visible = true; this.rig.blockOverride = false;
+    this.rig.override = null; this.talkCam = null; this.fold.root.visible = true;
     this.rig.easeFromHere(0.9);
     this.mode = 'play';
     const hint = SCRIPTS[npc.id].hint;
@@ -992,7 +993,11 @@ export class Game {
       if (n.root.position.distanceTo(this.player.pos) > 9) continue;
       this.flags.add('met:' + n.id);
       const fwd = this.camera.getWorldDirection(new THREE.Vector3());
-      this.meet = { npc: n, t: 0, from: { pos: this.camera.position.clone(), look: this.camera.position.clone().addScaledVector(fwd, 6), up: this.player.up.clone() } };
+      // start the move from where the camera is, unless it is still far off (just after Continue): then from behind Nilo
+      const pl = this.player, near = this.camera.position.distanceTo(pl.pos) < 25;
+      const from = near ? { pos: this.camera.position.clone(), look: this.camera.position.clone().addScaledVector(fwd, 6), up: pl.up.clone() }
+        : { pos: pl.pos.clone().addScaledVector(pl.up, 3.2).addScaledVector(pl.facing, -7), look: pl.pos.clone().addScaledVector(pl.up, 1.3), up: pl.up.clone() };
+      this.meet = { npc: n, t: 0, from };
       break;
     }
   }
@@ -1326,6 +1331,8 @@ export class Game {
     const free = this.mode === 'play' || this.mode === 'raft';
     if (this.cutCam) this.rig.override = this.cutCam;
     else if (this.mode === 'cut' || this.mode === 'letter') this.rig.override = null;
+    // talk shots and the first-meet portrait are worked out on the fly, so keep them out of walls and Hollo
+    this.rig.blockOverride = !!this.talkCam || !!this.meet;
     this.rig.update(dt, this.player.pos, this.player.up, p, free ? inp.mouseDX : 0, free ? inp.mouseDY : 0, free ? inp.axis(['ArrowLeft'], ['ArrowRight']) : 0);
     if (this.mode === 'sky' || this.skyView.open) {
       const pose = this.skyView.update(dt, { pos: this.rig.pos.clone(), look: this.rig.look.clone(), up: this.rig.smoothUp.clone() }, this.player.pos, this.cur, this.visited(), this.flags.has('power:kite'), this.camera);
