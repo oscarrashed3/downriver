@@ -35,7 +35,32 @@ function tri(pts: number[][], uv: number[][]): THREE.BufferGeometry {
 }
 
 /** Fold: a living paper boat, folded from an old letter. Raft, kite and map case. Never speaks. */
+export type FoldMood = 'calm' | 'happy' | 'curious' | 'sleepy' | 'scared' | 'cold';
+
+/** Fold's shapes across the journey. Each world teaches one; the boat and the kite come first. */
+export const FOLD_FORMS = [
+  { id: 'boat', name: 'Boat', world: 'The Spring Peaks', flag: 'read-letter', text: 'Carries you down the river.' },
+  { id: 'kite', name: 'Kite', world: 'The Spring Peaks', flag: 'power:kite', text: 'Opens while you fall, so you glide.' },
+  { id: 'crane', name: 'Crane', world: 'The Ember Pines', flag: 'form:crane', text: 'Flies ahead and shows the way through smoke.' },
+  { id: 'lantern', name: 'Lantern', world: 'The Green Deep', flag: 'form:lantern', text: 'Glows in the dark under the roots.' },
+  { id: 'sail', name: 'Sail', world: 'The Glass Desert', flag: 'form:sail', text: 'Catches the wind over the dunes.' },
+  { id: 'umbrella', name: 'Umbrella', world: 'Aquila', flag: 'form:umbrella', text: 'Keeps the rain off, and floats you down from rooftops.' },
+] as const;
+
+/** How Fold feels, from what is happening around you. Pure, so it can be tested. */
+export function foldMood(c: { night: number; cold: number; nearGiant: boolean; running: boolean; falling: boolean; justHappy: boolean }): FoldMood {
+  if (c.justHappy) return 'happy';
+  if (c.falling) return 'scared';
+  if (c.cold > 0.6) return 'cold';
+  if (c.nearGiant) return 'curious';
+  if (c.night > 0.7 && !c.running) return 'sleepy';
+  return 'calm';
+}
+
 export class Fold {
+  mood: FoldMood = 'calm';
+  private eyes: THREE.Mesh[] = [];
+  private lookAtPoi: THREE.Vector3 | null = null;
   root = new THREE.Group();
   boat = new THREE.Group();
   kite = new THREE.Group();
@@ -68,7 +93,9 @@ export class Fold {
     const crease2 = new THREE.LineSegments(new THREE.EdgesGeometry(sail, 20), new THREE.LineBasicMaterial({ color: '#8a7a5a', transparent: true, opacity: 0.55 }));
     const eye = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 4), new THREE.MeshBasicMaterial({ color: '#2a2438' }));
     eye.position.set(0.5, 0.15, 0.12);
-    this.boat.add(hm, sm, crease, crease2, eye);
+    const eye2 = eye.clone(); eye2.position.z = -0.12;
+    this.eyes = [eye, eye2];
+    this.boat.add(hm, sm, crease, crease2, eye, eye2);
     this.root.add(this.boat);
 
     // Kite: a paper diamond with two spars and a ribbon tail.
@@ -120,7 +147,22 @@ export class Fold {
       this.tail.forEach((r, i) => (r.rotation.x = Math.sin(this.t * 6 - i * 0.8) * 0.35));
     }
     this.happy = Math.max(0, this.happy - dt);
+    // mood gestures: paper has no words, only posture
+    const m = this.mood;
+    const eyeY = m === 'sleepy' ? 0.25 : m === 'curious' ? 1.5 : m === 'scared' ? 1.35 : 1;
+    for (const e of this.eyes) e.scale.set(1, lerp(e.scale.y, eyeY, 1 - Math.exp(-8 * dt)), 1);
+    if (m === 'cold' || m === 'scared') this.boat.rotation.z += Math.sin(this.t * 40) * 0.05;
+    if (m === 'sleepy') { this.boat.rotation.z = lerp(this.boat.rotation.z, 0.35, 0.5); this.root.position.addScaledVector(up, -0.25); }
+    if (m === 'curious' && this.lookAtPoi) {
+      const to = this.lookAtPoi.clone().sub(this.root.position).projectOnPlane(up);
+      if (to.lengthSq() > 1e-4) orientTo(this.root, up, to.normalize().cross(up).negate());
+      this.boat.rotation.x += Math.sin(this.t * 3) * 0.1;
+    }
+    if (m === 'happy') this.root.position.addScaledVector(up, Math.abs(Math.sin(this.t * 9)) * 0.25);
   }
+
+  /** Tell Fold what is going on; it decides how it feels. */
+  feel(mood: FoldMood, poi: THREE.Vector3 | null = null) { this.mood = mood; this.lookAtPoi = poi; }
 
   /** The kite string from the traveler's hand to the kite (in world space). */
   updateString(hand: THREE.Vector3) {

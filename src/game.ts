@@ -36,6 +36,9 @@ import { SkyView, type CamPose } from './systems/skyView';
 import { Life } from './systems/life';
 import { Sequencer, type Beat } from './story/sequencer';
 import { currentStep, activeSideQuests, stepDetail, lanternsLit, type QuestCtx } from './story/quests';
+import { BackpackView, ITEMS, bagAdd, doTrade } from './systems/backpack';
+import { foldMood } from './player/fold';
+import { Fox } from './world/fox';
 import { CHAPTERS, MAIN_QUEST, NOT_YET, OPENING } from './data/story';
 import { ChapterOne } from './story/chapterOne';
 import * as Opening from './story/opening';
@@ -105,7 +108,14 @@ export class Game {
   lastBlip = 0;
   // other state
   ride: Ride | null = null;
-  overlay: 'map' | 'journal' | null = null;
+  overlay: 'map' | 'journal' | 'bag' | null = null;
+  bag: string[] = [];
+  sketches: { id: string; label: string; img: string }[] = [];
+  sent: Record<string, string> = {};
+  bagView!: BackpackView;
+  fox!: Fox;
+  foxWorld = 2;
+  surveyT = 0;
   journalEl: HTMLElement;
   titleEl: HTMLElement | null = null;
   nearest: { label: string; act: () => void; hold?: number; key: string } | null = null;
@@ -183,6 +193,7 @@ export class Game {
     this.motes = new Motes(this.scene, 500);
     this.rain = new Motes(this.scene, 900, '#bfe3ff', 0.22);
     this.blizzard = new Motes(this.scene, 1400, '#ffffff', 0.24);
+    this.bagView = new BackpackView();
     this.journalEl = document.createElement('div');
     this.journalEl.className = 'overlay hidden';
     document.getElementById('ui')!.append(this.journalEl);
@@ -220,6 +231,21 @@ export class Game {
     this.player.onLand = () => { this.sound.sfxPlay('land'); this.fold.hop(); };
 
     this.ch1 = new ChapterOne(this);
+    const game = this;
+    // The fox waits in the Green Deep until you are worth walking with.
+    this.fox = new Fox();
+    this.scene.add(this.fox.f.root);
+    const deep = this.planets[2];
+    this.fox.place(deep, deep.dirRiver(78, 9));
+    this.contents[2].interactables.push({
+      id: 'fox', world: 2, get pos() { return game.fox.f.root.position; }, radius: 3.5, hold: 3,
+      label: () => (game.flags.has('fox-joined') ? null : 'Kneel, and hold out your hand to the fox'),
+      act: () => {
+        game.give('fox-joined'); game.sound.sfxPlay('chime');
+        game.hud.notify('The fox sniffs your fingers for a long time. Then she trots past you, stops, and looks back. <i>She is coming.</i>');
+        game.save();
+      },
+    } as any);
     this.registerTravel();
     this.applyRiver();
     this.enterWorld(0, false);
@@ -343,6 +369,12 @@ export class Game {
     const had = this.flags.has(item);
     this.flags.add(item);
     if (had) return;
+    if (ITEMS[item]) {
+      if (bagAdd(this.bag, item)) this.hud.notify(`Into your backpack: <b>${esc(ITEMS[item].name)}</b>. <i>B to look.</i>`);
+      else this.hud.notify('Your backpack is full. <i>Swap something away first.</i>');
+      this.sound.sfxPlay('paper');
+      return;
+    }
     if (item.startsWith('map:')) {
       const pc = PIECES.find(p => p.id === item);
       if (pc) { this.hud.notify(`A piece of the map: <i>${esc(pc.label)}</i>. <b>M</b>`); this.sound.sfxPlay('paper'); }
@@ -400,9 +432,10 @@ export class Game {
   save() {
     const d = this.player.up;
     const data: SaveData = {
-      v: 2, flags: [...this.flags], moods: this.moods, river: this.river, snow: this.snow, world: this.cur,
+      v: 3, flags: [...this.flags], moods: this.moods, river: this.river, snow: this.snow, world: this.cur,
       dir: [d.x, d.y, d.z], poles: [...this.polesRead], journal: this.journal, pins: this.map.pins,
       day: this.day.t, flowers: this.flowers, sigs: this.sigs,
+      bag: this.bag, sketches: this.sketches, sent: this.sent, seen: this.map.exportSeen(),
     };
     writeSave(data);
   }
@@ -411,6 +444,7 @@ export class Game {
     this.flags = new Set(d.flags); this.moods = d.moods; this.river = d.river; this.snow = d.snow;
     this.polesRead = new Set(d.poles); this.journal = d.journal; this.map.pins = d.pins ?? {};
     this.flowers = d.flowers; this.sigs = d.sigs; this.day.t = d.day;
+    this.bag = d.bag ?? []; this.sketches = d.sketches ?? []; this.sent = d.sent ?? {}; this.map.importSeen(d.seen ?? {});
     this.player.hasDrop = true;
     this.player.canGlide = this.flags.has('power:kite');
     this.ch1.restore();
@@ -426,7 +460,7 @@ export class Game {
     const has = !!saved.data;
     const el = document.createElement('div');
     el.className = 'title';
-    el.innerHTML = `<h1 class="hand">Downriver</h1><div class="tag">a long way from home, and a river that knows the way back</div>
+    el.innerHTML = `<h1 class="hand">The Light<br>Below the Clouds</h1><div class="tag">a long way from home, and a river that knows the way back</div>
       ${saved.notice ? `<div class="notice">${esc(saved.notice)}</div>` : ''}
       <div>${has ? '<button data-a="continue">Continue</button>' : ''}<button data-a="new">${has ? 'Begin again' : 'Begin'}</button></div>
       <div class="foot">Chapter One &middot; best with headphones &middot; press H for controls</div>`;
@@ -659,13 +693,6 @@ export class Game {
     }
     const mood = this.moods[npc.id] ?? { ...base.start };
     if (closed) { this.flags.delete('closed:' + npc.id); mood.trust = Math.min(1, mood.trust + 0.12); }
-    if (this.flowers > 0 && !this.flags.has('flower:' + npc.id)) {
-      this.flowers--; this.flags.add('flower:' + npc.id);
-      mood.trust = Math.min(1, mood.trust + 0.08); mood.worry = Math.max(0, mood.worry - 0.05);
-      npc.smileT = 3;
-      this.hud.notify(`You give ${base.name} a mountain flower.`);
-      this.sound.sfxPlay('gift');
-    }
     this.conv = new Conversation(script, mood, { flags: this.flags, give: i => this.give(i) });
     this.convNpc = npc;
     npc.talking = true;
@@ -736,14 +763,19 @@ export class Game {
   }
 
   // ------------------------------------------------------------------ overlays
-  toggleOverlay(kind: 'map' | 'journal') {
+  toggleOverlay(kind: 'map' | 'journal' | 'bag') {
     if (this.overlay === kind) { this.closeOverlay(); return; }
     this.closeOverlay();
     this.overlay = kind; this.mode = 'overlay';
     this.input.unlock();
+    if (kind === 'bag') { this.renderBag(); this.bagView.show(true); this.sound.sfxPlay('paper'); return; }
     if (kind === 'map') {
       const ll = latLonOf(this.player.up);
-      this.map.draw(this.planet, this.flags, { lat: ll.lat, lonOff: wrapDeg(ll.lon - this.planet.lonAtLat(ll.lat)) });
+      const f = this.player.facing, up = this.player.up;
+      const north = new THREE.Vector3(0, 1, 0).projectOnPlane(up).normalize();
+      const east = new THREE.Vector3().crossVectors(north, up).normalize();
+      const heading = Math.atan2(f.dot(east), f.dot(north));
+      this.map.draw(this.planet, this.flags, { lat: ll.lat, lonOff: wrapDeg(ll.lon - this.planet.lonAtLat(ll.lat)), heading });
       this.map.show(true); this.sound.sfxPlay('paper');
     } else {
       this.renderJournal(); this.journalEl.classList.remove('hidden'); this.sound.sfxPlay('paper');
@@ -751,7 +783,7 @@ export class Game {
   }
   closeOverlay() {
     if (!this.overlay) return;
-    this.map.show(false); this.journalEl.classList.add('hidden');
+    this.map.show(false); this.journalEl.classList.add('hidden'); this.bagView.show(false);
     this.overlay = null;
     if (this.mode === 'overlay') this.mode = 'play';
   }
@@ -760,6 +792,47 @@ export class Game {
     if (on) { this.renderJournal(); this.journalEl.classList.remove('hidden'); this.sound.sfxPlay('paper'); }
     else this.journalEl.classList.add('hidden');
   }
+  updateFox(dt: number) {
+    const fx = this.fox, joined = this.flags.has('fox-joined');
+    fx.f.root.visible = joined ? this.mode !== 'raft' && this.mode !== 'ride' : this.cur === 2;
+    if (!fx.f.root.visible) return;
+    const p = this.planet;
+    if (joined && this.foxWorld !== this.cur) { this.foxWorld = this.cur; fx.place(p, this.player.up.clone()); }
+    if (joined) {
+      const step = currentStep(this.questCtx());
+      fx.update(dt, p, this.player.pos, this.player.facing, { happy: this.fold.happy > 0.05, poi: this.cur === 0 && step ? this.ch1.guideTarget() : null });
+    } else {
+      // waiting: she sits and watches, and flattens her ears if you run at her
+      const d = fx.f.root.position.distanceTo(this.player.pos);
+      const spd = this.player.vel.clone().projectOnPlane(this.player.up).length();
+      fx.gesture = d < 9 && spd > 6 ? 'wary' : 'sit';
+      orientTo(fx.f.root, fx.dir, this.player.pos.clone().sub(fx.f.root.position));
+      fx.t += dt; (fx as any).pose(dt);
+    }
+  }
+
+  renderBag() {
+    const near = this.mode === 'overlay' ? this.contents[this.cur].npcs.filter(n => n.root.position.distanceTo(this.player.pos) < 5).sort((a, b) => a.root.position.distanceTo(this.player.pos) - b.root.position.distanceTo(this.player.pos))[0] : undefined;
+    this.bagView.render({
+      bag: this.bag, flags: this.flags, sketches: this.sketches, sent: this.sent,
+      near: near ? { id: near.id, name: SCRIPTS[near.id].name } : null,
+      onTrade: t => {
+        if (!doTrade(this.bag, t)) return;
+        this.flags.add(t.give); this.flags.add('traded:' + t.npc);
+        const n = this.contents[this.cur].npcs.find(x => x.id === t.npc); if (n) n.smileT = 3;
+        const m = this.moods[t.npc] ?? { ...SCRIPTS[t.npc].start }; m.trust = Math.min(1, m.trust + 0.1); this.moods[t.npc] = m;
+        this.sound.sfxPlay('gift');
+        this.hud.notify(`<b>${esc(SCRIPTS[t.npc].name)}:</b> <i>${esc(t.line)}</i>`);
+        this.save();
+      },
+      onReply: (l, r) => {
+        this.sent[l] = r; this.sound.sfxPlay('paper');
+        this.hud.notify('You fold your reply into a little boat and tuck it in your bag. <i>The postman will find it.</i>');
+        this.save();
+      },
+    });
+  }
+
   renderJournal() {
     const c = this.questCtx();
     const step = currentStep(c);
@@ -905,9 +978,10 @@ export class Game {
       case 'ride': this.updateRide(dt); break;
       case 'sky': this.updateSky(dt); break;
       case 'overlay':
-        if (inp.hit('Escape') || (this.overlay === 'map' && inp.hit('KeyM')) || (this.overlay === 'journal' && inp.hit('KeyJ'))) this.closeOverlay();
-        else if (this.overlay === 'map' && inp.hit('KeyJ')) this.toggleOverlay('journal');
-        else if (this.overlay === 'journal' && inp.hit('KeyM')) this.toggleOverlay('map');
+        if (inp.hit('Escape') || (this.overlay === 'map' && inp.hit('KeyM')) || (this.overlay === 'journal' && inp.hit('KeyJ')) || (this.overlay === 'bag' && inp.hit('KeyB'))) this.closeOverlay();
+        else if (inp.hit('KeyJ')) this.toggleOverlay('journal');
+        else if (inp.hit('KeyM')) this.toggleOverlay('map');
+        else if (inp.hit('KeyB')) this.toggleOverlay('bag');
         break;
     }
     if (this.mode !== 'play' && this.mode !== 'raft') { this.hud.setPrompt(null); this.hud.setHold(null); }
@@ -927,7 +1001,14 @@ export class Game {
     this.player.windLocal.copy(east).applyQuaternion(invQ);
 
     // ---- the world moves on
-    if (this.mode !== 'ride' && this.mode !== 'raft') this.fold.update(dt, this.player.pos, this.player.up, this.player.facing, false);
+    if (this.mode !== 'ride' && this.mode !== 'raft') {
+      const hollo = this.cur === 0 && !this.flags.has('peaks-healed') ? this.ch1.hollo.root.position : null;
+      const nearGiant = !!hollo && hollo.distanceTo(this.player.pos) < 16;
+      const spd = this.player.vel.clone().projectOnPlane(this.player.up).length();
+      this.fold.feel(foldMood({ night: 1 - this.day.day, cold: this.cur === 0 ? 1 - this.player.warmth : 0, nearGiant, running: spd > 6, falling: !this.player.grounded && this.player.vel.dot(this.player.up) < -9, justHappy: this.fold.happy > 0.05 }), nearGiant ? hollo : null);
+      this.fold.update(dt, this.player.pos, this.player.up, this.player.facing, false);
+    }
+    this.updateFox(dt);
     if (this.mode !== 'ride') this.fold.updateString(this.player.person.arms[1].hand.getWorldPosition(new THREE.Vector3()));
     const free = this.mode === 'play' || this.mode === 'raft';
     if (this.cutCam) this.rig.override = this.cutCam;
@@ -1004,7 +1085,10 @@ export class Game {
     if (inp.hit('KeyF')) { this.sound.sfxPlay('whistle'); this.fold.hop(); pl.pose = {}; }
     if (inp.hit('KeyM')) { this.toggleOverlay('map'); return; }
     if (inp.hit('KeyJ')) { this.toggleOverlay('journal'); return; }
+    if (inp.hit('KeyB')) { this.toggleOverlay('bag'); return; }
     if (inp.hit('Tab') || inp.wheel > 0) { this.openSky(); return; }
+    this.surveyT -= dt;
+    if (this.surveyT <= 0) { this.surveyT = 0.5; const ll = latLonOf(pl.up); this.map.reveal(this.planet, ll.lat, wrapDeg(ll.lon - this.planet.lonAtLat(ll.lat)), 22); }
     this.nearest = this.interactPrompt();
     const n = this.nearest;
     if (n && n.hold) {

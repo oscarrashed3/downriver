@@ -63,7 +63,7 @@ export class SkyView {
     this.marker.position.copy(playerPos);
     this.silhouettes.forEach((m, i) => { m.visible = show && !visited.has(i); (m.material as THREE.MeshBasicMaterial).opacity = 0.92 * smoothstep(0.3, 0.9, this.k); });
     this.hintEl.style.display = this.k > 0.9 ? 'block' : 'none';
-    this.hintEl.innerHTML = canTravel ? 'Click a world you have visited to fly there. <b>Tab</b> or scroll in to return.' : '<b>Tab</b> or scroll in to return to Rill.';
+    this.hintEl.innerHTML = canTravel ? 'Click a world you have visited to fly there. <b>Tab</b> or scroll in to return.' : '<b>Tab</b> or scroll in to return to Nilo.';
     const v = new THREE.Vector3();
     this.planets.forEach((p, i) => {
       const el = this.labelEls[i];

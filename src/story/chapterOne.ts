@@ -15,8 +15,17 @@ import { passWinter, isHealed, projectedSnowpack } from '../systems/snowpack';
 import { currentStep, invitedCount, lanternsLit, FRIENDS } from './quests';
 import { letterPanel } from './panels';
 import { makePostman, type Postman } from '../world/postman';
+import { bagAdd, bagTake } from '../systems/backpack';
+import { makeSketch } from '../systems/sketch';
 import type { Hollo } from '../world/hollo';
 import type { CamPose } from '../systems/skyView';
+
+/** Viewpoints: sit, and the view draws itself into the sketchbook. */
+export const VIEWPOINTS = [
+  { id: 'vp-spring', at: [17.4, 12.6], look: [13.2, 0], label: 'Hollo, asleep on the spring' },
+  { id: 'vp-ridge', at: [48.2, 41.5], look: [66, 0], label: 'From Kite Ridge, the whole valley' },
+  { id: 'vp-bridge', at: [79.5, 8.5], look: [70, -12], label: "Odo's bridge, and the village behind it" },
+];
 
 const POLE_READINGS = [{ now: 1.1, old: 2.6 }, { now: 0.9, old: 2.3 }, { now: 0.8, old: 2.1 }];
 
@@ -40,6 +49,7 @@ export class ChapterOne {
   hollo: Hollo;
   postman: Postman;
   bridgeLamps: THREE.Mesh[] = [];
+  vpMarkers: THREE.Object3D[] = [];
   beam: THREE.Mesh;
   frozenMat: THREE.Material;
   springMat: THREE.Material;
@@ -89,6 +99,18 @@ export class ChapterOne {
     }));
     this.beam.frustumCulled = false; this.beam.renderOrder = 5;
     g.scene.add(this.beam);
+    // viewpoint markers: a little easel with a blank page
+    for (const vp of VIEWPOINTS) {
+      const e = new THREE.Group();
+      const legM = Props.toon('#7a5a34');
+      for (const [x, z, r] of [[-0.25, 0.1, 0.18], [0.25, 0.1, -0.18], [0, -0.25, 0]] as const) { const l = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.035, 1.3, 5), legM); l.position.set(x, 0.62, z); l.rotation.z = r; l.rotation.x = z < 0 ? -0.25 : 0.12; e.add(l); }
+      const page = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.46, 0.03), Props.toon('#f4ead2')); page.position.set(0, 1.05, 0.12); page.rotation.x = -0.18; e.add(page);
+      const d = this.p.dirRiver(vp.at[0], vp.at[1]);
+      this.p.surfacePoint(d, -0.05, e.position);
+      orientTo(e, d, this.at(vp.look).sub(e.position).negate());
+      g.scene.add(e);
+      this.vpMarkers.push(e);
+    }
     this.postman = makePostman();
     this.postman.root.visible = false;
     g.scene.add(this.postman.root);
@@ -193,6 +215,7 @@ export class ChapterOne {
       label: () => (this.has('item:bottle') && !this.has('cloud-caught') ? "Catch the little cloud in Nima's bottle" : null),
       act: () => {
         g.give('cloud-caught'); g.sound.sfxPlay('chime');
+        bagTake(g.bag, 'item:bottle'); g.give('item:cloud');
         (R.wisp as THREE.Group).scale.setScalar(0.35);
         g.hud.notify('The bottle fogs up, cold and heavy. <i>There is weather inside.</i>');
         g.save();
@@ -201,8 +224,15 @@ export class ChapterOne {
     add({
       id: 'meadow', world: 0, pos: this.at(PK.dryMeadow), radius: 8,
       label: () => (this.has('cloud-caught') && !this.has('journal:cloud') ? 'Let the cloud go over the dry meadow' : null),
-      act: () => { this.rainT = 7; g.sound.sfxPlay('splash'); this.greenMeadow(); g.give('journal:cloud'); g.save(); },
+      act: () => { this.rainT = 7; g.sound.sfxPlay('splash'); this.greenMeadow(); bagTake(g.bag, 'item:cloud'); g.give('journal:cloud'); g.save(); },
     });
+
+    // Viewpoints
+    VIEWPOINTS.forEach((vp, i) => add({
+      id: vp.id, world: 0, pos: this.vpMarkers[i].position.clone(), radius: 3.2,
+      label: () => (g.sketches.some(sk => sk.id === vp.id) ? 'Look at the view again' : 'Sit down and sketch the view'),
+      act: () => g.cut(this.sketchBeats(vp)),
+    }));
 
     // Benches: sit and watch the day go by
     (R.benches as THREE.Object3D[]).forEach((b, i) => add({
@@ -228,8 +258,12 @@ export class ChapterOne {
     // Mountain flowers to give away
     PK.flowers.forEach((ll, i) => add({
       id: 'flower' + i, world: 0, pos: this.at(ll), radius: 4,
-      label: () => (g.flowers >= 3 ? null : 'Pick a mountain flower'),
-      act: () => { g.flowers++; g.sound.sfxPlay('soft'); g.hud.notify(`A mountain flower (${g.flowers} of 3). <i>Someone might like one.</i>`); },
+      label: () => (this.has('picked:' + i) || g.bag.filter(b => b === 'item:flower').length >= 2 ? null : 'Pick a mountain flower'),
+      act: () => {
+        if (!bagAdd(g.bag, 'item:flower')) { g.hud.notify('Your backpack is full.'); return; }
+        g.flags.add('picked:' + i); g.sound.sfxPlay('soft');
+        g.hud.notify('A mountain flower, into your backpack. <i>Someone might like one.</i>');
+      },
     }));
 
     // Goats to pet, and Pebble the runaway
@@ -355,6 +389,8 @@ export class ChapterOne {
 
   afterTalk(id: string) {
     const g = this.g;
+    if (id === 'tor' && this.has('flag:tor-follow')) bagTake(g.bag, 'item:spar');
+    if (id === 'bram' && this.has('flag:tor-fences') && !this.has('got-rails')) { g.flags.add('got-rails'); g.give('item:rails'); }
     if (id === 'tor' && this.has('flag:tor-follow') && !this.has('kite-flown')) {
       g.flags.add('flag:tor-follow-active');
       g.hud.notify('Tor tucks the kite under his arm. <i>Walk up to Kite Ridge together, across the bridge and east.</i>');
@@ -457,7 +493,7 @@ export class ChapterOne {
       g.save();
     }
     if (!this.has('fences-done') && this.has('flag:tor-fences') && projectedSnowpack(g.snow) >= 0.7 - 1e-6) {
-      g.give('fences-done'); g.give('journal:fences');
+      g.give('fences-done'); g.give('journal:fences'); bagTake(g.bag, 'item:rails');
       setTimeout(() => {
         g.give('quest:night');
         (this.R.holloFire as THREE.Object3D).visible = true;
@@ -557,6 +593,49 @@ export class ChapterOne {
     const up = center.clone().sub(this.p.center).normalize();
     const t1 = anyTangent(up), t2 = new THREE.Vector3().crossVectors(up, t1);
     return { pos: center.clone().addScaledVector(up, h).addScaledVector(t1, Math.cos(a) * r).addScaledVector(t2, Math.sin(a) * r), look: center.clone().addScaledVector(up, 1.1), up };
+  }
+
+  /** Sit at a viewpoint: the camera settles on the view, and the sketch draws itself. */
+  sketchBeats(vp: typeof VIEWPOINTS[number]): Beat[] {
+    const g = this.g, pl = g.player;
+    const from = this.at(vp.at), up = from.clone().sub(this.p.center).normalize();
+    const target = this.at(vp.look);
+    const dir = target.clone().sub(from).projectOnPlane(up).normalize();
+    const cam = { pos: from.clone().addScaledVector(up, 2.4).addScaledVector(dir, 0.6), look: target.clone().addScaledVector(up, 3), up };
+    let sk: ReturnType<typeof makeSketch> | null = null;
+    let view: HTMLElement | null = null;
+    const already = g.sketches.some(s => s.id === vp.id);
+    return [
+      {
+        dur: 2.2,
+        enter: () => {
+          pl.placeAt(this.p, this.p.dirRiver(vp.at[0], vp.at[1]));
+          pl.facing.copy(dir); pl.pose = { sit: 1 }; pl.sync();
+          pl.root.visible = false; g.fold.root.visible = false;
+          g.cutCam = cam;
+          g.hud.setGoal(null);
+        },
+      },
+      {
+        dur: 7, line: { text: vp.label },
+        enter: () => {
+          g.composer.render();
+          const c = g.renderer.domElement;
+          sk = makeSketch(c, c.width, c.height);
+          view = document.createElement('div'); view.className = 'sketchview';
+          view.append(sk.canvas);
+          document.getElementById('ui')!.append(view);
+          g.sound.sfxPlay('paper');
+        },
+        tick: k => sk?.draw(Math.min(1, k * 1.25)),
+        exit: () => {
+          if (sk && !already) { g.sketches.push({ id: vp.id, label: vp.label, img: sk.jpeg() }); g.hud.notify('A new page in your sketchbook. <i>B to look.</i>'); }
+          view?.remove(); view = null;
+          pl.pose = {}; pl.root.visible = true; g.fold.root.visible = true;
+          g.save();
+        },
+      },
+    ];
   }
 
   /** A shot from the far side of a fire, looking back across it at Hollo, so the giant fills the background. */
@@ -718,7 +797,7 @@ export class ChapterOne {
       exit: () => {
         (R.spring.userData.water as THREE.Mesh).material = this.springMat;
         if (isHealed(g.snow) || this.has('gathered')) {
-          g.give('peaks-healed'); g.give('journal:hollo');
+          g.give('peaks-healed'); g.give('journal:hollo'); g.give('item:frost');
           if (this.has('built-fence')) g.give('journal:fences');
         }
         g.applyRiver();

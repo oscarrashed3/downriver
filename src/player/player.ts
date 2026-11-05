@@ -7,7 +7,7 @@ import { clamp, lerp } from '../world/noise';
 
 export type MoveMode = 'walk' | 'climb' | 'raft' | 'ride' | 'still';
 
-/** Rill: a young traveler far from home, in a coat a little too big for him. */
+/** Nilo: a young traveler far from home, in a coat a little too big for him. */
 export class Player {
   root = new THREE.Group();
   person: Person;

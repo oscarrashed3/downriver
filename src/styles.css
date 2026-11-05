@@ -105,10 +105,45 @@ canvas#game { display: block; width: 100vw; height: 100vh; }
 /* Chapter One title: hand-lettered, over the cloud sea */
 .title { background: radial-gradient(ellipse at 50% 40%, rgba(255,236,210,.05), rgba(40,30,80,.28)); transition: opacity .9s; }
 .title.out { opacity: 0; pointer-events: none; }
-.title h1.hand { font-family: 'Segoe Script', 'Snell Roundhand', 'Brush Script MT', 'Apple Chancery', cursive; font-size: 112px; font-style: normal; letter-spacing: .01em; font-weight: 400; transform: rotate(-3deg); text-shadow: 0 4px 34px rgba(60,30,80,.55), 0 0 2px rgba(255,255,255,.4); }
+.title h1.hand { text-align: center; line-height: 1.02; max-width: 92vw; font-family: 'Segoe Script', 'Snell Roundhand', 'Brush Script MT', 'Apple Chancery', cursive; font-size: clamp(52px, 7.2vw, 104px); font-style: normal; letter-spacing: .01em; font-weight: 400; transform: rotate(-3deg); text-shadow: 0 4px 34px rgba(60,30,80,.55), 0 0 2px rgba(255,255,255,.4); }
 .title .notice { max-width: 560px; text-align: center; font-size: 17px; margin: -20px 0 26px; padding: 10px 18px; border-radius: 14px; background: rgba(40,30,70,.32); font-style: italic; }
 .journal .quest { margin: 6px 0 16px; padding: 12px 16px; border-radius: 12px; background: rgba(255,240,205,.55); border: 1px solid rgba(120,90,50,.18); }
 .journal .quest .qk { font-family: system-ui, sans-serif; font-size: 11px; letter-spacing: .22em; text-transform: uppercase; opacity: .6; }
 .journal .quest .qm { font-size: 22px; font-style: italic; margin: 4px 0; }
 .journal .quest .qs { font-size: 17px; line-height: 1.45; }
 .caption { padding: 14px 26px; border-radius: 22px; background: radial-gradient(ellipse at center, rgba(30,24,50,.42), rgba(30,24,50,0) 72%); }
+
+/* Backpack, letters and sketchbook */
+.bagsheet { width: min(860px, 92vw); }
+.bagsheet .tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+.bagsheet .tab { font: inherit; font-size: 18px; padding: 6px 18px; border-radius: 20px; border: 1px solid rgba(43,37,64,.25); background: transparent; cursor: pointer; color: var(--ink); pointer-events: auto; }
+.bagsheet .tab.on { background: #2f3550; color: #f6eedd; }
+.bagsheet .slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.bagsheet .slot { min-height: 120px; border-radius: 12px; background: rgba(255,250,235,.7); border: 1px solid rgba(120,90,50,.25); padding: 8px 10px; text-align: center; }
+.bagsheet .slot.empty { background: repeating-linear-gradient(45deg, rgba(120,90,50,.05) 0 6px, transparent 6px 12px); }
+.bagsheet .slot.wanted { box-shadow: 0 0 0 2px #e8b04a, 0 0 18px rgba(232,176,74,.6); }
+.bagsheet .slot .sn { font-weight: 600; font-size: 16px; }
+.bagsheet .slot .st { font-size: 13px; opacity: .75; line-height: 1.35; margin-top: 2px; }
+.bagsheet .swap { margin-top: 6px; font: inherit; font-size: 13px; padding: 4px 8px; border-radius: 10px; border: 0; background: #e8b04a; color: #2b2540; cursor: pointer; pointer-events: auto; }
+.bagsheet h3 { margin: 16px 0 6px; font-weight: 500; letter-spacing: .04em; }
+.bagsheet .skills { margin: 0; padding-left: 18px; font-size: 17px; line-height: 1.6; }
+.bagsheet .skills b { font-family: system-ui, sans-serif; font-size: 13px; border: 1px solid rgba(43,37,64,.35); border-radius: 5px; padding: 1px 6px; }
+.bagsheet .kept { background: rgba(255,240,205,.6); border-radius: 10px; padding: 8px 12px; margin: 4px 0; font-size: 16px; }
+.bagsheet .kept .kw { font-style: italic; font-size: 18px; }
+.bagsheet .letterc { background: #f4ead2; border-radius: 6px; padding: 16px 22px; margin: 10px 0; box-shadow: 0 6px 20px rgba(30,20,40,.18); transform: rotate(-.4deg); }
+.bagsheet .letterc .lf { font-family: system-ui, sans-serif; font-size: 11px; letter-spacing: .2em; text-transform: uppercase; opacity: .55; margin-bottom: 6px; }
+.bagsheet .letterc p { margin: 6px 0; font-size: 19px; font-style: italic; color: #2f3a6a; }
+.bagsheet .letterc .sig { text-align: right; }
+.bagsheet .reply { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 16px; }
+.bagsheet .reply .card { font: inherit; font-size: 16px; padding: 6px 12px; border-radius: 10px; border: 1px solid rgba(43,37,64,.25); background: rgba(255,255,255,.6); cursor: pointer; pointer-events: auto; }
+.bagsheet .sketches { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+.bagsheet figure { margin: 0; }
+.bagsheet figure img { width: 100%; border-radius: 4px; box-shadow: 0 6px 18px rgba(30,20,40,.25); }
+.bagsheet figcaption { font-style: italic; font-size: 15px; margin-top: 4px; opacity: .8; }
+.mapsheet canvas { border-radius: 6px; }
+.sketchview { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(20,16,30,.55); }
+.sketchview canvas { width: min(900px, 84vw); height: auto; border-radius: 4px; box-shadow: 0 20px 60px rgba(0,0,0,.45); }
+.sketchview .sc { color: #fff4e0; margin-top: 18px; font-size: 24px; font-style: italic; }
+.bagsheet .forms { display: flex; gap: 8px; flex-wrap: wrap; }
+.bagsheet .form { padding: 4px 14px; border-radius: 16px; border: 1px dashed rgba(43,37,64,.3); opacity: .5; font-size: 16px; }
+.bagsheet .form.on { border-style: solid; background: #fff6dc; opacity: 1; }

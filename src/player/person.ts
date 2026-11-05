@@ -5,7 +5,7 @@ import { clamp, lerp } from '../world/noise';
 
 /** How someone looks. Every person in the game is built from this, so they share one style. */
 export interface PersonLook {
-  height?: number;      // overall scale; 1 = Rill (about 1.75 m)
+  height?: number;      // overall scale; 1 = Nilo (about 1.75 m)
   build?: number;       // width
   head?: number;        // head size multiplier (children have bigger heads)
   skin: string;

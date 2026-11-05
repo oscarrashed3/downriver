@@ -109,25 +109,27 @@ describe('The kite', () => {
 });
 
 describe('Save migration', () => {
-  const v2 = () => ({ v: 2, flags: ['read-letter'], moods: {}, river: createRiverState(), snow: createSnowpack(), world: 0, dir: [0, 1, 0], poles: [], journal: [], pins: {}, day: 0.4, flowers: 1, sigs: {} });
-  it('is on version 2', () => expect(SAVE_VERSION).toBe(2));
-  it('keeps a version 2 save as it is', () => {
-    const r = migrateSave(JSON.parse(JSON.stringify(v2())));
+  const v3 = () => ({ v: 3, flags: ['read-letter'], moods: {}, river: createRiverState(), snow: createSnowpack(), world: 0, dir: [0, 1, 0], poles: [], journal: [], pins: {}, day: 0.4, flowers: 1, sigs: {}, bag: ['item:spar'], sketches: [], sent: {}, seen: {} });
+  it('is on version 3', () => expect(SAVE_VERSION).toBe(3));
+  it('keeps a version 3 save as it is', () => {
+    const r = migrateSave(JSON.parse(JSON.stringify(v3())));
     expect(r.notice).toBeNull();
     expect(r.data?.flags).toEqual(['read-letter']);
-    expect(r.data?.day).toBe(0.4);
+    expect(r.data?.bag).toEqual(['item:spar']);
   });
-  it('fills in fields an early version 2 save did not have', () => {
-    const old: any = v2(); delete old.sigs; delete old.flowers; delete old.day;
+  it('fills in fields an early version 3 save did not have', () => {
+    const old: any = v3(); delete old.sigs; delete old.bag; delete old.seen;
     const r = migrateSave(old);
     expect(r.data?.sigs).toEqual({});
-    expect(r.data?.flowers).toBe(0);
-    expect(typeof r.data?.day).toBe('number');
+    expect(r.data?.bag).toEqual([]);
+    expect(r.data?.seen).toEqual({});
   });
-  it('gently resets a Milestone 1 save, with a kind notice', () => {
-    const r = migrateSave({ v: 1, flags: ['has-drop'], moods: {}, river: createRiverState(), snow: createSnowpack(), world: 2, dir: [0, 1, 0], poles: [], journal: [], pins: {} });
-    expect(r.data).toBeNull();
-    expect(r.notice).toBe(RESET_NOTICE);
+  it('gently resets saves from the old story, with a kind notice', () => {
+    for (const v of [1, 2]) {
+      const r = migrateSave({ v, flags: ['has-drop'], moods: {}, river: createRiverState(), snow: createSnowpack(), world: 2, dir: [0, 1, 0], poles: [], journal: [], pins: {} });
+      expect(r.data).toBeNull();
+      expect(r.notice).toBe(RESET_NOTICE);
+    }
   });
   it('ignores garbage', () => {
     expect(migrateSave(null)).toEqual({ data: null, notice: null });
