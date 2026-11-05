@@ -53,3 +53,5 @@ canvas#game { display: block; width: 100vw; height: 100vh; }
 .title .foot { position: absolute; bottom: 4vh; font-family: system-ui, sans-serif; font-size: 13px; opacity: .7; letter-spacing: .08em; }
 .skyread { position: absolute; inset: 0; opacity: 0; background: radial-gradient(ellipse at center, transparent 40%, rgba(255,190,110,0.28) 100%); transition: opacity .6s; }
 .skyread.on { opacity: 1; }
+.story.light { background: transparent; color: #3a3458; }
+.story.light .st { text-shadow: 0 1px 12px rgba(255,255,255,.9); }

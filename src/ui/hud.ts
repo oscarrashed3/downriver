@@ -34,7 +34,7 @@ export class Hud {
     this.prompt.classList.toggle('on', !!text);
   }
 
-  notify(text: string) { this.toastQ.push(text); }
+  notify(text: string) { if (!this.toastQ.includes(text)) this.toastQ.push(text); if (this.toastQ.length > 4) this.toastQ.shift(); }
 
   showBanner(name: string, sub: string) {
     (this.banner.querySelector('.bn') as HTMLElement).textContent = name;
@@ -75,9 +75,10 @@ export class Hud {
     });
   }
 
-  showStory(text: string) {
+  showStory(text: string, light = false) {
     (this.story.querySelector('.st') as HTMLElement).innerHTML = text;
     this.story.classList.remove('hidden');
+    this.story.classList.toggle('light', light);
   }
   hideStory() { this.story.classList.add('hidden'); }
   toggleHelp(force?: boolean) { this.help.classList.toggle('hidden', force === undefined ? undefined : !force); }
@@ -87,7 +88,7 @@ export class Hud {
     this.toastT -= dt;
     if (this.toastT <= 0) {
       const next = this.toastQ.shift();
-      if (next) { this.toast.innerHTML = next; this.toast.classList.add('on'); this.toastT = 2.8; }
+      if (next) { this.toast.innerHTML = next; this.toast.classList.add('on'); this.toastT = this.toastQ.length > 1 ? 1.9 : 3; }
       else this.toast.classList.remove('on');
     }
     if (this.bannerT > 0) { this.bannerT -= dt; if (this.bannerT <= 0) this.banner.classList.remove('on'); }

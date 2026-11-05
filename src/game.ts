@@ -88,6 +88,7 @@ export class Game {
   silenceGrace = 0;
   // other state
   ride: Ride | null = null;
+  rideCloud = Props.cloudWisp();
   storyQueue: string[] = [];
   storyDone: (() => void) | null = null;
   overlay: 'map' | 'journal' | null = null;
@@ -378,11 +379,13 @@ export class Game {
     }));
   }
 
-  playStory(lines: string[], done: () => void) {
+  storyLight = false;
+  playStory(lines: string[], done: () => void, light = false) {
     this.mode = 'story';
     this.storyQueue = [...lines];
     this.storyDone = done;
-    this.hud.showStory(this.storyQueue.shift()!);
+    this.storyLight = light;
+    this.hud.showStory(this.storyQueue.shift()!, light);
   }
 
   // ------------------------------------------------------------------ worlds
@@ -468,7 +471,7 @@ export class Game {
     dt *= this.fast > 1 ? 3 : 1;
     this.restT += dt;
     if (this.restPhase === 0) {
-      this.hud.setFade(smoothstep(0, 1.8, this.restT));
+      this.hud.setFade(smoothstep(0, 1.8, this.restT) * 0.92, '#eef0fa');
       if (this.restT > 2) {
         this.restPhase = 1;
         const before = this.snow.snowpack;
@@ -487,11 +490,11 @@ export class Game {
         } else {
           lines = ['Winter comes. The wind strips the ridges bare again.', 'Spring comes. Nothing has changed. The spring is thin.'];
         }
-        this.hud.setFade(0.85);
-        this.playStory(lines, () => { this.mode = 'rest'; this.restPhase = 2; this.restT = 0; });
+        this.hud.setFade(0.92, '#eef0fa');
+        this.playStory(lines, () => { this.mode = 'rest'; this.restPhase = 2; this.restT = 0; }, true);
       }
     } else if (this.restPhase === 2) {
-      this.hud.setFade(1 - smoothstep(0, 1.6, this.restT));
+      this.hud.setFade((1 - smoothstep(0, 1.6, this.restT)) * 0.92, '#eef0fa');
       if (this.restT > 1.7) { this.hud.setFade(0); this.mode = 'play'; this.save(); }
     }
   }
@@ -544,7 +547,13 @@ export class Game {
     const camPos = p.clone().addScaledVector(tan, -9).addScaledVector(camUp, 3.2);
     this.rig.override = { pos: camPos, look: p.clone().addScaledVector(tan, 6), up: camUp };
     this.hud.setFade(r.finale ? smoothstep(0.85, 1, r.s) * 0.9 : smoothstep(0.92, 1, r.s) * 0.6);
-    if (r.finale) { this.player.hasDrop = false; this.motes.update(dt, p.clone().addScaledVector(camUp, -40), p, 2, 1); }
+    if (r.finale) {
+      this.player.hasDrop = false;
+      if (!this.rideCloud.parent) this.scene.add(this.rideCloud);
+      this.rideCloud.position.copy(p).addScaledVector(camUp, -1.2);
+      this.rideCloud.scale.setScalar(0.6 + smoothstep(0, 0.15, r.s) * 0.5);
+      this.motes.update(dt, p.clone().addScaledVector(camUp, -40), p, 2, 1);
+    }
     if (r.s >= 1) {
       this.rig.override = null;
       this.enterWorld(r.to, !r.finale);
@@ -571,6 +580,7 @@ export class Game {
       }
       this.rig.snap();
       this.ride = null;
+      this.scene.remove(this.rideCloud);
     }
   }
 
@@ -773,7 +783,7 @@ export class Game {
         if (inp.hit('Space') || inp.hit('Enter') || inp.hit('KeyE') || inp.mouseHeld) {
           inp.mouseHeld = false;
           const next = this.storyQueue.shift();
-          if (next) this.hud.showStory(next);
+          if (next) this.hud.showStory(next, this.storyLight);
           else { this.hud.hideStory(); this.mode = 'play'; const d = this.storyDone; this.storyDone = null; this.rig.override = null; d?.(); }
         }
         break;
