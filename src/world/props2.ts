@@ -250,6 +250,12 @@ export function bridge(span = 9, width = 2.4): THREE.Group {
     const st = mesh(new THREE.DodecahedronGeometry(0.55 + (k % 3) * 0.12, 0), texToon('#b8b0a8', stoneTex), x + ((k * 37) % 5 - 2) * 0.18, 0.05 + (k % 2) * 0.35, -width / 2 - 0.2 + (k / 6) * (width + 0.4));
     st.rotation.set(k, k * 2.1, k * 0.7); st.scale.y = 0.75; g.add(st);
   }
+  // stone steps down from each end of the deck to the bank, so you can walk on and off
+  const slab = texToon('#a8a098', stoneTex);
+  for (const sx of [-1, 1]) for (let i = 0; i < 3; i++) {
+    const d = 0.35 + i * 0.7, top = 0.96 - d * 0.34;
+    g.add(mesh(new THREE.BoxGeometry(0.74, top + 0.6, width - 0.1), slab, sx * (span / 2 + d), (top - 0.6) / 2, 0));
+  }
   ink(g, 0.03);
   return g;
 }
@@ -410,5 +416,92 @@ export function goatShed(): THREE.Group {
   const roof = mesh(new THREE.SphereGeometry(1.9, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), toon('#6f9a4a'), 0, 1.6, 0); roof.scale.y = 0.6; g.add(roof);
   g.add(mesh(new THREE.BoxGeometry(0.7, 1.0, 0.1), toon('#4a3a30'), 0, 0.5, 1.72));
   ink(g, 0.04);
+  return g;
+}
+
+export type RoomKind = 'tor' | 'ysolde' | 'nima' | 'bram';
+
+/**
+ * Inside a cottage: one room, a table, a window, and the owner's things.
+ * Closed on all sides; the camera stands by the door (+z) and looks at the back wall (-z).
+ */
+export function interior(kind: RoomKind, wall = '#f1e6d2'): THREE.Group {
+  const g = new THREE.Group();
+  const W = 5.2, D = 4.4, H = 2.9;
+  const plaster = texToon(wall, plasterTex), floor = texToon('#9a6c48', woodTex), timber = toon('#5a3e2c'), wood = toon('#8a6444');
+  g.add(mesh(new THREE.BoxGeometry(W, 0.1, D), floor, 0, -0.05, 0));
+  g.add(mesh(new THREE.BoxGeometry(W, 0.1, D), plaster, 0, H + 0.05, 0));
+  g.add(mesh(new THREE.BoxGeometry(W, H, 0.1), plaster, 0, H / 2, -D / 2));
+  g.add(mesh(new THREE.BoxGeometry(W, H, 0.1), plaster, 0, H / 2, D / 2));
+  for (const s of [-1, 1]) g.add(mesh(new THREE.BoxGeometry(0.1, H, D), plaster, s * W / 2, H / 2, 0));
+  // beams across the ceiling, a skirting of timber
+  for (const z of [-1.2, 0.2, 1.6]) g.add(mesh(new THREE.BoxGeometry(W, 0.18, 0.2), timber, 0, H - 0.1, z));
+  g.add(mesh(new THREE.BoxGeometry(W, 0.14, 0.06), timber, 0, 0.07, -D / 2 + 0.06));
+  // the window on the back wall, full of daylight, with a cross of timber and a sill
+  const win = mesh(new THREE.PlaneGeometry(1.3, 1.0), toon('#cfe6f5', '#bfe0ff', 0.9), 0.9, 1.75, -D / 2 + 0.06); g.add(win);
+  g.add(mesh(new THREE.BoxGeometry(1.45, 0.08, 0.08), timber, 0.9, 1.75, -D / 2 + 0.08));
+  g.add(mesh(new THREE.BoxGeometry(0.08, 1.1, 0.08), timber, 0.9, 1.75, -D / 2 + 0.08));
+  g.add(mesh(new THREE.BoxGeometry(1.6, 0.08, 0.3), wood, 0.9, 1.22, -D / 2 + 0.15));
+  g.userData.window = win;
+  // rug, table, two stools
+  const rug = mesh(new THREE.CylinderGeometry(1.3, 1.3, 0.02, 20), toon(kind === 'tor' ? '#c4583e' : kind === 'nima' ? '#6f8fc8' : kind === 'bram' ? '#a8763e' : '#8a7aa8'), 0.2, 0.01, -0.2);
+  rug.scale.z = 0.7; g.add(rug);
+  const tx = 0.3, tz = -0.6;
+  g.add(mesh(new THREE.BoxGeometry(1.6, 0.08, 0.9), wood, tx, 0.78, tz));
+  for (const [x, z] of [[-0.7, -0.38], [0.7, -0.38], [-0.7, 0.38], [0.7, 0.38]]) g.add(mesh(new THREE.BoxGeometry(0.08, 0.76, 0.08), timber, tx + x, 0.38, tz + z));
+  for (const x of [-0.6, 1.2]) { g.add(mesh(new THREE.CylinderGeometry(0.2, 0.18, 0.06, 10), wood, tx + x, 0.48, tz + 0.75)); g.add(mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.46, 5), timber, tx + x, 0.23, tz + 0.75)); }
+  // a candle on the table, and the warm light it gives
+  g.add(mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.2, 8), toon('#f4ecdc'), tx - 0.5, 0.92, tz));
+  g.add(mesh(new THREE.SphereGeometry(0.05, 6, 4), toon('#ffd27a', '#ffb347', 1.4), tx - 0.5, 1.06, tz));
+  const lamp = new THREE.PointLight('#ffc98a', 2.2, 8, 1.4); lamp.position.set(tx - 0.5, 1.6, tz + 0.4); g.add(lamp);
+  const fill = new THREE.PointLight('#fff1da', 0.8, 9, 1.2); fill.position.set(0, 2.4, 1.6); g.add(fill);
+  // a shelf on the left wall
+  g.add(mesh(new THREE.BoxGeometry(0.3, 0.06, 2.2), wood, -W / 2 + 0.2, 1.7, -0.6));
+
+  const on = (o: THREE.Object3D) => { g.add(o); return o; };
+  if (kind === 'tor') {
+    // kite frames hung on the back wall, paper rolls and a spool of string on the table
+    const frame = (x: number, y: number, s: number, paper: string) => {
+      const k = new THREE.Group();
+      const sail = mesh(new THREE.CircleGeometry(0.5, 4), toon(paper), 0, 0, 0); sail.scale.set(0.8, 1.15, 1); k.add(sail);
+      k.add(mesh(new THREE.BoxGeometry(0.03, 1.2, 0.03), timber, 0, 0, 0.02));
+      k.add(mesh(new THREE.BoxGeometry(0.85, 0.03, 0.03), timber, 0, 0.1, 0.02));
+      k.position.set(x, y, -D / 2 + 0.1); k.scale.setScalar(s); return on(k);
+    };
+    frame(-1.4, 1.8, 1, '#e8584a'); frame(-0.5, 2.1, 0.7, '#f4d06a');
+    for (let i = 0; i < 3; i++) { const r = mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.8, 8), toon(['#f4ecdc', '#e8584a', '#7fa8d8'][i]), tx + 0.1 + i * 0.16, 0.88, tz - 0.1); r.rotation.z = Math.PI / 2; g.add(r); }
+    g.add(mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.14, 10), toon('#d8b88a'), tx + 0.6, 0.89, tz + 0.2));
+    for (let i = 0; i < 4; i++) g.add(mesh(new THREE.BoxGeometry(0.02, 0.02, 1.0), wood, -W / 2 + 0.2, 1.75 + i * 0.03, -0.6 + (i - 1.5) * 0.12));
+  } else if (kind === 'ysolde') {
+    // a row of small stones on the shelf, a painted chart of the glacier, a kettle
+    for (let i = 0; i < 6; i++) g.add(mesh(new THREE.DodecahedronGeometry(0.09 + (i % 3) * 0.03, 0), texToon('#b8b0a8', stoneTex), -W / 2 + 0.2, 1.8, -1.5 + i * 0.35));
+    const chart = mesh(new THREE.PlaneGeometry(1.2, 0.85), toon('#efe0c0'), -1.1, 1.75, -D / 2 + 0.07); g.add(chart);
+    for (let i = 0; i < 5; i++) g.add(mesh(new THREE.BoxGeometry(0.9 - i * 0.12, 0.03, 0.01), toon('#7fa8d8'), -1.1, 1.45 + i * 0.13, -D / 2 + 0.08));
+    g.add(mesh(new THREE.SphereGeometry(0.16, 10, 8), toon('#5d5a8a'), tx + 0.4, 0.95, tz + 0.1));
+    g.add(mesh(new THREE.CylinderGeometry(0.06, 0.08, 0.05, 8), toon('#5d5a8a'), tx + 0.4, 1.12, tz + 0.1));
+    g.add(mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.1, 8), toon('#f4ecdc'), tx, 0.87, tz + 0.2));
+  } else if (kind === 'nima') {
+    // Nima: a bed under a blue blanket, cloud drawings pinned up, paper birds on the shelf
+    g.add(mesh(new THREE.BoxGeometry(1.0, 0.4, 2.0), wood, W / 2 - 0.6, 0.2, 0.6));
+    g.add(mesh(new THREE.BoxGeometry(0.95, 0.12, 1.9), toon('#6f8fc8'), W / 2 - 0.6, 0.46, 0.6));
+    g.add(mesh(new THREE.BoxGeometry(0.6, 0.12, 0.35), toon('#f4ecdc'), W / 2 - 0.6, 0.54, -0.2));
+    for (let i = 0; i < 4; i++) {
+      const x = -1.9 + i * 0.6, y = 1.6 + (i % 2) * 0.45;
+      g.add(mesh(new THREE.PlaneGeometry(0.5, 0.38), toon('#fbf6ea'), x, y, -D / 2 + 0.07));
+      for (let k = 0; k < 3; k++) { const c = mesh(new THREE.CircleGeometry(0.07 + k * 0.02, 10), toon('#9fc3e8'), x - 0.1 + k * 0.1, y - 0.02 + (k === 1 ? 0.04 : 0), -D / 2 + 0.08); g.add(c); }
+    }
+    for (let i = 0; i < 3; i++) { const b = mesh(new THREE.ConeGeometry(0.08, 0.22, 3), toon('#fbf6ea'), -W / 2 + 0.2, 1.82, -1.3 + i * 0.5); b.rotation.z = Math.PI / 2; g.add(b); }
+  } else {
+    // Bram: goat bells on hooks along the back wall, a heap of hay, a crook by the door
+    for (let i = 0; i < 5; i++) {
+      const x = -2.0 + i * 0.45;
+      g.add(mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.12, 4), timber, x, 2.25, -D / 2 + 0.12));
+      g.add(mesh(new THREE.ConeGeometry(0.1, 0.18, 8, 1, true), toon('#c9a24a'), x, 2.08, -D / 2 + 0.14));
+    }
+    for (let i = 0; i < 6; i++) { const hay = mesh(new THREE.SphereGeometry(0.4, 8, 6), toon('#d8c07a'), W / 2 - 0.7 + (i % 3) * 0.2, 0.25 + Math.floor(i / 3) * 0.25, 1.0 + (i % 2) * 0.4); hay.scale.y = 0.6; g.add(hay); }
+    const crook = mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.8, 5), timber, -W / 2 + 0.4, 0.9, 1.6); crook.rotation.z = 0.15; g.add(crook);
+    g.add(mesh(new THREE.CylinderGeometry(0.12, 0.1, 0.18, 10), toon('#f4ecdc'), tx + 0.3, 0.91, tz));
+  }
+  ink(g, 0.02);
   return g;
 }

@@ -97,7 +97,21 @@ export const PROMPT = {
   fenceWindy: 'Rail the old posts into a snow fence. <i>The wind drops its snow here.</i>',
   fenceCalm: 'Rail the old posts into a snow fence. <i>The wind barely touches this hollow.</i>',
   sitFire: 'Sit by the fire beside Hollo, and wait for the snow',
+  door: (who: string) => `Open ${who} door`,
+  doorLocked: (who: string) => `Try ${who} door`,
+  stepOut: 'Step back outside',
 };
+
+/** Doors in the village: whose house it is, what you find inside, or why it is shut. */
+export const DOORS = {
+  tor: { whose: "Tor's", inside: "Tor's house. <i>Kite ribs are drying over the table, and there is string everywhere.</i>" },
+  ysolde: { whose: "Ysolde's", inside: "Ysolde's house. <i>A stone for every year the ice went back, all in a row on the shelf.</i>" },
+  nima: { whose: "Nima's", inside: "Nima's house. <i>Every cloud she ever named is pinned to the wall.</i>" },
+  bram: { whose: "Bram's", locked: "Bram's door is locked. <i>He's with the goats.</i>", inside: "Bram's house. <i>It smells of hay and goat, and there is a bell on every hook.</i>" },
+  empty: { whose: 'the blue', locked: 'Nobody is home. <i>The window is dark, and the step is swept.</i>' },
+  odo: { whose: "Odo's", locked: "Odo's door is shut. <i>He's down at the bridge, watching the water.</i>" },
+} as const;
+
 
 /** Count the words of a goal line, leaving out a trailing "(n of m)" counter. */
 export function goalWords(line: string): number {

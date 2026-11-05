@@ -46,7 +46,7 @@ import { CHAPTERS, MAIN_QUEST, NOT_YET, OPENING } from './data/story';
 import { ChapterOne } from './story/chapterOne';
 import * as Opening from './story/opening';
 
-export type Mode = 'title' | 'cut' | 'play' | 'talk' | 'ride' | 'raft' | 'overlay' | 'sky' | 'letter';
+export type Mode = 'title' | 'cut' | 'play' | 'talk' | 'ride' | 'raft' | 'overlay' | 'sky' | 'letter' | 'inside';
 
 interface Ride { to: number; curve: THREE.Curve<THREE.Vector3>; s: number; dur: number; kite: boolean; arrive: () => void }
 
@@ -161,6 +161,8 @@ export class Game {
   holdKey = '';
   /** Camera pose for scripted scenes, or null to follow the traveler. */
   cutCam: CamPose | null = null;
+  /** Inside a cottage: the little room, the fade in and out, and what Nilo noticed. */
+  room: { obj: THREE.Group; t: number; phase: 'in' | 'stay' | 'out'; text: string; pose: CamPose } | null = null;
   /** 0..1: thin the fog so far worlds show (title, sky view, the home light shot). */
   fogK = 0;
   sitting: THREE.Object3D | null = null;
@@ -1020,6 +1022,62 @@ export class Game {
     this.hud.notify('You sit for a while. The day goes by a little faster. <i>Move to stand up.</i>');
   }
 
+  /** Open a door: a short fade, then the room inside. Nilo stays on the step outside the whole time. */
+  enterRoom(kind: Q.RoomKind, wall: string, text: string) {
+    if (this.room) return;
+    const obj = Q.interior(kind, wall);
+    const at = this.planet.center.clone().add(new THREE.Vector3(0, this.planet.R * 3, 0));
+    obj.position.copy(at); obj.visible = false; this.scene.add(obj);
+    const pose = { pos: at.clone().add(new THREE.Vector3(-0.2, 1.6, 1.85)), look: at.clone().add(new THREE.Vector3(0.2, 1.15, -2.2)), up: new THREE.Vector3(0, 1, 0) };
+    this.room = { obj, t: 0, phase: 'in', text, pose };
+    this.mode = 'inside';
+    this.player.vel.set(0, 0, 0);
+    this.sound.sfxPlay('soft');
+  }
+
+  updateInside(dt: number) {
+    const r = this.room, inp = this.input, F = 0.35;
+    if (!r) { this.mode = 'play'; return; }
+    r.t += dt;
+    this.player.animate(dt, 0, false); this.player.sync();
+    const sway = { pos: r.pose.pos.clone().add(new THREE.Vector3(Math.sin(this.time * 0.5) * 0.05, Math.sin(this.time * 0.8) * 0.02, 0)), look: r.pose.look, up: r.pose.up };
+    if (r.phase === 'in') {
+      if (r.t < F) this.hud.setFade(r.t / F, '#2a1e1a');
+      else {
+        r.obj.visible = true; this.cutCam = sway;
+        this.hud.setFade(Math.max(0, 1 - (r.t - F) / F), '#2a1e1a');
+        if (r.t >= 2 * F) { r.phase = 'stay'; r.t = 0; this.hud.setFade(0); this.hud.notify(r.text); }
+      }
+      return;
+    }
+    if (r.phase === 'stay') {
+      this.cutCam = sway;
+      this.hud.setPrompt(`<b>E</b>${PROMPT.stepOut}`);
+      const mv = inp.key('KeyW') || inp.key('KeyS') || inp.key('KeyA') || inp.key('KeyD');
+      if (r.t > 0.6 && (inp.hit('KeyE') || inp.hit('Escape') || inp.hit('Space') || mv)) { r.phase = 'out'; r.t = 0; this.hud.setPrompt(null); this.sound.sfxPlay('soft'); }
+      return;
+    }
+    if (r.t < F) { this.cutCam = sway; this.hud.setFade(r.t / F, '#2a1e1a'); return; }
+    if (r.obj.parent) { this.scene.remove(r.obj); this.cutCam = null; this.rig.override = null; }
+    this.hud.setFade(Math.max(0, 1 - (r.t - F) / F), '#2a1e1a');
+    if (r.t >= 2 * F) { this.hud.setFade(0); this.room = null; this.mode = 'play'; }
+  }
+
+  /** People and goats give way gently: Nilo is eased out of them, never stopped dead. */
+  softPush(dt: number) {
+    const pl = this.player, c = this.contents[this.cur];
+    const bodies: [THREE.Vector3, number][] = c.npcs.map(n => [n.root.position, 0.75]);
+    if (this.cur === 0) for (const gt of (c.refs.goats ?? []) as { obj: THREE.Object3D }[]) bodies.push([gt.obj.position, 0.6]);
+    if (this.cur === 0 && c.refs.pebble) bodies.push([(c.refs.pebble as THREE.Object3D).position, 0.45]);
+    for (const [pos, r] of bodies) {
+      const d = pl.pos.clone().sub(pos);
+      d.addScaledVector(pl.up, -d.dot(pl.up));
+      const len = d.length(), min = r + 0.38;
+      if (len >= min || len < 1e-4) continue;
+      pl.pos.addScaledVector(d, Math.min(1, dt * 10) * (min - len) / len);
+    }
+  }
+
   npcsNear(pos: THREE.Vector3, r: number) { return this.contents[this.cur].npcs.some(n => n.root.position.distanceTo(pos) < r); }
 
   openSky() {
@@ -1129,6 +1187,7 @@ export class Game {
         }
         break;
       case 'play': this.updatePlay(dt); this.updateAreas(); this.updateMeet(dt); break;
+      case 'inside': this.updateInside(dt); break;
       case 'raft': this.updateRaft(dt); break;
       case 'talk': this.updateTalk(dt); break;
       case 'ride': this.updateRide(dt); break;
@@ -1142,7 +1201,7 @@ export class Game {
         break;
       }
     }
-    if (this.mode !== 'play' && this.mode !== 'raft') { this.hud.setPrompt(null); this.hud.setHold(null); }
+    if (this.mode !== 'play' && this.mode !== 'raft' && this.mode !== 'inside') { this.hud.setPrompt(null); this.hud.setHold(null); }
 
     // ---- time of day, light and wind
     const p = this.planet;
@@ -1284,6 +1343,7 @@ export class Game {
       else { pl.animate(dt, 0, false); pl.sync(); this.hud.setPrompt(null); return; }
     }
     pl.update(dt, p, mv, inp.hit('Space'), inp.key('ShiftLeft') || inp.key('ShiftRight'), inp.key('Space'));
+    this.softPush(dt);
     this.fold.kiteMode = pl.gliding;
     if (inp.hit('KeyQ') && this.flags.has('power:skyreading')) { this.skyread.active = !this.skyread.active; this.sound.sfxPlay('soft'); }
     if (inp.hit('KeyF')) { this.sound.sfxPlay('whistle'); this.fold.hop(); pl.pose = {}; }

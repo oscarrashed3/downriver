@@ -10,7 +10,7 @@ import * as Props from '../world/props';
 import { orientTo, anyTangent } from '../world/sphere';
 import { clamp, lerp, smoothstep } from '../world/noise';
 import { SCRIPTS } from '../data/scripts';
-import { NOTE, PROMPT } from '../data/words';
+import { NOTE, PROMPT, DOORS } from '../data/words';
 import { CAMPFIRE, WINTER_LINES, DAWN_LINES, FAREWELL, KITE_GIFT, KITE_FLIGHT, POSTMAN, ECHOES, NOT_YET } from '../data/story';
 import { passWinter, isHealed, projectedSnowpack } from '../systems/snowpack';
 import { currentStep, invitedCount, lanternsLit, FRIENDS } from './quests';
@@ -293,6 +293,24 @@ export class ChapterOne {
         g.hud.notify(NOTE.pebbleFollows);
       },
     } as any);
+
+    // Doors in the village: walk up and press E. Some open onto a small room, some are shut for now.
+    const doors: [keyof typeof DOORS, THREE.Object3D][] = [
+      ['tor', R.houses.tor], ['ysolde', R.houses.ysolde], ['nima', R.houses.nima], ['bram', R.houses.bram], ['empty', R.houses.empty], ['odo', R.boathouse],
+    ];
+    for (const [who, h] of doors) {
+      const d = DOORS[who] as { whose: string; inside?: string; locked?: string };
+      const at = h.localToWorld((h.userData.doorAt as THREE.Vector3).clone());
+      const open = () => !!d.inside && (!d.locked || (who === 'bram' && this.has('goat-home')));
+      add({
+        id: 'door:' + who, world: 0, pos: at, radius: 1.7,
+        label: () => (open() ? PROMPT.door(d.whose) : PROMPT.doorLocked(d.whose)),
+        act: () => {
+          if (!open()) { g.sound.sfxPlay('soft'); g.hud.notify(d.locked!); return; }
+          g.enterRoom(who as 'tor' | 'ysolde' | 'nima' | 'bram', (h.userData.wall as string) ?? '#f1e6d2', d.inside!);
+        },
+      });
+    }
 
     // The bridge: goodbyes
     add({

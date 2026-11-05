@@ -10,6 +10,7 @@ import { smoothstep } from './noise';
 import { makeHollo } from './hollo';
 import { leafClump } from '../render/foliage';
 import { AREAS } from '../data/areas';
+import type { Shape2 } from './collide';
 
 /** Where everything in Chapter One stands: [lat from the north pole, degrees of longitude from the river]. */
 export const PK = {
@@ -65,6 +66,9 @@ export function populatePeaks(p: Planet, scene: THREE.Scene, c: WorldContent,
   const faceTo = (from: number[], to: number[]) => at(to).sub(at(from));
   const anim = (f: (dt: number, t: number) => void) => c.animate.push(f);
   const R = c.refs;
+  const solid = (obj: THREE.Object3D, shape: Shape2, h: number, id?: string) => { p.solids.push({ obj, shape, h, id }); return obj; };
+  const box = (hw: number, hd: number): Shape2 => ({ kind: 'box', hw, hd });
+  const circle = (r: number): Shape2 => ({ kind: 'circle', r });
 
   // ---- the spring and the old tree
   const spring = put(Q.springBasin(), PK.spring[0], PK.spring[1], 0); R.spring = spring;
@@ -73,11 +77,14 @@ export function populatePeaks(p: Planet, scene: THREE.Scene, c: WorldContent,
   const hollo = makeHollo(); R.hollo = hollo;
   put(hollo.root, PK.spring[0], PK.spring[1], 0, faceTo(PK.spring, PK.wake), 0.2);
   hollo.root.scale.setScalar(1.45);
+  solid(hollo.root, circle(2.6), 5, 'hollo');
   anim((dt, t) => hollo.update(dt, t));
   // the fire Ysolde will light beside it on the long night
   const hf = put(P.campfire(), PK.holloFire[0], PK.holloFire[1], 0); R.holloFire = hf; hf.visible = false;
+  solid(hf, circle(0.9), 0.6, 'hollofire');
   anim((_dt, t) => { if (!hf.visible) return; hf.userData.flame.scale.y = 1 + Math.sin(t * 13) * 0.12 + Math.sin(t * 7.3) * 0.08; hf.userData.light.intensity = 26 + Math.sin(t * 17) * 4; });
   const tree = put(Q.oldTree(), PK.tree[0], PK.tree[1], 0, undefined, 0.4);
+  solid(tree, circle(0.9), 6, 'oldtree');
   const chimes = Q.treeChimes(); chimes.position.set(0.6, 5.2, 1.6); tree.add(chimes); R.chimes = chimes;
   R.tree = tree;
   anim((_dt, t) => (chimes.userData.icicles as THREE.Object3D[]).forEach((ic, i) => (ic.rotation.z = Math.sin(t * 1.4 + i * 0.9) * 0.12)));
@@ -94,18 +101,21 @@ export function populatePeaks(p: Planet, scene: THREE.Scene, c: WorldContent,
 
   // ---- Hearth village
   const houses: THREE.Object3D[] = [];
-  const house = (ll: number[], opts: Parameters<typeof Q.cottage>[0]) => { const h = put(Q.cottage(opts), ll[0], ll[1], 0, faceTo(ll, PK.fire), 0.3); houses.push(h); return h; };
+  const house = (ll: number[], opts: Parameters<typeof Q.cottage>[0]) => { const h = put(Q.cottage(opts), ll[0], ll[1], 0, faceTo(ll, PK.fire), 0.3); houses.push(h); solid(h, box((opts?.w ?? 4.2) / 2 + 0.2, (opts?.d ?? 3.6) / 2 + 0.2), 6, 'house'); h.userData.doorAt = new THREE.Vector3(-(opts?.w ?? 4.2) * 0.18, 0, (opts?.d ?? 3.6) / 2 + 0.75); h.userData.wall = opts?.wall; return h; };
   house(PK.ysoldeHouse, { wall: '#f1e6d2', roof: '#a8533a', door: '#5d5a8a' });
   house(PK.bramHouse, { wall: '#e8dcc4', roof: '#8a5a3a', door: '#6a4a34', w: 4.8 });
   house(PK.torHouse, { wall: '#f4ecdc', roof: '#3f6a8a', door: '#d8483a', flowers: '#7fa8d8' });
   house(PK.house4, { wall: '#efe2d0', roof: '#b0603e', door: '#4f7a5a' });
   house(PK.house5, { wall: '#f2e8d8', roof: '#9a4a3a', door: '#3f6a8a', w: 3.8 });
+  R.houses = { ysolde: houses[0], bram: houses[1], tor: houses[2], nima: houses[3], empty: houses[4] };
   R.chimneys = houses.map(h => h.localToWorld((h.userData.chimney as THREE.Vector3).clone()));
   const fire = put(P.campfire(), PK.fire[0], PK.fire[1], 0); R.fire = fire;
+  solid(fire, circle(0.9), 0.6, 'fire');
   anim((_dt, t) => { fire.userData.flame.scale.y = 1 + Math.sin(t * 13) * 0.12 + Math.sin(t * 7.3) * 0.08; fire.userData.light.intensity = 26 + Math.sin(t * 17) * 4; });
   for (let i = 0; i < 5; i++) { const a = i / 5 * Math.PI * 2; const log = put(Q.woodpile(), PK.fire[0] + Math.cos(a) * 2.6, PK.fire[1] + Math.sin(a) * 3.0, 0, faceTo([PK.fire[0] + Math.cos(a) * 2.6, PK.fire[1] + Math.sin(a) * 3.0], PK.fire)); log.scale.set(0.6, 0.45, 0.5); }
   lm('Hearth village', 60, -17, 'hut');
   const mill = put(Q.windmill(), PK.windmill[0], PK.windmill[1], 0, faceTo(PK.windmill, [50, 0]), 0.2);
+  solid(mill, circle(1.45), 7, 'windmill');
   anim(dt => (mill.userData.hub.rotation.z += dt * 0.7));
   put(Q.gardenPatch(), PK.garden[0], PK.garden[1], 0, faceTo(PK.garden, PK.fire));
   put(Q.woodpile(), PK.woodpile[0], PK.woodpile[1], 0, faceTo(PK.woodpile, PK.fire));
@@ -132,8 +142,8 @@ export function populatePeaks(p: Planet, scene: THREE.Scene, c: WorldContent,
   bunt([58.6, -21.8], [61.8, -13.8], 3.6); bunt([62.4, -22.2], [62.6, -14.2], 3.3);
   R.flags = flags;
   R.lanterns = PK.lanterns.map(ll => put(Q.lanternPost(), ll[0], ll[1], 0, faceTo(ll, [ll[0], 0])));
-  for (let i = 0; i < 3; i++) put(Q.stoneWall(5), 68 + i * 2.2, -30 - i * 4, 0, faceTo([68 + i * 2.2, -30 - i * 4], [68 + i * 2.2, -20]));
-  put(Q.goatShed(), PK.pen[0] + 1.5, PK.pen[1] - 5, 0, faceTo([PK.pen[0] + 1.5, PK.pen[1] - 5], PK.fire));
+  for (let i = 0; i < 3; i++) solid(put(Q.stoneWall(5), 68 + i * 2.2, -30 - i * 4, 0, faceTo([68 + i * 2.2, -30 - i * 4], [68 + i * 2.2, -20])), box(2.6, 0.32), 0.62, 'wall');
+  solid(put(Q.goatShed(), PK.pen[0] + 1.5, PK.pen[1] - 5, 0, faceTo([PK.pen[0] + 1.5, PK.pen[1] - 5], PK.fire)), circle(1.85), 2.6, 'shed');
 
   // ---- little stone cairns mark the way from the bridge up to Kite Ridge
   const route = PATHS[2];
@@ -174,7 +184,11 @@ export function populatePeaks(p: Planet, scene: THREE.Scene, c: WorldContent,
   orientTo(br, bdir, p.surfacePoint(p.dirRiver(PK.bridge[0], 10)).sub(br.position));
   br.rotateY(Math.PI / 2);
   scene.add(br); R.bridge = br;
-  const bh = put(Q.boathouse(), PK.boathouse[0], PK.boathouse[1], 0, faceTo(PK.boathouse, PK.bridge), 0.3);
+  // the bridge deck is walkable: planks at 0.96 + an arch, as in Q.bridge(10, 2.4)
+  // past each end, the abutment stones make a short ramp down to the bank (the banks sit lower than the deck ends)
+  p.decks.push({ obj: br, span: 14, width: 2.4, top: x => Math.abs(x) <= 5 ? 0.96 + Math.sin((x / 10 + 0.5) * Math.PI) * 1.1 : 0.96 - (Math.abs(x) - 5) * 0.34 });
+  const bh = put(Q.boathouse(), PK.boathouse[0], PK.boathouse[1], 0, faceTo(PK.boathouse, PK.bridge), 0.3); R.boathouse = bh; bh.userData.doorAt = new THREE.Vector3(-3.6 * 0.18, 0, 3.2 / 2 + 0.75);
+  solid(bh, box(2.0, 1.8), 6, 'boathouse');
   R.cloth.push(...(bh.userData.cloth as THREE.Object3D[]));
   lm('The old bridge', PK.bridge[0], 0, 'arch');
 
@@ -227,7 +241,7 @@ export function populatePeaks(p: Planet, scene: THREE.Scene, c: WorldContent,
       const lat = la + Math.cos(a) * r, lon = lo + Math.sin(a) * r * 1.3;
       const d = p.dirRiver(lat, lon);
       if (!free(d, 6) || p.slope(d) > 0.6) continue;
-      const o = make(); o.rotateY(P.rand() * 6); put(o, lat, lon, 0, undefined, 0.3); placed++;
+      const o = make(); o.rotateY(P.rand() * 6); put(o, lat, lon, 0, undefined, 0.3); solid(o, circle(o.userData.trunk ?? 0.3), 8, 'tree'); placed++;
     }
   };
   for (const [la, lo] of [[32, -26], [40, 28], [78, 38], [84, -44], [108, -22], [116, 26], [134, 4], [150, -30], [140, 40], [96, 60], [100, -70], [26, -50]]) grove(la, lo, 9, 10, () => Q.alpinePine(5 + P.rand() * 4));
@@ -250,7 +264,7 @@ export function populatePeaks(p: Planet, scene: THREE.Scene, c: WorldContent,
     const lat = 15 + P.rand() * 160, lon = (P.rand() * 2 - 1) * 170;
     const d = p.dirRiver(lat, lon);
     if (!free(d, 5)) continue;
-    put(Q.boulder(0.6 + P.rand() * 1.1), lat, lon, 0, undefined, 0.4); bo++;
+    const bs = 0.6 + P.rand() * 1.1; solid(put(Q.boulder(bs), lat, lon, 0, undefined, 0.4), circle(0.95 * bs), 1.0 * bs, 'boulder'); bo++;
   }
   // rocks in the river for the raft to steer around
   R.riverRocks = [] as { t: number; side: number }[];

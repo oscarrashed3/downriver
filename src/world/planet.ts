@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { Solid, Deck } from './collide';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Noise, smoothstep, clamp, lerp } from './noise';
 import { dirLatLon, angleBetween } from './sphere';
@@ -32,6 +33,9 @@ export class Planet {
   paths: { pts: THREE.Vector3[]; width: number }[] = [];
   /** Places kept clear of grass (house floors, the campfire ring). */
   clearings: { dir: THREE.Vector3; r: number }[] = [];
+  /** Things you cannot walk through, and decks you can walk on. */
+  solids: Solid[] = [];
+  decks: Deck[] = [];
   /** Soft ground tints, one per named area. */
   tints: { dir: THREE.Vector3; r: number; color: THREE.Color; k: number }[] = [];
   /** Grass density per terrain vertex (0..1), filled by recolor(). */

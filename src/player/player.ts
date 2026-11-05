@@ -4,6 +4,7 @@ import { toon } from '../world/props';
 import { Person, type PoseInput } from './person';
 import { orientTo, anyTangent } from '../world/sphere';
 import { clamp, lerp } from '../world/noise';
+import { resolveSolids, deckUnder } from '../world/collide';
 
 export type MoveMode = 'walk' | 'climb' | 'raft' | 'ride' | 'still';
 
@@ -19,6 +20,8 @@ export class Player {
   up = new THREE.Vector3(0, 1, 0);
   facing = new THREE.Vector3(0, 0, 1);
   grounded = false;
+  /** Standing on the bridge (or another deck). */
+  onDeck = false;
   mode: MoveMode = 'walk';
   /** The drop's warmth, 0..1. Fades while climbing or in deep cold; returns when resting. */
   warmth = 1;
@@ -87,7 +90,7 @@ export class Player {
     const surfR = planet.surfaceRadius(this.up);
     const r = toC.length();
     const slope = planet.slope(this.up);
-    const steep = slope > 0.72;
+    const steep = slope > 0.72 && !this.onDeck;
 
     // Velocity split into vertical (along up) and tangential.
     const vUp = this.vel.dot(this.up);
@@ -140,6 +143,30 @@ export class Player {
       this.grounded = false;
     }
     void surfR; void r;
+
+    // Walkable decks (the bridge): step up onto the arch, and the railings keep you on it.
+    this.onDeck = false;
+    for (const d of planet.decks) {
+      const u = deckUnder(d, this.pos, planet.center);
+      if (!u || Math.abs(u.z) > d.width / 2 + 0.05) continue;
+      const vu3 = this.vel.dot(u.up);
+      // from below the planks you can step up a little; from above you land on them
+      const stepUp = this.grounded ? 0.8 : 0.35;
+      if (u.lift > -0.15 && u.lift < stepUp && vu3 <= 0.5) {
+        this.pos.addScaledVector(u.up, u.lift);
+        if (vu3 < 0) this.vel.addScaledVector(u.up, -vu3);
+        this.grounded = true; this.onDeck = true;
+        const lim = d.width / 2 - 0.35;
+        if (Math.abs(u.z) > lim) {
+          this.pos.addScaledVector(u.side, Math.sign(u.z) * lim - u.z);
+          const vs = this.vel.dot(u.side);
+          if (vs * u.z > 0) this.vel.addScaledVector(u.side, -vs);
+        }
+      }
+    }
+
+    // Solid things: houses, trees, rocks, Hollo. Slide along them.
+    resolveSolids(planet.solids, this.pos, planet.center, 0.38);
 
     // Warmth: climbing costs warmth, standing still or walking returns it slowly.
     if (this.hasDrop) {
