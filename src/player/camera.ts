@@ -13,6 +13,13 @@ export class CameraRig {
   pos = new THREE.Vector3();
   look = new THREE.Vector3();
   override: null | { pos: THREE.Vector3; look: THREE.Vector3; up: THREE.Vector3 } = null;
+  /** Something between the look point and the camera: returns the clear fraction (1 = nothing in the way). */
+  block: ((look: THREE.Vector3, pos: THREE.Vector3) => number) | null = null;
+  /** Also push in the current override shot (talks); hand-placed cutscene shots are left alone. */
+  blockOverride = false;
+  /** Blend from an earlier shot into whatever the camera is doing now. */
+  private ease: { pos: THREE.Vector3; look: THREE.Vector3; up: THREE.Vector3; t: number; dur: number } | null = null;
+  private shown = { pos: new THREE.Vector3(), look: new THREE.Vector3(), up: new THREE.Vector3(0, 1, 0) };
   private init = false;
 
   constructor(public camera: THREE.PerspectiveCamera) {}
@@ -55,16 +62,33 @@ export class CameraRig {
     if (!this.init) { this.pos.copy(goal); this.look.copy(lookGoal); this.init = true; }
     this.pos.lerp(goal, 1 - Math.exp(-9 * dt));
     this.look.lerp(lookGoal, 1 - Math.exp(-14 * dt));
-    if (this.override) {
-      this.camera.position.copy(this.override.pos);
-      this.camera.up.copy(this.override.up);
-      this.camera.lookAt(this.override.look);
-      return;
+    let pos: THREE.Vector3, look: THREE.Vector3, up2: THREE.Vector3;
+    if (this.override) { pos = this.override.pos.clone(); look = this.override.look; up2 = this.override.up; }
+    else { pos = this.pos.clone(); look = this.look; up2 = this.smoothUp; }
+    // never inside a house or a rock: push in toward the look point
+    if (this.block && (!this.override || this.blockOverride)) {
+      const k = this.block(look, pos);
+      if (k < 1) pos.lerpVectors(look, pos, Math.max(0.12, k - 0.06));
     }
-    this.camera.position.copy(this.pos);
-    this.camera.up.copy(this.smoothUp);
-    this.camera.lookAt(this.look);
+    if (this.ease) {
+      this.ease.t += dt;
+      const e = clamp(this.ease.t / this.ease.dur), k = e * e * (3 - 2 * e);
+      pos.lerpVectors(this.ease.pos, pos, k);
+      look = this.ease.look.clone().lerp(look, k);
+      up2 = this.ease.up.clone().lerp(up2, k).normalize();
+      if (e >= 1) this.ease = null;
+    }
+    this.camera.position.copy(pos);
+    this.camera.up.copy(up2);
+    this.camera.lookAt(look);
+    this.shown.pos.copy(pos); this.shown.look.copy(look); this.shown.up.copy(up2);
   }
+
+  /** Start a smooth move from what is on screen now to the next shot (or back behind Nilo). */
+  easeFromHere(dur = 0.8) {
+    this.ease = { pos: this.shown.pos.clone(), look: this.shown.look.clone(), up: this.shown.up.clone(), t: 0, dur };
+  }
+  get easing() { return !!this.ease; }
 
   snap() { this.init = false; }
 }

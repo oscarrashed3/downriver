@@ -54,6 +54,21 @@ describe('resolveSolids', () => {
   });
 });
 
+describe('offset and camera-only solids', () => {
+  it('a shape can sit away from its object, like Hollo\'s head in front of his body', () => {
+    const hollo = new THREE.Object3D();
+    const s: Solid[] = [{ obj: hollo, shape: { kind: 'circle', r: 1 }, h: 4, off: [0, 4] }];
+    expect(resolveSolids(s, new THREE.Vector3(0, 0, 0.5), center)).toBe(false);
+    const p = new THREE.Vector3(0, 0, 4.5);
+    expect(resolveSolids(s, p, center, 0.38)).toBe(true);
+    expect(p.z).toBeCloseTo(5.38);
+  });
+  it('camera-only solids never stop Nilo (he walks on the bridge)', () => {
+    const s: Solid[] = [{ obj: new THREE.Object3D(), shape: { kind: 'box', hw: 5, hd: 1.3 }, h: 3, camOnly: true }];
+    expect(resolveSolids(s, new THREE.Vector3(0, 0.5, 0), center)).toBe(false);
+  });
+});
+
 describe('deckUnder (the bridge)', () => {
   const br = new THREE.Object3D();
   const deck: Deck = { obj: br, span: 10, width: 2.4, top: x => 0.96 + Math.sin((x / 10 + 0.5) * Math.PI) * 1.1 };

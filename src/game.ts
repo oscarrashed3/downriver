@@ -9,6 +9,8 @@ import { Planet } from './world/planet';
 import { Sky } from './world/sky';
 import { prepare, populate, type WorldContent, type Interactable } from './world/content';
 import * as Q from './world/props2';
+import { talkSpot, overShoulder, segmentClear, chooseShot } from './systems/stage';
+import { resolveSolids } from './world/collide';
 import { PK, peaksFlowers } from './world/peaks';
 import { latLonOf, orientTo, wrapDeg } from './world/sphere';
 import { clamp, lerp, smoothstep } from './world/noise';
@@ -46,7 +48,7 @@ import { CHAPTERS, MAIN_QUEST, NOT_YET, OPENING } from './data/story';
 import { ChapterOne } from './story/chapterOne';
 import * as Opening from './story/opening';
 
-export type Mode = 'title' | 'cut' | 'play' | 'talk' | 'ride' | 'raft' | 'overlay' | 'sky' | 'letter' | 'inside';
+export type Mode = 'title' | 'cut' | 'play' | 'talk' | 'ride' | 'raft' | 'overlay' | 'sky' | 'letter' | 'inside' | 'approach';
 
 interface Ride { to: number; curve: THREE.Curve<THREE.Vector3>; s: number; dur: number; kite: boolean; arrive: () => void }
 
@@ -161,6 +163,12 @@ export class Game {
   holdKey = '';
   /** Camera pose for scripted scenes, or null to follow the traveler. */
   cutCam: CamPose | null = null;
+  /** Walking Nilo up to something before using it: a seat, an easel, a thing on the ground, a person. */
+  appr: { spot: THREE.Vector3; face: THREE.Vector3; t: number; phase: 'walk' | 'turn' | 'kneel'; kneel: boolean; then: () => void } | null = null;
+  /** The two-shot during a talk: who the camera is on, and when the dialogue box may open. */
+  talkCam: { side: number; wide: number; lift: number; onNilo: boolean; t: number; open: boolean } | null = null;
+  kneelT = 0;
+  sitSlide: { from: THREE.Vector3; to: THREE.Vector3; t: number } | null = null;
   /** Inside a cottage: the little room, the fade in and out, and what Nilo noticed. */
   room: { obj: THREE.Group; t: number; phase: 'in' | 'stay' | 'out'; text: string; pose: CamPose } | null = null;
   /** 0..1: thin the fog so far worlds show (title, sky view, the home light shot). */
@@ -229,6 +237,9 @@ export class Game {
 
     this.scene.add(this.player.root, this.fold.root, this.fold.string);
     this.rig = new CameraRig(this.camera);
+    // keep the camera out of houses, trunks and rocks: it pushes in toward Nilo instead
+    // (the bridge only counts when choosing a talk shot: Nilo walks on it, so it must not shove the follow camera)
+    this.rig.block = (look, pos) => this.planet.solids.length ? segmentClear(this.planet.solids.filter(s => !s.camOnly), look, pos, this.planet.center) : 1;
     this.input = new Input(canvas);
     this.map = new MapView(this.contents.flatMap(c => c.landmarks));
     this.skyread = new Skyreading(this.scene);
@@ -738,7 +749,22 @@ export class Game {
   }
   sigFor(id: string) { return this.scriptFlags(SCRIPTS[id]).filter(f => this.flags.has(f)).join(','); }
 
+  /** Press E on a person: Nilo walks to a spot in front of them, both turn to face each other, then the talk begins. */
   startTalk(npc: Npc) {
+    npc.talking = true;
+    const up = npc.up.clone();
+    const free = (p: THREE.Vector3) => {
+      const q = p.clone();
+      if (this.cur === 0 && resolveSolids(this.planet.solids, q, this.planet.center, 0.45)) return false;
+      if (this.contents[this.cur].npcs.some(o => o !== npc && o.root.position.distanceTo(p) < 1.0)) return false;
+      const n = p.clone().sub(this.planet.center).normalize();
+      return Math.abs(this.planet.surfaceRadius(n) - npc.root.position.distanceTo(this.planet.center)) < 1.2;
+    };
+    const spot = talkSpot(npc.root.position, up, this.player.pos, free);
+    this.beginApproach(spot, npc.root.position, () => this.openTalk(npc));
+  }
+
+  openTalk(npc: Npc) {
     const base = SCRIPTS[npc.id];
     let script: Script = base;
     const closed = this.flags.has('closed:' + npc.id);
@@ -753,7 +779,17 @@ export class Game {
     this.mode = 'talk';
     this.sitting = null; this.player.pose = {};
     this.input.unlock();
-    this.hud.openDialogue(base.name, base.title);
+    // the camera eases to over Nilo's shoulder; the dialogue box opens once it has settled
+    const across = npc.root.position.clone().sub(this.player.pos).projectOnPlane(this.player.up).normalize();
+    const eye = this.player.pos.clone().addScaledVector(this.player.up, 1.4);
+    // pick the side and height where neither shot (on them, on Nilo) has a wall, a rock or Hollo in the way
+    const npcEye = npc.root.position.clone().addScaledVector(npc.up, 1.4);
+    const S = this.planet.solids, C = this.planet.center;
+    const pick = chooseShot(eye, npcEye, this.player.up, (a, b) => this.cur === 0 ? segmentClear(S, a, b, C) : 1);
+    this.talkCam = { side: pick.side, wide: pick.wide, lift: pick.lift, onNilo: false, t: 0, open: false };
+    this.rig.blockOverride = true;
+    this.fold.root.visible = false; // Fold tucks himself away so he isn't between the two faces
+    this.rig.easeFromHere(0.75);
     this.shownChars = 0; this.lineHold = 0; this.silenceGrace = 0; this.lastBlip = 0;
     this.hud.setPrompt(null);
   }
@@ -765,7 +801,8 @@ export class Game {
     this.sigs[npc.id] = this.sigFor(npc.id);
     npc.talking = false;
     this.hud.closeDialogue();
-    this.rig.override = null;
+    this.rig.override = null; this.talkCam = null; this.fold.root.visible = true; this.rig.blockOverride = false;
+    this.rig.easeFromHere(0.9);
     this.mode = 'play';
     const hint = SCRIPTS[npc.id].hint;
     if (this.flags.has('closed:' + npc.id) && hint) setTimeout(() => this.hud.notify(`<i>${esc(hint)}</i>`), 2500);
@@ -779,11 +816,22 @@ export class Game {
     const conv = this.conv!, npc = this.convNpc!;
     const holding = this.input.key('Space') || this.input.mouseHeld;
     npc.mood = conv.mood;
-    const mid = this.player.pos.clone().lerp(npc.root.position, 0.5);
     const up = this.player.up;
     const across = npc.root.position.clone().sub(this.player.pos).projectOnPlane(up).normalize();
-    const side = new THREE.Vector3().crossVectors(up, across).normalize();
-    this.rig.override = { pos: mid.clone().addScaledVector(side, 6.2).addScaledVector(up, 2.2).addScaledVector(across, -1.6), look: mid.clone().addScaledVector(up, 1.2), up };
+    // over-the-shoulder two-shot: on the person while they speak, on Nilo while he chooses what to say
+    const tc = this.talkCam!;
+    const niloEye = this.player.person.head.getWorldPosition(new THREE.Vector3()).addScaledVector(up, 0.18);
+    const npcEye = npc.person.head.getWorldPosition(new THREE.Vector3()).addScaledVector(npc.up, 0.18);
+    const onNilo = conv.step().kind === 'cards';
+    if (onNilo !== tc.onNilo && tc.open) { tc.onNilo = onNilo; this.rig.easeFromHere(0.45); }
+    this.rig.override = tc.onNilo ? overShoulder(npcEye, niloEye, up, -tc.side, tc.wide, tc.lift) : overShoulder(niloEye, npcEye, up, tc.side, tc.wide, tc.lift);
+    tc.t += dt / this.fast;
+    if (!tc.open) {
+      this.player.facing.lerp(across, 1 - Math.exp(-10 * dt)).normalize();
+      this.player.animate(dt / this.fast, 0, false); this.player.sync();
+      if (tc.t > 0.8) { tc.open = true; this.hud.openDialogue(SCRIPTS[npc.id].name, SCRIPTS[npc.id].title); }
+      return;
+    }
     this.player.facing.copy(across);
     this.player.lookAt = npc.root.position.clone().addScaledVector(up, 1.3);
     this.player.pose = { listen: holding ? 1 : 0 };
@@ -1015,7 +1063,8 @@ export class Game {
     this.sitting = bench;
     const up = bench.position.clone().sub(this.planet.center).normalize();
     const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(bench.quaternion).projectOnPlane(up).normalize();
-    this.player.pos.copy(bench.position).addScaledVector(up, 0.02).addScaledVector(fwd, 0.08);
+    // Nilo has walked up in front of the seat: he settles back onto it while he sits
+    this.sitSlide = { from: this.player.pos.clone(), to: bench.position.clone().addScaledVector(up, 0.02).addScaledVector(fwd, 0.08), t: 0 };
     this.player.up.copy(up); this.player.facing.copy(fwd); this.player.vel.set(0, 0, 0);
     this.player.pose = { sit: 1 };
     this.player.sync();
@@ -1061,6 +1110,47 @@ export class Game {
     if (r.obj.parent) { this.scene.remove(r.obj); this.cutCam = null; this.rig.override = null; }
     this.hud.setFade(Math.max(0, 1 - (r.t - F) / F), '#2a1e1a');
     if (r.t >= 2 * F) { this.hud.setFade(0); this.room = null; this.mode = 'play'; }
+  }
+
+  /** Wrap an interactable's action so Nilo walks to it first (and kneels, for things on the ground). */
+  walkFirst(it: Interactable) {
+    if (!it.walkTo) return it.act;
+    return () => { const w = it.walkTo!(); if (w) this.beginApproach(w.spot, w.face, it.act, w.kneel); else it.act(); };
+  }
+
+  beginApproach(spot: THREE.Vector3, face: THREE.Vector3, then: () => void, kneel = false) {
+    this.appr = { spot: spot.clone(), face: face.clone(), t: 0, phase: 'walk', kneel, then };
+    this.mode = 'approach';
+    this.sitting = null; this.player.pose = {};
+    this.hud.setPrompt(null);
+  }
+
+  updateApproach(dt: number) {
+    const a = this.appr, pl = this.player;
+    if (!a) { this.mode = 'play'; return; }
+    a.t += dt;
+    const to = a.spot.clone().sub(pl.pos).projectOnPlane(pl.up);
+    const dist = to.length();
+    if (a.phase === 'walk') {
+      // walk, never run, and give up gracefully if something is in the way
+      if (dist < 0.2 || a.t > 3.5) { a.phase = 'turn'; a.t = 0; }
+      const mv = dist < 0.2 ? new THREE.Vector3() : to.normalize().multiplyScalar(clamp(dist / 0.9, 0.35, 1));
+      pl.update(dt, this.planet, mv, false, false);
+      this.softPush(dt);
+      return;
+    }
+    pl.update(dt, this.planet, new THREE.Vector3(), false, false);
+    const want = a.face.clone().sub(pl.pos).projectOnPlane(pl.up);
+    if (want.lengthSq() > 1e-4) pl.facing.lerp(want.normalize(), 1 - Math.exp(-12 * dt)).normalize();
+    if (a.phase === 'turn' && a.t > 0.3) {
+      if (a.kneel) { a.phase = 'kneel'; a.t = 0; pl.pose = { kneel: 1 }; }
+      else { this.appr = null; this.mode = 'play'; a.then(); }
+      return;
+    }
+    if (a.phase === 'kneel' && a.t > 0.5) {
+      // the hand reaches the ground: the thing goes into the satchel, then Nilo stands
+      this.appr = null; this.mode = 'play'; this.kneelT = 0.45; a.then();
+    }
   }
 
   /** People and goats give way gently: Nilo is eased out of them, never stopped dead. */
@@ -1141,7 +1231,7 @@ export class Game {
     if (best) best.d -= 0.8;
     for (const it of this.contents[this.cur].interactables as Interactable[]) {
       const d = it.pos.distanceTo(pl.pos);
-      if (d < it.radius && (!best || d < best.d)) { const l = it.label(); if (l) best = { label: l, act: it.act, hold: it.hold, d, key: it.id }; }
+      if (d < it.radius && (!best || d < best.d)) { const l = it.label(); if (l) best = { label: l, act: this.walkFirst(it), hold: it.hold, d, key: it.id }; }
     }
     if (!best && (this.cur > 0 || this.flags.has('peaks-healed'))) {
       const near = this.planet.riverNearest(pl.up);
@@ -1188,6 +1278,7 @@ export class Game {
         break;
       case 'play': this.updatePlay(dt); this.updateAreas(); this.updateMeet(dt); break;
       case 'inside': this.updateInside(dt); break;
+      case 'approach': this.updateApproach(dt); break;
       case 'raft': this.updateRaft(dt); break;
       case 'talk': this.updateTalk(dt); break;
       case 'ride': this.updateRide(dt); break;
@@ -1339,9 +1430,15 @@ export class Game {
     const keyed = MENU_TABS.find(t => t.key && inp.hit('Key' + t.key));
     if (keyed) { this.openTab(keyed.id); return; }
     if (this.sitting) {
-      if (mv.lengthSq() > 0.01 || inp.hit('Space') || inp.hit('KeyE')) { this.sitting = null; pl.pose = {}; }
+      if (this.sitSlide) {
+        const sl = this.sitSlide; sl.t = Math.min(1, sl.t + dt / 0.45);
+        pl.pos.lerpVectors(sl.from, sl.to, sl.t * sl.t * (3 - 2 * sl.t));
+        if (sl.t >= 1) this.sitSlide = null;
+      }
+      if (!this.sitSlide && (mv.lengthSq() > 0.01 || inp.hit('Space') || inp.hit('KeyE'))) { this.sitting = null; pl.pose = {}; }
       else { pl.animate(dt, 0, false); pl.sync(); this.hud.setPrompt(null); return; }
     }
+    if (this.kneelT > 0) { this.kneelT -= dt; if (this.kneelT <= 0 || mv.lengthSq() > 0.01) { this.kneelT = 0; pl.pose = {}; } }
     pl.update(dt, p, mv, inp.hit('Space'), inp.key('ShiftLeft') || inp.key('ShiftRight'), inp.key('Space'));
     this.softPush(dt);
     this.fold.kiteMode = pl.gliding;

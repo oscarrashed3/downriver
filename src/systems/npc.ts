@@ -57,7 +57,7 @@ export class Npc {
     else if (playerPos && (this.talking || (near && !this.pose.lie && !this.pose.sit))) {
       const toP = playerPos.clone().sub(this.root.position).projectOnPlane(this.up).normalize();
       const away = (1 - s.trust) * 1.2;
-      fwd = toP.clone().applyAxisAngle(this.up, this.talking ? away * 0.8 : away * 0.4);
+      fwd = toP.clone().applyAxisAngle(this.up, this.talking ? away * 0.2 : away * 0.4);
     }
     const cur = new THREE.Vector3(0, 0, 1).applyQuaternion(this.root.quaternion);
     cur.lerp(fwd, 1 - Math.exp(-3 * dt));

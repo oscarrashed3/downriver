@@ -33,6 +33,12 @@ export interface Solid {
   /** Off for things that come and go (the long-night fire), on otherwise. */
   on?: () => boolean;
   id?: string;
+  /** Where the shape sits in the object's own ground plane, if not at its origin (x, z; scaled with the object). */
+  off?: [number, number];
+  /** Only stops the camera, not Nilo (the bridge, which you walk on). */
+  camOnly?: boolean;
+  /** Extra room the camera keeps from it (Hollo's fur reaches well past where he is solid). */
+  camPad?: number;
 }
 
 /** A walkable deck, like the bridge: an arch along the object's local x axis. */
@@ -44,11 +50,11 @@ const v = new THREE.Vector3(), ax = new THREE.Vector3(), az = new THREE.Vector3(
 export function resolveSolids(solids: Solid[], pos: THREE.Vector3, center: THREE.Vector3, rad = 0.38): boolean {
   let hit = false;
   for (const s of solids) {
-    if (s.on && !s.on()) continue;
+    if (s.camOnly || (s.on && !s.on())) continue;
     const o = s.obj;
     if (!o.visible) continue;
     v.subVectors(pos, o.position);
-    const reach = (s.shape.kind === 'circle' ? s.shape.r : Math.hypot(s.shape.hw, s.shape.hd)) * o.scale.x + rad + 0.5;
+    const reach = ((s.shape.kind === 'circle' ? s.shape.r : Math.hypot(s.shape.hw, s.shape.hd)) + (s.off ? Math.hypot(s.off[0], s.off[1]) : 0)) * o.scale.x + rad + 0.5;
     if (v.lengthSq() > reach * reach + 9) continue;
     up.subVectors(o.position, center).normalize();
     const height = v.dot(up);
@@ -56,6 +62,7 @@ export function resolveSolids(solids: Solid[], pos: THREE.Vector3, center: THREE
     ax.set(1, 0, 0).applyQuaternion(o.quaternion).projectOnPlane(up).normalize();
     az.set(0, 0, 1).applyQuaternion(o.quaternion).projectOnPlane(up).normalize();
     const k = o.scale.x;
+    if (s.off) v.addScaledVector(ax, -s.off[0] * k).addScaledVector(az, -s.off[1] * k);
     const sh: Shape2 = s.shape.kind === 'circle' ? { kind: 'circle', r: s.shape.r * k } : { kind: 'box', hw: s.shape.hw * k, hd: s.shape.hd * o.scale.z };
     const p = pushOut2(v.dot(ax), v.dot(az), rad, sh);
     if (!p) continue;

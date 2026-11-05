@@ -17,6 +17,8 @@ export interface Interactable {
   act: () => void;
   /** Seconds E must be held (listening at an echo stone, calming a goat). */
   hold?: number;
+  /** Walk up to it first: where to stand, what to face, and whether to kneel (things on the ground). */
+  walkTo?: () => { spot: THREE.Vector3; face: THREE.Vector3; kneel?: boolean } | null;
 }
 
 export interface WorldContent {

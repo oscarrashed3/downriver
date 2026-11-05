@@ -150,10 +150,23 @@ export class ChapterOne {
   register() {
     const g = this.g, R = this.R, add = (it: WorldContent['interactables'][number]) => this.c.interactables.push(it);
     const pos = (o: THREE.Object3D) => o.position.clone();
+    // things on the ground: Nilo walks up to arm's length, kneels and reaches
+    const pickup = (at: () => THREE.Vector3) => () => {
+      const p = at(), pl = g.player, d = pl.pos.clone().sub(p).projectOnPlane(pl.up);
+      if (d.lengthSq() < 1e-4) d.copy(pl.facing).negate();
+      return { spot: p.clone().addScaledVector(d.normalize(), 0.75), face: p, kneel: true };
+    };
+    // seats: stand just in front, facing the way the seat faces, then sit back onto it
+    const seatAt = (o: THREE.Object3D) => () => {
+      const up = o.position.clone().sub(this.p.center).normalize();
+      const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(o.quaternion).projectOnPlane(up).normalize();
+      const spot = o.position.clone().addScaledVector(fwd, 0.75);
+      return { spot, face: spot.clone().addScaledVector(fwd, 3) };
+    };
 
     // The willow branch by the old tree, for Tor's kite.
     add({
-      id: 'spar', world: 0, pos: pos(R.spar), radius: 3.2,
+      id: 'spar', world: 0, pos: pos(R.spar), radius: 3.2, walkTo: pickup(() => pos(R.spar)),
       label: () => (this.has('item:spar') || this.has('kite-flown') ? null : PROMPT.willow),
       act: () => { g.give('item:spar'); (R.spar as THREE.Object3D).visible = false; g.sound.sfxPlay('soft'); g.hud.notify(NOTE.willow); g.save(); },
     });
@@ -199,6 +212,8 @@ export class ChapterOne {
     });
     add({
       id: 'hollofire', world: 0, pos: pos(R.holloFire), radius: 4.5,
+      // when everyone is gathered, Nilo walks to his seat by the fire before the long night begins
+      walkTo: () => (this.has('gathered') && !this.has('peaks-healed') ? { spot: this.at([PK.holloFire[0] + Math.cos(0.3) * 2.2, PK.holloFire[1] + Math.sin(0.3) * 2.6]), face: pos(R.holloFire) } : null),
       label: () => {
         if (!(R.holloFire as THREE.Object3D).visible || this.has('peaks-healed')) return null;
         return this.has('gathered') ? PROMPT.sitFire : PROMPT.warm;
@@ -240,13 +255,14 @@ export class ChapterOne {
     // Viewpoints
     VIEWPOINTS.forEach((vp, i) => add({
       id: vp.id, world: 0, pos: this.vpMarkers[i].position.clone(), radius: 3.2,
+      walkTo: () => { const at = this.at(vp.at); return { spot: at, face: this.at(vp.look) }; },
       label: () => (g.sketches.some(sk => sk.id === vp.id) ? PROMPT.sketchAgain : PROMPT.sketch),
       act: () => g.cut(this.sketchBeats(vp)),
     }));
 
     // Benches: sit and watch the day go by
     (R.benches as THREE.Object3D[]).forEach((b, i) => add({
-      id: 'bench' + i, world: 0, pos: pos(b), radius: 2.4,
+      id: 'bench' + i, world: 0, pos: pos(b), radius: 2.4, walkTo: seatAt(b),
       label: () => (g.npcsNear(b.position, 1.5) ? null : PROMPT.bench),
       act: () => g.sit(b),
     }));
@@ -267,7 +283,7 @@ export class ChapterOne {
 
     // Mountain flowers to give away
     PK.flowers.forEach((ll, i) => add({
-      id: 'flower' + i, world: 0, pos: this.at(ll), radius: 4,
+      id: 'flower' + i, world: 0, pos: this.at(ll), radius: 4, walkTo: pickup(() => this.at(ll)),
       label: () => (this.has('picked:' + i) || g.bag.filter(b => b === 'item:flower').length >= 2 ? null : PROMPT.flower),
       act: () => {
         if (!bagAdd(g.bag, 'item:flower')) { g.hud.notify(NOTE.bagFull); return; }

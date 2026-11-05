@@ -53,6 +53,8 @@ export interface PoseInput {
   climbing?: boolean;
   vUp?: number;
   sit?: number;
+  /** Kneel on one knee and reach forward (picking something up). */
+  kneel?: number;
   lie?: number;
   wave?: number;
   listen?: number;
@@ -435,6 +437,7 @@ export class Person {
     const ph = this.phase;
     const sit = this.s('sit', p.sit ?? 0, dt, 5);
     const lie = this.s('lie', p.lie ?? 0, dt, 4);
+    const kneel = this.s('kneel', p.kneel ?? 0, dt, 7);
     const wave = this.s('wave', p.wave ?? 0, dt, 6);
     const listen = this.s('listen', p.listen ?? 0, dt, 5);
     const surprise = this.s('surprise', p.surprise ?? 0, dt, 10);
@@ -459,15 +462,18 @@ export class Person {
       thigh = lerp(thigh, Math.sin(t * 6 + o) * 0.5 - 0.3, climb);
       knee = lerp(knee, 0.7 + Math.sin(t * 6 + o) * 0.4, climb);
       thigh = lerp(thigh, this.sitThigh, sit); knee = lerp(knee, this.sitKnee, sit);
+      // kneeling: left foot forward, right knee on the ground
+      thigh = lerp(thigh, i === 0 ? -1.35 : 0.15, kneel); knee = lerp(knee, i === 0 ? 1.55 : 1.85, kneel);
       L.thigh.rotation.x = thigh; L.knee.rotation.x = knee;
       L.thigh.rotation.z = lerp(0, (i ? 1 : -1) * 0.08, sit);
     }
     // Body bob and lean.
     const bob = Math.abs(Math.sin(ph)) * moving * (0.035 + run * 0.03) * (1 - air);
-    this.hips.position.y = lerp(this.hipY + bob - moving * 0.02, this.sitHip, sit);
+    this.hips.position.y = lerp(lerp(this.hipY + bob - moving * 0.02, this.sitHip, sit), this.hipY * 0.5, kneel);
     const breath = Math.sin(t * 1.7) * 0.012;
     let lean = moving * 0.06 + run * 0.16 - air * 0.05 + climb * 0.35 + listen * 0.08 + (this.look.hunch ?? 0) * 0.3;
     lean = lerp(lean, -0.12, sit);
+    lean = lerp(lean, 0.5, kneel);
     this.torso.rotation.x = lean + breath * 0.3 + Math.sin(t * 34) * shiver * 0.02;
     this.torso.rotation.z = Math.sin(t * 41) * shiver * 0.03 + Math.sin(ph) * moving * 0.035;
     this.torso.rotation.y = Math.sin(ph) * moving * 0.1;
@@ -505,6 +511,8 @@ export class Person {
       x = lerp(x, -0.6, shiver * 0.8); el = lerp(el, -1.9, shiver * 0.8); z = lerp(z, -0.5 * s, shiver * 0.8);
       // sitting: hands on knees
       x = lerp(x, this.sitArm, sit); el = lerp(el, -0.4, sit);
+      // kneeling: the right hand reaches down to the ground in front, the left rests on the knee
+      x = lerp(x, i === 1 ? -1.25 : -0.7, kneel); el = lerp(el, i === 1 ? -0.15 : -0.9, kneel); z = lerp(z, i === 1 ? -0.1 : 0.05, kneel);
       if (i === 1) {
         // right arm: wave, shield eyes, touch chest
         x = lerp(x, -0.3, wave); z = lerp(z, 2.6 + Math.sin(t * 9) * 0.25 * 0, wave); el = lerp(el, -0.6 + Math.sin(t * 9) * 0.45, wave);
