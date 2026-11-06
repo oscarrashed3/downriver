@@ -5,6 +5,7 @@ import { Person, type PoseInput } from './person';
 import { orientTo, anyTangent } from '../world/sphere';
 import { clamp, lerp } from '../world/noise';
 import { resolveSolids, deckUnder } from '../world/collide';
+import { Motion } from './motion';
 
 export type MoveMode = 'walk' | 'climb' | 'raft' | 'ride' | 'still';
 
@@ -51,7 +52,19 @@ export class Player {
   flipT = 0;
   /** Crouch left from a hard landing. */
   landT = 0;
+  private landAmt = 0;
   onRoll?: () => void;
+  /** Feet, legs, weight and cloth (see motion.ts). */
+  motion: Motion;
+  /** Caps the speed (for tests and slow walks). */
+  maxSpeed: number | null = null;
+  /** Skidding to a stop before turning round at a run. */
+  skidT = 0;
+  private skidDir = new THREE.Vector3();
+  private planet: Planet | null = null;
+  private lastMove = new THREE.Vector3();
+  private running = false;
+  private lastBusy = 0;
   private tumble = 0;
   private lastSpeed = 0;
   private lastVUp = 0;
@@ -80,6 +93,8 @@ export class Player {
     this.lanternLight.position.z = 0.18;
     this.lantern.add(this.lanternLight);
     this.person.strapPoint.add(this.lantern);
+    this.motion = new Motion(this.person, this.lantern);
+    this.motion.onPlant = (_i, sp) => { if (sp > 0.6) this.onStep?.(this.planet?.cfg.shape ?? 'peaks'); };
     this.satchelMat = toon('#8a5a34').clone();
     this.person.satchel?.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh && !m.userData.isOutline && (m.material as THREE.MeshToonMaterial).color?.getHexString() === '8a5a34') m.material = this.satchelMat; });
   }
@@ -112,7 +127,20 @@ export class Player {
     this.mode = climbing ? 'climb' : 'walk';
     let speed = run ? 9.5 : 5.5;
     if (climbing) speed = 2.8;
-    const target = moveDir.clone().multiplyScalar(speed);
+    if (this.maxSpeed != null) speed = Math.min(speed, this.maxSpeed);
+    this.planet = planet; this.lastMove.copy(moveDir); this.running = run;
+    // a sharp reversal at a run skids first (Mario 64): brake hard, feet dug in, then pivot and push off
+    const vNow = vTan.length();
+    if (this.skidT <= 0 && this.grounded && vNow > 7 && moveDir.lengthSq() > 0.01 && vTan.dot(moveDir) / vNow < -0.5 && this.rollT <= 0) {
+      this.skidT = 0.34; this.skidDir.copy(vTan).normalize(); this.motion.inertialize();
+    }
+    if (this.skidT > 0) {
+      this.skidT = Math.max(0, this.skidT - dt);
+      vTan.multiplyScalar(Math.exp(-9 * dt));
+      this.facing.copy(this.skidDir);
+      if (this.skidT <= 0) { this.facing.copy(moveDir.lengthSq() > 0.01 ? moveDir : this.skidDir.clone().negate()).projectOnPlane(this.up).normalize(); this.motion.inertialize(); }
+    }
+    const target = moveDir.clone().multiplyScalar(this.skidT > 0 ? 0 : speed);
     const accel = this.grounded ? 14 : 3.5;
     vTan.lerp(target, 1 - Math.exp(-accel * dt));
 
@@ -161,7 +189,12 @@ export class Player {
     const ground = planet.surfaceRadius(nUp);
     const nr = this.pos.distanceTo(planet.center);
     if (nr <= ground + 0.02) {
-      if (!this.grounded && vU < -4) { this.squash = Math.min(0.35, -vU * 0.025); this.onLand?.(-vU); if (vU < -11) this.landT = 0.35; }
+      if (!this.grounded && vU < -4) {
+        this.squash = Math.min(0.35, -vU * 0.025); this.onLand?.(-vU);
+        // knees take the landing in proportion to how hard it was; a big fall at speed turns into a roll
+        this.landAmt = clamp((-vU - 4) / 12); this.landT = 0.18 + this.landAmt * 0.3;
+        if (-vU > 15 && vTan.length() > 3 && this.rollT <= 0) { this.rollT = Player.ROLL; this.rollDir.copy(vTan).projectOnPlane(nUp).normalize(); this.onRoll?.(); }
+      }
       if (!this.grounded) this.flipT = 0;
       this.pos.copy(nUp).multiplyScalar(ground).add(planet.center);
       const vu2 = this.vel.dot(nUp);
@@ -202,13 +235,10 @@ export class Player {
       else this.warmth = Math.min(1, this.warmth + dt * (moveDir.lengthSq() < 0.01 ? 0.35 : 0.12));
     } else this.warmth = 1;
 
-    if (moveDir.lengthSq() > 0.01) this.facing.lerp(moveDir.clone().normalize(), 1 - Math.exp(-10 * dt));
+    if (moveDir.lengthSq() > 0.01 && this.skidT <= 0) this.facing.lerp(moveDir.clone().normalize(), 1 - Math.exp(-10 * dt));
     this.facing.projectOnPlane(this.up).normalize();
     const sp = vTan.length();
-    if (this.grounded && sp > 0.5) {
-      this.stepTimer -= dt * sp * 0.42;
-      if (this.stepTimer <= 0) { this.stepTimer = 1; this.onStep?.(planet.cfg.shape); }
-    }
+    void this.stepTimer;
     this.animate(dt, sp, climbing);
     this.sync();
   }
@@ -245,7 +275,7 @@ export class Player {
     this.person.root.rotation.x = this.tumble;
     this.person.root.position.set(0, c - c * Math.cos(this.tumble) - (tuck * 0.18), -c * Math.sin(this.tumble));
     this.landT = Math.max(0, this.landT - dt);
-    const crouch = this.landT > 0 ? Math.min(1, this.landT / 0.12) : 0;
+    const crouch = this.landT > 0 ? Math.min(1, this.landT / 0.12) * this.landAmt : 0;
     this.lastSpeed = sp;
     const cold = this.hasDrop && this.warmth < 0.45 ? clamp((0.45 - this.warmth) / 0.35) : 0;
     this.person.animate(dt, {
@@ -256,7 +286,23 @@ export class Player {
       ...this.pose,
     } as PoseInput);
     const t = performance.now() / 1000;
-    this.lantern.rotation.z = Math.sin(t * 2.2) * 0.12 + clamp(sp / 9) * Math.sin(t * 9) * 0.15;
+    this.lantern.rotation.z = Math.sin(t * 2.2) * 0.05;
+    // the body in motion: feet, legs, weight, lean, and cloth on springs
+    if (this.planet) {
+      const P = this.planet;
+      const near = this.onDeck || this.pos.distanceTo(P.center) - P.surfaceRadius(this.pos.clone().sub(P.center).normalize()) < 0.4;
+      const pz = this.pose;
+      const busy = clamp(Math.max(pz.sit ?? 0, pz.kneel ?? 0, pz.lie ?? 0, tuck * 1.5, this.rollT > 0 || this.flipT > 0 ? 1 : 0, climbing ? 1 : 0, this.mode === 'climb' ? 1 : 0));
+      // a change of action snaps to the new pose and lets the old one fade out (inertialization)
+      if ((busy > 0.5) !== (this.lastBusy > 0.5)) this.motion.inertialize();
+      this.lastBusy = busy;
+      this.motion.update(dt, {
+        planet: P, pos: this.pos, up: this.up, facing: this.facing, moveDir: this.lastMove,
+        grounded: this.grounded && near, onDeck: this.onDeck, vUp: this.lastVUp, busy, crouch,
+        skid: this.skidT > 0 ? Math.min(1, this.skidT / 0.08) : 0, wind: this.windLocal, running: this.running, gliding: this.gliding,
+      });
+      this.lastMove.set(0, 0, 0);
+    }
     const glow = this.hasDrop ? (0.25 + this.dropGlow * 0.75) * (0.35 + 0.65 * this.warmth) : 0;
     this.lanternLight.intensity = glow * 1.1;
     (this.dropMesh.material as THREE.MeshBasicMaterial).color.setHSL(0.11, 0.95, 0.4 + glow * 0.5);

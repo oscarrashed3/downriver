@@ -115,6 +115,19 @@ export class Person {
   /** Things held in the hands. */
   held: THREE.Object3D[] = [];
   hairClumps: THREE.Object3D[] = [];
+  // Extra joints only Nilo has (see wanderer.ts); empty for everyone else.
+  /** Ankles (the foot can flex and lie flat), one per leg, inside the knee. */
+  ankles: THREE.Group[] = [];
+  /** Wrists, one per arm, inside the elbow. */
+  wrists: THREE.Group[] = [];
+  /** The upper body, split from the hips at the waist so the shoulders can turn against them. */
+  chest: THREE.Group | null = null;
+  /** The coat hem in four hinged panels: front left, back left, back right, front right. */
+  coatPanels: { pivot: THREE.Group; tangent: THREE.Vector3 }[] = [];
+  /** The tip of the hood, hinged where it starts to lean back. */
+  hoodTip: THREE.Group | null = null;
+  /** Where the satchel hangs from the strap. */
+  satchelPivot: THREE.Group | null = null;
   private phase = 0;
   private t = Math.random() * 10;
   private blinkT = 2;

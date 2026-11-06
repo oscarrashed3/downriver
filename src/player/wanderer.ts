@@ -85,9 +85,11 @@ export function buildWanderer(P: Person, look: PersonLook) {
     // boot shaft, cuff, foot and sole
     knee.add(mkSoft(new THREE.CylinderGeometry(0.098, 0.104, 0.17, 14), C.boots, 0, -0.2, 0));
     const cuffB = mkSoft(new THREE.TorusGeometry(0.1, 0.018, 6, 16), C.boots, 0, -0.12, 0); cuffB.rotation.x = Math.PI / 2; knee.add(cuffB);
-    const foot = mkSoft(new THREE.SphereGeometry(0.11, 16, 10), C.boots, 0, -0.29, 0.06); foot.scale.set(1.08, 0.66, 1.6); knee.add(foot);
-    const toe = mkSoft(new THREE.SphereGeometry(0.085, 14, 8), C.boots, 0, -0.295, 0.18); toe.scale.set(1.15, 0.72, 0.9); knee.add(toe);
-    const sole = mkSoft(new THREE.CylinderGeometry(0.105, 0.105, 0.035, 16), C.bootDark, 0, -0.335, 0.06); sole.scale.set(1, 1, 1.75); knee.add(sole);
+    // the foot hangs from an ankle joint, so it can flex, roll heel to toe and lie flat on a slope
+    const ankle = new THREE.Group(); ankle.position.set(0, -0.27, 0); knee.add(ankle); P.ankles.push(ankle);
+    const foot = mkSoft(new THREE.SphereGeometry(0.11, 16, 10), C.boots, 0, -0.02, 0.06); foot.scale.set(1.08, 0.66, 1.6); ankle.add(foot);
+    const toe = mkSoft(new THREE.SphereGeometry(0.085, 14, 8), C.boots, 0, -0.025, 0.18); toe.scale.set(1.15, 0.72, 0.9); ankle.add(toe);
+    const sole = mkSoft(new THREE.CylinderGeometry(0.105, 0.105, 0.035, 16), C.bootDark, 0, -0.065, 0.06); sole.scale.set(1, 1, 1.75); ankle.add(sole);
     for (const y of [-0.17, -0.245]) {
       const strap = mkSoft(new THREE.TorusGeometry(0.103, 0.014, 5, 18), C.bootDark, 0, y, 0); strap.rotation.x = Math.PI / 2; knee.add(strap);
       const buckle = mk(new THREE.BoxGeometry(0.035, 0.035, 0.012), C.brass, 0.07 * s, y, 0.075); buckle.rotation.y = 0.75 * s; buckle.userData.noOutline = true; knee.add(buckle);
@@ -120,10 +122,18 @@ export function buildWanderer(P: Person, look: PersonLook) {
     v.y -= (1 - Math.cos(a)) * 0.5 * 0.07 * k;
     if (Math.abs(a) < 0.9) v.x *= 1 + 0.08 * k;
   });
-  // open at the front, a slit at the back from the hem up
-  const skirt = soften(cut(skirtG, v => Math.abs(ang(v)) > 0.25));
-  const coat = new THREE.Mesh(skirt, toonFlat(C.coat)); coat.scale.set(1, 1, 0.82); coat.castShadow = true;
-  skirtPivot.add(coat);
+  // open at the front, a slit at the back from the hem up; cut into four panels, each hinged at the waist,
+  // so the hem can swing, flare and trail on its own
+  const ranges: [number, number][] = [[0.25, Math.PI / 2], [Math.PI / 2, Math.PI + 0.01], [-Math.PI - 0.01, -Math.PI / 2], [-Math.PI / 2, -0.25]];
+  for (const [a0, a1] of ranges) {
+    const am = (a0 + a1) / 2;
+    const hinge = new THREE.Vector3(Math.sin(am) * 0.26, 0, Math.cos(am) * 0.26 * 0.82);
+    const pivot = new THREE.Group(); pivot.position.copy(hinge); skirtPivot.add(pivot);
+    const g = soften(cut(skirtG, v => { const a = ang(v); return Math.abs(a) > 0.25 && a >= a0 && a < a1; }));
+    const panel = new THREE.Mesh(g, toonFlat(C.coat)); panel.scale.set(1, 1, 0.82); panel.castShadow = true;
+    panel.position.copy(hinge).multiplyScalar(-1); pivot.add(panel);
+    P.coatPanels.push({ pivot, tangent: new THREE.Vector3(Math.cos(am), 0, -Math.sin(am)) });
+  }
   // the back slit: a dark fold line from the hem up
   const slit = mk(new THREE.BoxGeometry(0.012, 0.18, 0.01), '#7a5a3a', 0, -0.43, -0.345); slit.userData.noOutline = true; skirtPivot.add(slit);
   P.coat = skirtPivot;
@@ -139,10 +149,12 @@ export function buildWanderer(P: Person, look: PersonLook) {
     const cuff = mkSoft(new THREE.TorusGeometry(0.118, 0.032, 8, 20), C.cuff, 0, -0.185, 0); cuff.rotation.x = Math.PI / 2; el.add(cuff);
     el.add(mk(new THREE.CylinderGeometry(0.06, 0.06, 0.04, 8), C.shirt, 0, -0.22, 0));
     // a soft hand: palm, four fingers curled together, and a thumb
-    const hand = mk(sph(0.052, 14, 10), C.hand, 0, -0.255, 0.005); hand.scale.set(0.95, 1.05, 0.7); el.add(hand);
-    const fingers = mk(cap(0.026, 0.05), C.hand, 0, -0.305, 0.012); fingers.rotation.z = Math.PI / 2; fingers.scale.set(1, 1.15, 0.95);
-    fingers.rotation.x = 0.25; el.add(fingers);
-    const thumb = mk(cap(0.017, 0.035), C.hand, 0.043 * -s, -0.255, 0.03); thumb.rotation.set(0.5, 0, 0.5 * s); el.add(thumb);
+    // the hand hangs from a wrist joint just inside the cuff
+    const wrist = new THREE.Group(); wrist.position.set(0, -0.235, 0); el.add(wrist); P.wrists.push(wrist);
+    const hand = mk(sph(0.052, 14, 10), C.hand, 0, -0.02, 0.005); hand.scale.set(0.95, 1.05, 0.7); wrist.add(hand);
+    const fingers = mk(cap(0.026, 0.05), C.hand, 0, -0.07, 0.012); fingers.rotation.z = Math.PI / 2; fingers.scale.set(1, 1.15, 0.95);
+    fingers.rotation.x = 0.25; wrist.add(fingers);
+    const thumb = mk(cap(0.017, 0.035), C.hand, 0.043 * -s, -0.02, 0.03); thumb.rotation.set(0.5, 0, 0.5 * s); wrist.add(thumb);
     sh.add(el);
     sh.rotation.z = 0.1 * s;
     P.torso.add(sh);
@@ -188,6 +200,18 @@ export function buildWanderer(P: Person, look: PersonLook) {
   buildHood(P, look);
   buildScarf(P, look);
   buildStrapAndSatchel(P, look);
+
+  // ---- Split the upper body from the hips at the waist ----
+  // Everything above the waist moves to a chest joint (attach keeps each piece exactly where it is),
+  // so the shoulders can turn against the hips. The pelvis, coat skirt, satchel and right hip stay with the hips.
+  P.root.updateMatrixWorld(true);
+  const chestJ = new THREE.Group(); chestJ.position.set(0, 0.3, 0); P.torso.add(chestJ); P.chest = chestJ;
+  chestJ.updateMatrixWorld(true);
+  const stay = new Set<THREE.Object3D>([pelvis, skirtPivot, P.satchel!, P.hipR, chestJ]);
+  for (const o of [...P.torso.children]) if (!stay.has(o)) chestJ.attach(o);
+  // the satchel hangs from the end of the strap at the hip
+  const sp = new THREE.Group(); sp.position.set(0.25, 0.13, -0.2); P.torso.add(sp); sp.updateMatrixWorld(true);
+  sp.attach(P.satchel!); P.satchelPivot = sp;
 }
 
 /** The tall, pointed hood: a soft shell, closed above the brow, with an arched face opening, a folded rim and a dark inside. */
@@ -210,14 +234,20 @@ function buildHood(P: Person, look: PersonLook) {
   const archY = (a: number) => 0.28 - 0.13 * Math.pow(Math.min(1, Math.abs(a) / W), 2.2);
   const open = (v: THREE.Vector3) => { const a = Math.abs(ang(v)); return a < W && v.y < archY(a); };
   const lathe = new THREE.LatheGeometry(prof, 36);
-  // judge each quad before bending, so the arch is cut on the round shape
-  const keep = cut(lathe, v => !open(v));
-  const outer = soften(warp(keep, bend));
-  const hood = new THREE.Mesh(outer, toonFlat(col)); hood.castShadow = true;
-  P.head.add(hood);
-  const innerG = outer.clone(); innerG.scale(0.94, 0.97, 0.94);
-  const inner = new THREE.Mesh(innerG, toonFlat(C.hoodIn)); inner.userData.noOutline = true;
-  P.head.add(inner);
+  // judge each quad before bending, so the arch is cut on the round shape; the tip above TIP is its own piece,
+  // hinged where the hood starts to lean back, so it can bob and trail
+  const TIP = 0.36;
+  const tipAt = new THREE.Vector3(0, TIP, 0); bend(tipAt);
+  const tipPivot = new THREE.Group(); tipPivot.position.copy(tipAt); P.head.add(tipPivot); P.hoodTip = tipPivot;
+  for (const top of [false, true]) {
+    const keep = cut(lathe, v => !open(v) && (v.y >= TIP) === top);
+    const outer = soften(warp(keep, bend));
+    const innerG = outer.clone(); innerG.scale(0.94, 0.97, 0.94);
+    if (top) { outer.translate(-tipAt.x, -tipAt.y, -tipAt.z); innerG.translate(-tipAt.x, -tipAt.y, -tipAt.z); }
+    const hood = new THREE.Mesh(outer, toonFlat(col)); hood.castShadow = true;
+    const inner = new THREE.Mesh(innerG, toonFlat(C.hoodIn)); inner.userData.noOutline = true;
+    (top ? tipPivot : P.head).add(hood, inner);
+  }
   // the folded rim: a soft roll of cloth that follows the arch and runs down both cheeks to the scarf
   const rAt = (y: number) => { for (let i = 1; i < prof.length; i++) if (prof[i].y >= y) { const a = prof[i - 1], b = prof[i]; return a.x + (b.x - a.x) * (y - a.y) / (b.y - a.y); } return 0; };
   const pts: THREE.Vector3[] = [];
