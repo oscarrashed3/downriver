@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { toon, rand } from './props';
 import { addOutlines } from '../render/paint';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { leafClump, firTier } from '../render/foliage';
 import { texToon, plasterTex, roofTex, woodTex, stoneTex } from '../render/textures';
 
@@ -10,6 +11,40 @@ function mesh(g: THREE.BufferGeometry, m: THREE.Material, x = 0, y = 0, z = 0) {
   const o = new THREE.Mesh(g, m); o.position.set(x, y, z); o.castShadow = true; o.receiveShadow = true; return o;
 }
 const ink = (g: THREE.Object3D, w = 0.035) => addOutlines(g, '#3b2a30', w);
+
+/**
+ * Merge every plain mesh in a finished prop into one mesh per material, so a detailed house costs a handful of draws
+ * instead of hundreds. Leaf cards (noOutline) and anything marked keep stay as they are.
+ */
+export function bake(g: THREE.Group) {
+  g.updateMatrixWorld(true);
+  const inv = g.matrixWorld.clone().invert();
+  const byMat = new Map<THREE.Material, THREE.BufferGeometry[]>();
+  const done: THREE.Mesh[] = [];
+  g.traverse(o => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || m.userData.noOutline || m.userData.keep) return;
+    for (let p = m.parent; p && p !== g; p = p.parent) if (p.userData.keep) return;
+    const mat = m.material as THREE.Material;
+    let geo = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone();
+    for (const k of Object.keys(geo.attributes)) if (!['position', 'normal', 'uv'].includes(k)) geo.deleteAttribute(k);
+    if (!geo.attributes.uv) geo.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(geo.attributes.position.count * 2), 2));
+    geo.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld));
+    (byMat.get(mat) ?? byMat.set(mat, []).get(mat)!).push(geo);
+    done.push(m);
+  });
+  for (const m of done) m.removeFromParent();
+  for (const [mat, geos] of byMat) {
+    const merged = mergeGeometries(geos, false);
+    if (!merged) continue;
+    const mm = new THREE.Mesh(merged, mat); mm.castShadow = true; mm.receiveShadow = true; g.add(mm);
+  }
+  // drop groups left empty
+  const empty: THREE.Object3D[] = [];
+  g.traverse(o => { if (o !== g && !(o as THREE.Mesh).isMesh && o.children.length === 0) empty.push(o); });
+  for (const o of empty) o.removeFromParent();
+  return g;
+}
 
 /** A cottage: stone footing, white plaster, timber, a steep red-brown roof with a deep overhang. */
 export function cottage(opts: { wall?: string; roof?: string; door?: string; w?: number; d?: number; flowers?: string } = {}): THREE.Group {
@@ -42,15 +77,80 @@ export function cottage(opts: { wall?: string; roof?: string; door?: string; w?:
   const ch = mesh(new THREE.BoxGeometry(0.6, 1.8, 0.6), texToon('#a8a2a8', stoneTex), W * 0.25, 0.6 + Hh + 1.6, -D * 0.2);
   g.add(ch);
   g.userData.chimney = new THREE.Vector3(W * 0.25, 0.6 + Hh + 2.6, -D * 0.2);
-  // door, round window, shutters, flower box
-  g.add(mesh(new THREE.BoxGeometry(0.9, 1.6, 0.1), toon(opts.door ?? '#3f6a8a'), -W * 0.18, 1.4, D / 2 + 0.05));
-  const win = mesh(new THREE.CircleGeometry(0.38, 16), toon('#ffe7a8', '#ffcf70', 0.6), W * 0.22, 1.9, D / 2 + 0.06); g.add(win);
-  g.add(mesh(new THREE.TorusGeometry(0.4, 0.06, 6, 16), timber, W * 0.22, 1.9, D / 2 + 0.07));
-  g.add(mesh(new THREE.BoxGeometry(0.9, 0.22, 0.3), timber, W * 0.22, 1.35, D / 2 + 0.2));
+  // roof tiles: overlapping courses down each slope, and a rounded ridge cap
+  const roofCol = new THREE.Color(opts.roof ?? '#a8533a');
+  const tiles = new THREE.Group(); tiles.position.copy(roof.position); tiles.rotation.copy(roof.rotation); g.add(tiles);
+  const L = Math.hypot(rw, rh), ang = Math.atan2(rh, rw), courses = Math.floor(L / 0.3);
+  const tileMats = [0.86, 0.95, 1.05].map(k => toon('#' + roofCol.clone().multiplyScalar(k).getHexString()));
+  for (const side of [-1, 1]) for (let i = 0; i < courses; i++) {
+    const t = (i + 0.5) / courses;
+    const x = side * rw * (1 - t), y = rh * t;
+    const tile = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.05, roofLen + 0.04), tileMats[Math.floor(rand() * 3)]);
+    tile.position.set(x + side * Math.sin(ang) * 0.035, y + Math.cos(ang) * 0.035, 0);
+    tile.rotation.z = side * -(ang) + side * -0.07;
+    tile.castShadow = true; tiles.add(tile);
+  }
+  const ridge = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, roofLen + 0.1, 8), tileMats[0]);
+  ridge.rotation.x = Math.PI / 2; ridge.position.set(0, rh - 0.02, 0); tiles.add(ridge);
+  // gable windows: a small attic window with a cross, front and back
+  const glow = toon('#ffe7a8', '#ffcf70', 0.6);
+  const windowAt = (x: number, y: number, z: number, w: number, h: number, ry: number, shutters: string | null, box: string | null) => {
+    const wg = new THREE.Group(); wg.position.set(x, y, z); wg.rotation.y = ry; g.add(wg);
+    wg.add(mesh(new THREE.PlaneGeometry(w, h), glow, 0, 0, 0.02));
+    for (const [bx, by, bw, bh] of [[0, h / 2, w + 0.12, 0.08], [0, -h / 2, w + 0.2, 0.1], [-w / 2, 0, 0.08, h], [w / 2, 0, 0.08, h], [0, 0, 0.04, h], [0, 0, w, 0.04]] as const)
+      wg.add(mesh(new THREE.BoxGeometry(bw, bh, 0.06), timber, bx, by, 0.05));
+    if (shutters) for (const s of [-1, 1]) {
+      const sh = mesh(new THREE.BoxGeometry(w * 0.5, h + 0.04, 0.04), toon(shutters), s * (w * 0.75 + 0.06), 0, 0.04); wg.add(sh);
+      for (const k of [-0.25, 0, 0.25]) wg.add(mesh(new THREE.BoxGeometry(w * 0.42, 0.025, 0.02), toon('#' + new THREE.Color(shutters).multiplyScalar(0.75).getHexString()), s * (w * 0.75 + 0.06), k * h, 0.07));
+    }
+    if (box) {
+      wg.add(mesh(new THREE.BoxGeometry(w + 0.1, 0.18, 0.24), timber, 0, -h / 2 - 0.13, 0.14));
+      for (let i = 0; i < 6; i++) wg.add(mesh(new THREE.SphereGeometry(0.075, 6, 4), toon(i % 2 ? box : i % 3 ? '#ffd24a' : '#6a9a4a'), -w / 2 + 0.05 + i * (w / 5.5), -h / 2 - 0.02, 0.18));
+    }
+    return wg;
+  };
   const fl = opts.flowers ?? '#e8584a';
-  for (let i = 0; i < 5; i++) g.add(mesh(new THREE.SphereGeometry(0.09, 6, 4), toon(i % 2 ? fl : '#ffd24a'), W * 0.22 - 0.36 + i * 0.18, 1.52, D / 2 + 0.22));
-  // side window with warm light
-  const sw = mesh(new THREE.BoxGeometry(0.05, 0.7, 0.6), toon('#ffe7a8', '#ffcf70', 0.6), W / 2 + 0.02, 1.9, 0); g.add(sw);
+  const shut = opts.door ?? '#3f6a8a';
+  for (const z of [D / 2 + 0.02, -D / 2 - 0.02]) windowAt(0, 0.6 + Hh + 0.75, z, 0.5, 0.55, z > 0 ? 0 : Math.PI, null, null);
+  // front: the door with a little hood on brackets, a stone step and a lamp; a mullioned window with shutters and a flower box
+  const dx = -W * 0.18;
+  g.add(mesh(new THREE.BoxGeometry(0.9, 1.6, 0.1), toon(opts.door ?? '#3f6a8a'), dx, 1.4, D / 2 + 0.05));
+  for (const [bx, by, bw, bh] of [[dx, 2.24, 1.14, 0.12], [dx - 0.5, 1.4, 0.12, 1.7], [dx + 0.5, 1.4, 0.12, 1.7]] as const) g.add(mesh(new THREE.BoxGeometry(bw, bh, 0.12), timber, bx, by, D / 2 + 0.07));
+  for (const k of [-0.2, 0.2]) g.add(mesh(new THREE.BoxGeometry(0.03, 1.4, 0.02), toon('#' + new THREE.Color(opts.door ?? '#3f6a8a').multiplyScalar(0.7).getHexString()), dx + k, 1.38, D / 2 + 0.11));
+  g.add(mesh(new THREE.SphereGeometry(0.045, 6, 4), toon('#d8b048'), dx + 0.3, 1.35, D / 2 + 0.13));
+  const hood = mesh(new THREE.BoxGeometry(1.4, 0.08, 0.7), texToon(opts.roof ?? '#a8533a', roofTex, 0.32), dx, 2.48, D / 2 + 0.36); hood.rotation.x = 0.28; g.add(hood);
+  for (const s of [-1, 1]) { const b = mesh(new THREE.BoxGeometry(0.07, 0.07, 0.5), timber, dx + s * 0.6, 2.3, D / 2 + 0.25); b.rotation.x = -0.6; g.add(b); }
+  g.add(mesh(new THREE.BoxGeometry(1.2, 0.16, 0.6), texToon('#a8a2a8', stoneTex), dx, 0.6, D / 2 + 0.45));
+  const lamp = new THREE.Group(); lamp.position.set(dx + 0.72, 2.0, D / 2 + 0.2); g.add(lamp);
+  lamp.add(mesh(new THREE.BoxGeometry(0.04, 0.04, 0.22), toon('#3a3040'), 0, 0.12, -0.08));
+  lamp.add(mesh(new THREE.BoxGeometry(0.16, 0.22, 0.16), toon('#ffe7a8', '#ffcf70', 1.0), 0, 0, 0));
+  lamp.add(mesh(new THREE.ConeGeometry(0.14, 0.1, 4), toon('#3a3040'), 0, 0.16, 0));
+  windowAt(W * 0.24, 1.9, D / 2 + 0.03, 0.8, 0.7, 0, shut, fl);
+  // the sides: two windows each, one with a flower box
+  for (const sx of [1, -1]) for (const z of [-D * 0.22, D * 0.22]) windowAt(sx * (W / 2 + 0.03), 1.9, z, 0.6, 0.65, sx * Math.PI / 2, rand() > 0.4 ? shut : null, z > 0 ? fl : null);
+  // chimney cap and pot
+  g.add(mesh(new THREE.BoxGeometry(0.78, 0.12, 0.78), texToon('#a8a2a8', stoneTex), W * 0.25, 0.6 + Hh + 2.55, -D * 0.2));
+  g.add(mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.3, 8), toon('#b0603e'), W * 0.25, 0.6 + Hh + 2.75, -D * 0.2));
+  // ivy climbing a front corner and spilling along the eaves; low flowering bushes along the footing
+  const ivyCol = ['#4a7a3a', '#5a8a40', '#3f6a34'];
+  const corner = rand() > 0.5 ? 1 : -1;
+  for (let i = 0; i < 6; i++) {
+    const y = 0.7 + i * 0.42, spread = 0.35 + i * 0.05;
+    const c = leafClump({ radius: 0.36 + rand() * 0.14, color: ivyCol[i % 3], squash: 0.7, seed: i * 13 + 5, cards: 14 });
+    c.position.set(corner * (W / 2 - spread * 0.4 + 0.08), y, D / 2 - spread * 0.3 + 0.12); c.scale.z = 0.55; g.add(c);
+  }
+  for (let i = 0; i < 4; i++) {
+    const c = leafClump({ radius: 0.3, color: ivyCol[(i + 1) % 3], squash: 0.6, seed: i * 7 + 2, cards: 12 });
+    c.position.set(corner * (W / 2 - 0.2 - i * 0.45), 0.6 + Hh + 0.05, D / 2 + 0.25); g.add(c);
+  }
+  const sideIvy = leafClump({ radius: 0.5, color: ivyCol[0], squash: 0.9, seed: 31, cards: 18 });
+  sideIvy.position.set(-corner * (W / 2 + 0.1), 1.2, -D * 0.38); sideIvy.scale.x = 0.5; g.add(sideIvy);
+  for (const [bx, bz] of [[W * 0.24 - 0.5, D / 2 + 0.45], [W * 0.24 + 0.55, D / 2 + 0.45], [-W / 2 - 0.35, -D * 0.1], [W / 2 + 0.35, D * 0.3]]) {
+    const b = leafClump({ radius: 0.42, color: '#5a8a46', squash: 0.75, seed: Math.floor(bx * 10 + bz * 7) & 255, cards: 14 });
+    b.position.set(bx, 0.45, bz); g.add(b);
+    for (let i = 0; i < 5; i++) g.add(mesh(new THREE.SphereGeometry(0.06, 6, 4), toon(i % 2 ? fl : '#f4e8f0'), bx + (rand() - 0.5) * 0.6, 0.6 + rand() * 0.3, bz + (rand() - 0.5) * 0.5 + 0.1));
+  }
+  bake(g);
   ink(g);
   return g;
 }
@@ -259,18 +359,71 @@ export function alpinePine(h = 6): THREE.Group {
   return g;
 }
 
+/** A birch: a pale, slightly leaning trunk with dark bark marks, a few thin limbs that fork upward, and leaf clumps at their tips. */
 export function birch(h = 5): THREE.Group {
   const g = new THREE.Group();
-  const t = mesh(new THREE.CylinderGeometry(0.1, 0.16, h, 6), toon('#efeae0'), 0, h / 2, 0); t.rotation.z = (rand() - 0.5) * 0.15; g.add(t);
-  for (let i = 0; i < 4; i++) g.add(mesh(new THREE.BoxGeometry(0.17, 0.05, 0.17), toon('#3a3430'), 0, 0.6 + i * h * 0.2, 0));
-  const leaves: THREE.Object3D[] = [];
-  ink(g, 0.04);
-  for (let i = 0; i < 5; i++) {
-    const l = leafClump({ radius: 0.9 + rand() * 0.5, color: i % 2 ? '#86bf44' : '#a6cc4c', seed: Math.floor(rand() * 999) });
-    l.position.set((rand() - 0.5) * 1.4, h * 0.75 + rand() * 1.4, (rand() - 0.5) * 1.4);
-    g.add(l); leaves.push(l);
+  const bark = toon('#efeae0'), mark = toon('#3a3430'), twig = toon('#7a6a5e');
+  const lean = (rand() - 0.5) * 0.15;
+  const trunk = new THREE.Group(); trunk.rotation.z = lean; g.add(trunk);
+  trunk.add(mesh(new THREE.CylinderGeometry(0.09, 0.17, h, 7), bark, 0, h / 2, 0));
+  // root flare
+  for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2 + rand(); const r = mesh(new THREE.ConeGeometry(0.08, 0.5, 4), bark, Math.cos(a) * 0.15, 0.12, Math.sin(a) * 0.15); r.rotation.set(Math.sin(a) * 1.2, 0, -Math.cos(a) * 1.2); trunk.add(r); }
+  // bark: short dark dashes scattered round the trunk, denser near the foot
+  for (let i = 0; i < 16; i++) {
+    const y = 0.3 + Math.pow(rand(), 1.4) * h * 0.9, a = rand() * Math.PI * 2, r = 0.17 - (y / h) * 0.08;
+    const d = mesh(new THREE.BoxGeometry(0.12 + rand() * 0.1, 0.035, 0.03), mark, Math.cos(a) * r, y, Math.sin(a) * r); d.rotation.y = -a + Math.PI / 2; trunk.add(d);
   }
+  const leaves: THREE.Object3D[] = [];
+  const cols = ['#86bf44', '#a6cc4c', '#78b040'];
+  // limbs: thin branches that leave the trunk at different heights and end in a clump
+  const limbs = 4 + Math.floor(rand() * 3);
+  for (let i = 0; i < limbs; i++) {
+    const y = h * (0.5 + i / limbs * 0.42), a = i * 2.3 + rand(), len = 0.9 + rand() * 0.7, tilt = 0.7 + rand() * 0.3;
+    const limb = new THREE.Group(); limb.position.y = y; limb.rotation.set(0, a, tilt); trunk.add(limb);
+    limb.add(mesh(new THREE.CylinderGeometry(0.025, 0.05, len, 5), twig, 0, len / 2, 0));
+    const tip = new THREE.Vector3(0, len, 0); limb.updateMatrix(); tip.applyMatrix4(limb.matrix);
+    const l = leafClump({ radius: 0.6 + rand() * 0.35, color: cols[i % 3], seed: Math.floor(rand() * 999), cards: 20 });
+    l.position.copy(tip).add(new THREE.Vector3(0, 0.25, 0)); trunk.add(l); leaves.push(l);
+  }
+  // the crown on top
+  for (let i = 0; i < 3; i++) {
+    const l = leafClump({ radius: 0.75 + rand() * 0.35, color: cols[(i + 1) % 3], seed: Math.floor(rand() * 999) });
+    l.position.set((rand() - 0.5) * 0.8, h * 0.95 + i * 0.35, (rand() - 0.5) * 0.8); trunk.add(l); leaves.push(l);
+  }
+  ink(g, 0.04);
   g.userData.leaves = leaves;
+  return g;
+}
+
+/** An orchard tree in blossom: a short twisting trunk that splits into crooked limbs under clouds of pink and white flowers. */
+export function blossomTree(h = 4.2): THREE.Group {
+  const g = new THREE.Group();
+  const wood = texToon('#6a4a3c', woodTex);
+  const pinks = ['#f4b8c8', '#f8d0dc', '#fbe6ec', '#e89ab0'];
+  const leaves: THREE.Object3D[] = [];
+  // trunk in two kinked pieces
+  const t1 = mesh(new THREE.CylinderGeometry(0.18, 0.28, h * 0.45, 7), wood, 0, h * 0.22, 0); t1.rotation.z = 0.12; g.add(t1);
+  const t2 = mesh(new THREE.CylinderGeometry(0.13, 0.18, h * 0.3, 7), wood, -0.12, h * 0.55, 0.02); t2.rotation.z = -0.2; g.add(t2);
+  for (let i = 0; i < 5; i++) {
+    const a = i / 5 * Math.PI * 2 + rand() * 0.5, len = 1.1 + rand() * 0.8;
+    const limb = new THREE.Group(); limb.position.set(-0.1, h * 0.55, 0); limb.rotation.set(0, a, 0.75 + rand() * 0.35); g.add(limb);
+    limb.add(mesh(new THREE.CylinderGeometry(0.05, 0.11, len, 6), wood, 0, len / 2, 0));
+    const tip = new THREE.Vector3(0, len, 0); limb.updateMatrix(); tip.applyMatrix4(limb.matrix);
+    const c = leafClump({ radius: 0.85 + rand() * 0.4, color: pinks[i % 4], seed: Math.floor(rand() * 999), squash: 0.75 });
+    c.position.copy(tip).add(new THREE.Vector3(0, 0.3, 0)); g.add(c); leaves.push(c);
+  }
+  for (let i = 0; i < 3; i++) {
+    const c = leafClump({ radius: 1.0 + rand() * 0.3, color: pinks[(i + 2) % 4], seed: Math.floor(rand() * 999), squash: 0.7 });
+    c.position.set((rand() - 0.5) * 1.0, h * 0.95 + i * 0.25, (rand() - 0.5) * 1.0); g.add(c); leaves.push(c);
+  }
+  // fallen petals on the grass below
+  const petal = toon('#f8d0dc');
+  for (let i = 0; i < 22; i++) {
+    const a = rand() * Math.PI * 2, r = 0.4 + Math.sqrt(rand()) * 2.2;
+    const pm = mesh(new THREE.CircleGeometry(0.06 + rand() * 0.04, 5), petal, Math.cos(a) * r, 0.04, Math.sin(a) * r); pm.rotation.x = -Math.PI / 2; pm.userData.noOutline = true; g.add(pm);
+  }
+  ink(g, 0.04);
+  g.userData.leaves = leaves; g.userData.trunk = 0.35; g.userData.petals = true;
   return g;
 }
 

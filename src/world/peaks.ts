@@ -244,6 +244,9 @@ export function populatePeaks(p: Planet, scene: THREE.Scene, c: WorldContent,
   const keep = [PK.spring, PK.fire, PK.bridge, PK.boathouse, PK.ridge, PK.nima, PK.tallPeak, PK.windmill, PK.pen, PK.dryMeadow, PK.runaway, ...PK.echo, ...PK.benches, [24, 17], [30, -40], [44, 52], [60, 44], [52, -58], [86, -48], [17, -14], [17.5, 13.5], [46, -38], [72, 40], [98, -28], [176, 0]];
   const keepDirs = keep.map(ll => p.dirRiver(ll[0], ll[1]));
   const free = (d: THREE.Vector3, r: number) => p.riverNearest(d).dist > 7 && p.pathDist(d).dist > 2.6 && keepDirs.every(k => angleBetween(d, k) * p.R > r) && p.height(d) / p.cfg.amplitude < 0.78;
+  // every tree's leaf clumps nod a little in the wind, each tree on its own beat
+  const swaying: THREE.Object3D[][] = [];
+  anim((_dt, t) => swaying.forEach((ls, k) => ls.forEach((l, i) => { l.rotation.z = Math.sin(t * 1.1 + k * 1.7 + i * 0.6) * 0.05; l.rotation.x = Math.sin(t * 0.8 + k + i) * 0.035; })));
   const grove = (la: number, lo: number, n: number, spread: number, make: () => THREE.Object3D) => {
     let placed = 0;
     for (let tries = 0; tries < n * 12 && placed < n; tries++) {
@@ -252,10 +255,13 @@ export function populatePeaks(p: Planet, scene: THREE.Scene, c: WorldContent,
       const d = p.dirRiver(lat, lon);
       if (!free(d, 6) || p.slope(d) > 0.6) continue;
       const o = make(); o.rotateY(P.rand() * 6); put(o, lat, lon, 0, undefined, 0.3); solid(o, circle(o.userData.trunk ?? 0.3), 8, 'tree'); placed++;
+      if (o.userData.leaves) swaying.push(o.userData.leaves as THREE.Object3D[]);
     }
   };
   for (const [la, lo] of [[32, -26], [40, 28], [78, 38], [84, -44], [108, -22], [116, 26], [134, 4], [150, -30], [140, 40], [96, 60], [100, -70], [26, -50]]) grove(la, lo, 9, 10, () => Q.alpinePine(5 + P.rand() * 4));
   for (const [la, lo] of [[20, 14], [47, -27], [70, 16], [56, -4]]) grove(la, lo, 4, 6, () => Q.birch(4 + P.rand() * 2));
+  // blossom trees round the village, like an old orchard the houses grew into
+  for (const [la, lo] of [[53, -26], [66, -8], [49, -9], [70, -26]]) grove(la, lo, 2, 4.5, () => Q.blossomTree(3.8 + P.rand() * 1.2));
   for (const [la, lo] of [[44, 30], [58, 24], [64, -34], [38, -18], [82, 20], [90, -16], [30, 8]]) grove(la, lo, 3, 7, () => Q.birch(3.5 + P.rand() * 2.5));
   // leafy bushes along the valley sides, so the slopes read lush instead of bare
   const greens = ['#5a9a3a', '#4e8c36', '#6aa844', '#3f7d34'];

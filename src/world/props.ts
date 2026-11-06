@@ -128,14 +128,70 @@ export function pole(): THREE.Group {
   return g;
 }
 
+/**
+ * A mountain goat: a barrel body with a darker saddle, jointed legs with hooves, a head on a neck that dips to graze,
+ * ears that flick, horns that sweep back, a little beard and a stub tail that wags. userData.life(t, alert, moving) animates it.
+ */
 export function goat(): THREE.Group {
   const g = new THREE.Group();
-  const fur = toon(rand() > 0.5 ? '#f2ece4' : '#8a6a52');
-  g.add(mesh(new THREE.CapsuleGeometry(0.4, 0.7, 3, 8), fur, 0, 0.75, 0).rotateX(Math.PI / 2));
-  g.add(mesh(new THREE.SphereGeometry(0.28, 8, 6), fur, 0, 1.05, 0.6));
-  for (const [x, z] of [[-0.25, -0.35], [0.25, -0.35], [-0.25, 0.35], [0.25, 0.35]]) g.add(mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.6, 4), toon('#3a3040'), x, 0.3, z));
-  const horn = mesh(new THREE.ConeGeometry(0.06, 0.3, 4), toon('#3a3040'), 0.1, 1.35, 0.55); horn.rotation.x = -0.6; g.add(horn);
-  const horn2 = horn.clone(); horn2.position.x = -0.1; g.add(horn2);
+  const coats: [string, string][] = [['#f2ece4', '#c8b8a4'], ['#8a6a52', '#5a4434'], ['#e8dccc', '#6a5a50'], ['#b8916c', '#f0e6d8']];
+  const [base, mark] = coats[Math.floor(rand() * coats.length)];
+  const fur = toon(base), patch = toon(mark), dark = toon('#3a3040'), hoof = toon('#2e2630'), horn = toon('#8a7a68'), pink = toon('#d89a90');
+  const m = (geo: THREE.BufferGeometry, mat: THREE.Material, x = 0, y = 0, z = 0) => { const o = new THREE.Mesh(geo, mat); o.position.set(x, y, z); o.castShadow = true; return o; };
+  // body and saddle
+  const body = new THREE.Group(); body.position.y = 0.78; g.add(body);
+  const barrel = m(new THREE.CapsuleGeometry(0.36, 0.62, 4, 10), fur); barrel.rotation.x = Math.PI / 2; barrel.scale.set(1, 1, 1.08); body.add(barrel);
+  const saddle = m(new THREE.SphereGeometry(0.37, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.42), patch, 0, 0.04, -0.05); saddle.scale.set(1.02, 1, 1.5); body.add(saddle);
+  body.add(m(new THREE.SphereGeometry(0.33, 10, 8), fur, 0, 0.02, 0.4));
+  // shaggy fringe under the belly
+  for (let i = 0; i < 7; i++) { const c = m(new THREE.ConeGeometry(0.07, 0.2, 4), fur, (i % 2 ? 0.16 : -0.16), -0.33, -0.36 + i * 0.12); c.rotation.x = Math.PI; body.add(c); }
+  // tail
+  const tail = new THREE.Group(); tail.position.set(0, 0.16, -0.68); body.add(tail);
+  const tl = m(new THREE.ConeGeometry(0.07, 0.22, 5), patch, 0, 0.08, -0.02); tl.rotation.x = -0.5; tail.add(tl);
+  // legs: thigh, shin, hoof; front pair and back pair
+  const legs: THREE.Group[] = [];
+  for (const [x, z] of [[-0.2, 0.36], [0.2, 0.36], [-0.2, -0.36], [0.2, -0.36]]) {
+    const L = new THREE.Group(); L.position.set(x, 0.66, z); g.add(L); legs.push(L);
+    L.add(m(new THREE.CapsuleGeometry(0.085, 0.22, 3, 6), z > 0 ? fur : patch, 0, -0.14, 0));
+    L.add(m(new THREE.CylinderGeometry(0.045, 0.04, 0.3, 6), z > 0 ? fur : patch, 0, -0.42, z > 0 ? 0 : -0.02));
+    L.add(m(new THREE.CylinderGeometry(0.05, 0.06, 0.08, 6), hoof, 0, -0.6, 0));
+  }
+  // neck and head (the head group pivots at the shoulders to graze)
+  const neck = new THREE.Group(); neck.position.set(0, 0.92, 0.5); g.add(neck);
+  const nk = m(new THREE.CapsuleGeometry(0.15, 0.3, 3, 8), fur, 0, 0.16, 0.08); nk.rotation.x = 0.55; neck.add(nk);
+  const head = new THREE.Group(); head.position.set(0, 0.36, 0.22); neck.add(head);
+  const skull = m(new THREE.SphereGeometry(0.2, 12, 10), fur); skull.scale.set(0.9, 0.95, 1.1); head.add(skull);
+  const muzzle = m(new THREE.CapsuleGeometry(0.11, 0.16, 3, 8), fur, 0, -0.08, 0.2); muzzle.rotation.x = Math.PI / 2 + 0.5; head.add(muzzle);
+  head.add(m(new THREE.SphereGeometry(0.06, 8, 6), pink, 0, -0.14, 0.32));
+  const blaze = m(new THREE.BoxGeometry(0.06, 0.05, 0.22), patch, 0, 0.12, 0.08); blaze.rotation.x = -0.4; head.add(blaze);
+  for (const s of [-1, 1]) {
+    const eye = m(new THREE.SphereGeometry(0.04, 8, 6), dark, s * 0.12, 0.04, 0.12); head.add(eye);
+    const gl = m(new THREE.SphereGeometry(0.012, 4, 3), toon('#fff8e8'), s * 0.135, 0.06, 0.15); head.add(gl);
+    const ear = new THREE.Group(); ear.position.set(s * 0.17, 0.08, -0.02); ear.rotation.z = s * -1.2; head.add(ear);
+    const e = m(new THREE.SphereGeometry(0.09, 8, 6), fur, 0, 0.1, 0); e.scale.set(0.45, 1, 0.25); ear.add(e);
+    ear.userData.s = s;
+    // horns sweep up and back in a curve
+    const hc = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.04, 5, 10, Math.PI * 0.55), horn); hc.castShadow = true;
+    hc.position.set(s * 0.07, 0.1, -0.24); hc.rotation.set(0, Math.PI / 2, 0.15); head.add(hc);
+    g.userData['ear' + (s > 0 ? 'R' : 'L')] = ear;
+  }
+  const beard = m(new THREE.ConeGeometry(0.05, 0.16, 5), patch, 0, -0.24, 0.22); beard.rotation.x = Math.PI; head.add(beard);
+  let ph = rand() * 10, flick = 0, wag = 0;
+  g.userData.life = (t: number, alert: boolean, moving: boolean) => {
+    // graze with the head down, then look up and chew; alert goats hold their heads high
+    const graze = alert ? 0 : Math.max(0, Math.sin(t * 0.33 + ph)) ** 0.6;
+    neck.rotation.x = graze * 1.15 + Math.sin(t * 7 + ph) * 0.03 * graze;
+    head.rotation.x = -graze * 0.35 + (graze < 0.1 ? Math.sin(t * 9) * 0.04 : 0);
+    head.rotation.y = alert ? 0 : Math.sin(t * 0.5 + ph) * 0.35 * (1 - graze);
+    if (Math.random() < 0.012) flick = 1;
+    flick = Math.max(0, flick - 0.08);
+    for (const k of ['earL', 'earR']) { const e = g.userData[k] as THREE.Group; const s = e.userData.s as number; e.rotation.z = s * (-1.2 + Math.sin(flick * Math.PI) * 0.6) + (alert ? s * 0.5 : 0); }
+    if (Math.random() < 0.01) wag = 1;
+    wag = Math.max(0, wag - 0.03);
+    tail.rotation.y = Math.sin(t * 22) * 0.6 * wag; tail.rotation.x = -0.3 - wag * 0.4;
+    body.position.y = 0.78 + Math.sin(t * 1.6 + ph) * 0.008;
+    legs.forEach((L, i) => { L.rotation.x = moving ? Math.sin(t * 8 + (i === 0 || i === 3 ? 0 : Math.PI)) * 0.35 : 0; });
+  };
   return g;
 }
 

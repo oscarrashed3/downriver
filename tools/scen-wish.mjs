@@ -30,7 +30,9 @@ export default async ({ page, shot, ev }) => {
   if (want('village')) {
     await ev(`(() => { __place([52, -15.8], [62.6, -12.6]); __cam([51, -14], [61, -18], 4, 2); })()`); await snap('village');
     await ev(`(() => { __cam([62.5, -21], [65.6, -9.4], 1.8, 2.4); })()`); await snap('house-tor', 900);
-    await ev(`(() => { __cam([70, -26], [66, -30], 2.2, 1); })()`); await snap('goats', 900);
+    await ev(`(() => { const g = __game, p = g.planets[0]; for (const [k, la, lo] of [[1, 37, -16], [2, 38.2, -15]]) { const gt = g.ch1.R.goats[k]; gt.home.copy(p.dirRiver(la, lo)); gt.dir.copy(gt.home); } __place([33, -19], [37, -16]); })()`); await page.waitForTimeout(1500);
+    await ev(`(() => { const gt = __game.ch1.R.goats[1].obj; __at(gt, 2.4, 0.9, 0.55); })()`); await snap('goats', 1500);
+    await ev(`(() => { const g = __game, gt = g.ch1.R.goats[1].obj; __at(gt, -2.6, 1.3, 0.5); })()`); await snap('goats-2', 2500);
   }
   await ev(`(() => { const g = __game; g.cutCam = null; g.rig.override = null; })()`);
   if (want('menu')) { await ev(`__game.openTab('goal')`); await snap('menu', 900); await ev(`__game.closeOverlay()`); }

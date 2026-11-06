@@ -474,10 +474,13 @@ export class ChapterOne {
       const face = gt.look > 0 ? pl.pos.clone().sub(gt.obj.position) : mv.lengthSq() > 1e-12 ? mv : new THREE.Vector3(0, 0, 1).applyQuaternion(gt.obj.quaternion);
       orientTo(gt.obj, gt.dir, face.projectOnPlane(gt.dir).lengthSq() > 1e-8 ? face : ta);
       if (gt.look > 2) gt.obj.position.addScaledVector(gt.dir, Math.abs(Math.sin(gt.look * 12)) * 0.12);
+      gt.obj.userData.life?.(gt.t, gt.look > 0, mv.length() * p.R > dt * 0.25);
     }
 
     // Pebble follows you home, if you walk
     const pb = this.R.pebble as THREE.Object3D;
+    const pbFollow = this.has('goat-following');
+    pb.userData.life?.(g.time, pbFollow, pbFollow && pb.position.distanceTo(pl.pos) > 2.2);
     if (this.has('goat-following')) {
       const speed = pl.vel.clone().projectOnPlane(pl.up).length();
       if (speed > 7.5) {
