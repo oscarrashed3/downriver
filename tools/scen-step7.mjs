@@ -21,7 +21,7 @@ export default async ({ page, shot, ev }) => {
   const back = () => ev('__game.renderEvery = 40');
   const report = [];
 
-  for (const id of ['ysolde', 'tor', 'bram', 'nima', 'odo']) {
+  for (const id of (process.env.WHO ?? 'ysolde,tor,bram,nima,odo').split(',')) {
     const ok = await ev(`(() => { const g = __game, n = g.contents[0].npcs.find(x => x.id === '${id}'); if (!n || !n.root.visible) return false;
       // stand about 2.6 m away, off to one side of where they face, looking at them
       const side = new THREE.Vector3(1, 0, 0).projectOnPlane(n.up).normalize();
@@ -41,6 +41,13 @@ export default async ({ page, shot, ev }) => {
     await until(`__game.shownChars > 18`, 6);
     await ev(`__hold('Space', false)`);
     await look(); await shot(`talk-${id}`); await back();
+    if (process.env.DIAG) console.log('DIAG', await ev(`(() => { const g = __game, cam = g.camera.position, P = g.planet; const out = [];
+      const up = cam.clone().sub(P.center); out.push('camH=' + (up.length() - P.surfaceRadius(up.clone().normalize())).toFixed(2), JSON.stringify(g.talkCam), 'block=' + g.rig.block);
+      g.scene.traverse(o => { if (!o.isMesh || o.userData.isOutline) return; if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere(); const s = o.geometry.boundingSphere.clone().applyMatrix4(o.matrixWorld); if (s.containsPoint(cam)) { let n = o, chain = []; while (n && chain.length < 4) { chain.push(n.type + (n.userData.id ? ':' + n.userData.id : '') + (n.name ? '#' + n.name : '')); n = n.parent; } out.push(o.geometry.type + ' r=' + s.radius.toFixed(1) + ' ' + chain.join('<')); } });
+      const ov = g.rig.override; if (ov) { out.push('ovpos=' + ov.pos.distanceTo(cam).toFixed(2) + ' blockOv=' + g.rig.block(ov.look, ov.pos).toFixed(2) + ' blockCam=' + g.rig.block(ov.look, cam).toFixed(2)); }
+      const bl = g.ch1.R.bridge.worldToLocal(cam.clone()); out.push('odoL=' + g.ch1.R.bridge.worldToLocal(g.convNpc.root.position.clone()).toArray().map(v => v.toFixed(2)).join(',') + ' niloL=' + g.ch1.R.bridge.worldToLocal(g.player.pos.clone()).toArray().map(v => v.toFixed(2)).join(',')); out.push('bridgeLocal=' + bl.toArray().map(v => v.toFixed(2)).join(',')); const bh = g.ch1.R.boathouse.worldToLocal(cam.clone()); out.push('boathouseLocal=' + bh.toArray().map(v => v.toFixed(2)).join(','));
+      for (const so of P.solids) { const d = so.obj.position.distanceTo(cam); if (d < 8) out.push('solid ' + so.id + ' d=' + d.toFixed(1)); }
+      return out.join(' | '); })()`));
     // play the rest through; on a choice, shoot the reverse shot once, then pick the first card
     let reverse = false;
     for (let k = 0; k < 400 && (await mode()) === 'talk'; k++) {

@@ -51,10 +51,26 @@ export function segmentClear(solids: Solid[], a: THREE.Vector3, b: THREE.Vector3
   });
   if (!near.length) return 1;
   const p = new THREE.Vector3(), v = new THREE.Vector3(), up = new THREE.Vector3(), ax = new THREE.Vector3(), az = new THREE.Vector3();
+  const inside = (s: Solid, q: THREE.Vector3) => {
+    const o = s.obj;
+    v.subVectors(q, o.position);
+    up.subVectors(o.position, center).normalize();
+    const h = v.dot(up);
+    if (h < -0.5 || h > s.h * o.scale.y + 0.2) return false;
+    ax.set(1, 0, 0).applyQuaternion(o.quaternion).projectOnPlane(up).normalize();
+    az.set(0, 0, 1).applyQuaternion(o.quaternion).projectOnPlane(up).normalize();
+    const k = o.scale.x;
+    if (s.off) v.addScaledVector(ax, -s.off[0] * k).addScaledVector(az, -s.off[1] * k);
+    const shape = s.shape.kind === 'circle' ? { kind: 'circle' as const, r: s.shape.r * k } : { kind: 'box' as const, hw: s.shape.hw * k, hd: s.shape.hd * o.scale.z };
+    return !!pushOut2(v.dot(ax), v.dot(az), 0.45 + (pad ? s.camPad ?? 0 : 0), shape);
+  };
+  // a camera-only solid the people are standing in (the bridge, when the talk is on it) only counts once the line has left it
+  const leaving = new Set(near.filter(s => s.camOnly && inside(s, a)));
   for (let i = 1; i <= steps; i++) {
     const t = i / steps;
     p.lerpVectors(a, b, t);
     for (const s of near) {
+      if (leaving.has(s)) { if (inside(s, p)) continue; leaving.delete(s); continue; }
       const o = s.obj;
       v.subVectors(p, o.position);
       up.subVectors(o.position, center).normalize();

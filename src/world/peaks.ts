@@ -195,7 +195,7 @@ export function populatePeaks(p: Planet, scene: THREE.Scene, c: WorldContent,
   scene.add(br); R.bridge = br;
   // the bridge deck is walkable: planks at 0.96 + an arch, as in Q.bridge(10, 2.4)
   // past each end, the abutment stones make a short ramp down to the bank (the banks sit lower than the deck ends)
-  p.solids.push({ obj: br, shape: { kind: 'box', hw: 5.2, hd: 1.35 }, h: 3.2, camOnly: true, id: 'bridge' });
+  p.solids.push({ obj: br, shape: { kind: 'box', hw: 6.9, hd: 1.6 }, h: 3.6, camOnly: true, id: 'bridge' });
   p.decks.push({ obj: br, span: 14, width: 2.4, top: x => Math.abs(x) <= 5 ? 0.96 + Math.sin((x / 10 + 0.5) * Math.PI) * 1.1 : 0.96 - (Math.abs(x) - 5) * 0.34 });
   const bh = put(Q.boathouse(), PK.boathouse[0], PK.boathouse[1], 0, faceTo(PK.boathouse, PK.bridge), 0.3); R.boathouse = bh; bh.userData.doorAt = new THREE.Vector3(-3.6 * 0.18, 0, 3.2 / 2 + 0.75);
   solid(bh, box(2.0, 1.8), 6, 'boathouse');

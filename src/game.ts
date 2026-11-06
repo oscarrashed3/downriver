@@ -790,7 +790,13 @@ export class Game {
     // pick the side and height where neither shot (on them, on Nilo) has a wall, a rock or Hollo in the way
     const npcEye = npc.root.position.clone().addScaledVector(npc.up, 1.4);
     const S = this.planet.solids, C = this.planet.center;
-    const pick = chooseShot(eye, npcEye, this.player.up, (a, b) => this.cur === 0 ? segmentClear(S, a, b, C) : 1);
+    // and where the camera's line of sight stays above the ground (river banks rise steeply by the bridge)
+    const P = this.planet, q = new THREE.Vector3();
+    const groundClear = (a: THREE.Vector3, b: THREE.Vector3) => {
+      for (let i = 1; i <= 16; i++) { q.lerpVectors(a, b, i / 16); const d = q.clone().sub(C); if (d.length() < P.surfaceRadius(d.normalize()) + 0.4) return (i - 1) / 16; }
+      return 1;
+    };
+    const pick = chooseShot(eye, npcEye, this.player.up, (a, b) => this.cur === 0 ? Math.min(segmentClear(S, a, b, C), groundClear(a, b)) : groundClear(a, b));
     this.talkCam = { side: pick.side, wide: pick.wide, lift: pick.lift, onNilo: false, t: 0, open: false };
     this.fold.root.visible = false; // Fold tucks himself away so he isn't between the two faces
     this.rig.easeFromHere(0.75);
