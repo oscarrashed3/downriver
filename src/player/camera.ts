@@ -69,7 +69,7 @@ export class CameraRig {
     if (this.block && (!this.override || this.blockOverride)) {
       const k = this.block(look, pos);
       // a talk shot may come right in; the follow camera never closer than about 3 m
-      if (k < 1) pos.lerpVectors(look, pos, Math.max(this.override ? 0.12 : 0.35, k - 0.06));
+      if (k < 1) pos.lerpVectors(look, pos, Math.max(this.override ? 0.5 : 0.35, k - 0.06));
     }
     if (this.ease) {
       this.ease.t += dt;

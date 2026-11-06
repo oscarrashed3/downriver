@@ -824,7 +824,7 @@ export class Game {
     const niloEye = this.player.person.head.getWorldPosition(new THREE.Vector3()).addScaledVector(up, 0.18);
     const npcEye = npc.person.head.getWorldPosition(new THREE.Vector3()).addScaledVector(npc.up, 0.18);
     const onNilo = conv.step().kind === 'cards';
-    if (onNilo !== tc.onNilo && tc.open) { tc.onNilo = onNilo; this.rig.easeFromHere(0.45); }
+    if (onNilo !== tc.onNilo && tc.open) { tc.onNilo = onNilo; this.rig.easeFromHere(0.8); }
     this.rig.override = tc.onNilo ? overShoulder(npcEye, niloEye, up, -tc.side, tc.wide, tc.lift) : overShoulder(niloEye, npcEye, up, tc.side, tc.wide, tc.lift);
     tc.t += dt / this.fast;
     if (!tc.open) {

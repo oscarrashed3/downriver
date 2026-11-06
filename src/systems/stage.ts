@@ -33,7 +33,7 @@ export function overShoulder(near: THREE.Vector3, far: THREE.Vector3, up: THREE.
   const across = flat.normalize();
   const right = new THREE.Vector3().crossVectors(across, up).normalize();
   const mid = near.clone().lerp(far, 0.5);
-  const pos = mid.clone().addScaledVector(right, side * (2.2 + d * 0.6) * wide).addScaledVector(across, -(d * 0.5 + 0.9) * (lift > 0 ? 1.3 : 1)).addScaledVector(up, 0.75 + lift);
+  const pos = mid.clone().addScaledVector(right, side * (2.9 + d * 0.7) * wide).addScaledVector(across, -(d * 0.5 + 0.45) * (lift > 0 ? 1.3 : 1)).addScaledVector(up, 0.75 + lift);
   const look = near.clone().lerp(far, 0.62).addScaledVector(up, -0.8 - lift * 0.5);
   return { pos, look, up: up.clone() };
 }
@@ -77,7 +77,7 @@ function distToSegment(p: THREE.Vector3, a: THREE.Vector3, b: THREE.Vector3) {
 }
 
 /** The ways a talk can be framed, best first: level and close, then higher and wider when something is in the way. */
-export const SHOT_VARIANTS: [number, number][] = [[1, 0], [0.7, 1.3], [1.35, 2.4]];
+export const SHOT_VARIANTS: [number, number][] = [[1, 0], [0.75, 1.3], [0.95, 2.4]];
 
 /**
  * Pick the side and variant whose two shots (on them, and back on Nilo) see both faces with nothing solid in between.
