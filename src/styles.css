@@ -159,13 +159,26 @@ canvas#game { display: block; width: 100vw; height: 100vh; }
 .menubtn:hover { transform: scale(1.07) rotate(-4deg); }
 .menubtn.open { background: #e8b04a; }
 .menubtn.hidden { display: none; }
-.menustrip { position: absolute; left: 50%; top: 18px; transform: translateX(-50%); display: flex; gap: 4px; padding: 5px; background: var(--paper); border-radius: 30px; box-shadow: 0 6px 24px rgba(30,20,50,.4); pointer-events: auto; z-index: 30; max-width: calc(100vw - 120px); overflow-x: auto; }
+.menustrip { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); display: flex; gap: 10px; padding: 26px 12px 10px; background: transparent; pointer-events: auto; z-index: 30; max-width: calc(100vw - 120px); overflow-x: auto; overflow-y: visible; filter: drop-shadow(0 5px 10px rgba(30,20,50,.35)); }
 .menustrip.hidden { display: none; }
-.menustrip button { font: inherit; font-size: 16px; color: var(--ink); background: transparent; border: 0; border-radius: 22px; padding: 7px 14px; cursor: pointer; white-space: nowrap; display: flex; align-items: baseline; gap: 6px; }
-.menustrip button:hover { background: rgba(43,37,64,.08); }
-.menustrip button.on { background: #2f3550; color: var(--paper); }
+/* each tab is a little cloud: a soft body with two puffs on top, bobbing gently out of step with its neighbours */
+.menustrip button { --cl: var(--paper); position: relative; isolation: isolate; font: inherit; font-size: 16px; color: var(--ink); background: var(--cl); border: 0; border-radius: 999px; padding: 8px 20px 8px; cursor: pointer; white-space: nowrap; display: flex; align-items: baseline; gap: 6px; animation: cloudbob 4.2s ease-in-out infinite; transition: background .2s, transform .2s; }
+.menustrip button::before, .menustrip button::after { content: ''; position: absolute; z-index: -1; background: var(--cl); border-radius: 50%; transition: background .2s; }
+.menustrip button::before { width: 46%; height: 150%; left: 9%; top: -52%; }
+.menustrip button > .k { position: relative; }
+.menustrip button::after { width: 38%; height: 120%; right: 11%; top: -36%; box-shadow: 18px 14px 0 -6px var(--cl); }
+.menustrip button:nth-child(2n) { animation-delay: -1.3s; animation-duration: 4.8s; }
+.menustrip button:nth-child(3n) { animation-delay: -2.6s; animation-duration: 3.9s; }
+.menustrip button:nth-child(2n)::before { left: 16%; width: 40%; height: 135%; top: -40%; }
+.menustrip button:nth-child(2n)::after { right: 8%; width: 44%; height: 140%; top: -46%; box-shadow: -26px 12px 0 -6px var(--cl); }
+.menustrip button:hover { --cl: #fffaf0; }
+.menustrip button.on { --cl: #2f3550; color: var(--paper); }
 .menustrip .k { font-family: system-ui, sans-serif; font-size: 10px; opacity: .55; border: 1px solid currentColor; border-radius: 4px; padding: 0 4px; line-height: 1.4; }
-.menustrip .x { font-size: 22px; line-height: 1; padding: 4px 12px; opacity: .7; }
+.menustrip .x { font-size: 22px; line-height: 1; padding: 4px 12px; border-radius: 50%; }
+.menustrip .x::before { width: 60%; height: 80%; left: 2%; top: -30%; }
+.menustrip .x::after { width: 55%; height: 70%; right: 0; top: -22%; box-shadow: none; }
+@keyframes cloudbob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .menustrip button { animation: none; } }
 .menusheet { width: min(620px, 90vw); font-size: 18px; line-height: 1.5; }
 .menusheet .now { font-size: 22px; font-style: italic; margin: 6px 0 14px; padding: 12px 16px; background: rgba(255,250,235,.75); border-left: 4px solid #e8b04a; border-radius: 8px; }
 .menusheet .lamps { display: flex; align-items: center; gap: 10px; margin: 8px 0 14px; }
