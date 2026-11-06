@@ -14,7 +14,7 @@ import type { Shape2 } from './collide';
 
 /** Where everything in Chapter One stands: [lat from the north pole, degrees of longitude from the river]. */
 export const PK = {
-  spring: [13.2, 0], wake: [21.5, -5.2], holloFire: [21.0, -9.6], ysoldeSpring: [21.9, -1.8], tree: [10.6, 7.2], spar: [16.5, 20], benchSpring: [17.0, 6.6],
+  spring: [13.2, 0], wake: [21.5, -5.2], holloFire: [21.0, -9.6], ysoldeSpring: [21.9, -1.8], tree: [15.6, 15.5], spar: [17.4, 19.0], benchSpring: [17.0, 6.6],
   fire: [60.2, -17.5], ysoldeHouse: [56.6, -26.5], ysoldeBench: [58.4, -22.6], bramHouse: [65.8, -28.8], torHouse: [65.6, -9.4],
   house4: [54.2, -11.4], house5: [67.6, -19.5], windmill: [51.8, -24.5], garden: [55.8, -16.8], laundry: [62.4, -25.6],
   woodpile: [60.4, -11.6], workbench: [59.2, -13.0], tor: [58.6, -14.2], bram: [66.0, -25.2], pen: [69.5, -31.5],
@@ -48,6 +48,7 @@ export function preparePeaks(p: Planet) {
   for (const a of AREAS.filter(x => x.world === 0)) p.tints.push({ dir: p.dirRiver(a.at[0], a.at[1]), r: a.r, color: new THREE.Color(a.ground), k: 0.32 });
   for (const pts of PATHS) p.paths.push({ pts: pts.map(([la, lo]) => p.dirRiver(la, lo)), width: 1.5 });
   const clear = (ll: number[], r: number) => p.clearings.push({ dir: p.dirRiver(ll[0], ll[1]), r });
+  clear(PK.tree, 4.5);
   [PK.ysoldeHouse, PK.bramHouse, PK.torHouse, PK.house4, PK.house5].forEach(h => clear(h, 3.4));
   clear(PK.boathouse, 3); clear(PK.windmill, 2); clear(PK.fire, 2.4); clear(PK.spring, 5.5); clear(PK.holloFire, 2.2); clear(PK.garden, 1.8); clear(PK.workbench, 1.2);
 }
@@ -86,11 +87,13 @@ export function populatePeaks(p: Planet, scene: THREE.Scene, c: WorldContent,
   solid(hf, circle(0.9), 0.6, 'hollofire');
   anim((_dt, t) => { if (!hf.visible) return; hf.userData.flame.scale.y = 1 + Math.sin(t * 13) * 0.12 + Math.sin(t * 7.3) * 0.08; hf.userData.light.intensity = 26 + Math.sin(t * 17) * 4; });
   const tree = put(Q.oldTree(), PK.tree[0], PK.tree[1], 0, undefined, 0.4);
-  solid(tree, circle(0.9), 6, 'oldtree');
-  const chimes = Q.treeChimes(); chimes.position.set(0.6, 5.2, 1.6); tree.add(chimes); R.chimes = chimes;
+  solid(tree, circle(2.0), 9, 'oldtree');
+  const chimes = Q.treeChimes(); chimes.position.set(2.6, 7.6, 2.4); chimes.scale.setScalar(1.6); tree.add(chimes); R.chimes = chimes;
   R.tree = tree;
   anim((_dt, t) => (chimes.userData.icicles as THREE.Object3D[]).forEach((ic, i) => (ic.rotation.z = Math.sin(t * 1.4 + i * 0.9) * 0.12)));
   anim((_dt, t) => (tree.userData.leaves as THREE.Object3D[]).forEach((l, i) => (l.rotation.z = Math.sin(t * 0.9 + i) * 0.03)));
+  // the willow's strands swing in the valley wind, a ripple running round the crown
+  anim((_dt, t) => (tree.userData.strands as THREE.Object3D[]).forEach((st, i) => { const a = st.userData.a as number; const w = Math.sin(t * 1.1 + a * 2) * 0.12 + Math.sin(t * 2.3 + i) * 0.04; st.rotation.x = Math.sin(a) * w + 0.06; st.rotation.z = -Math.cos(a) * w + 0.08; }));
   R.spar = put(Q.willowBranch(), PK.spar[0], PK.spar[1], 0.05);
   lm('The old tree', PK.tree[0], PK.tree[1], 'spring');
 

@@ -160,23 +160,69 @@ export function woodpile(): THREE.Group {
 }
 
 /** The old tree beside the spring: a broad, leaning trunk and big soft clumps of leaves. */
+/**
+ * The old tree: a huge weeping willow, the landmark of the spring valley. About 17 m tall, with a gnarled trunk
+ * three people couldn't reach around, great limbs, a wide pale-green crown, and long strands that hang and sway.
+ */
 export function oldTree(): THREE.Group {
   const g = new THREE.Group();
-  const bark = toon('#6a4e3a');
-  const trunk = mesh(new THREE.CylinderGeometry(0.45, 0.85, 5.5, 9), bark, 0, 2.6, 0); trunk.rotation.z = 0.12; g.add(trunk);
-  const b1 = mesh(new THREE.CylinderGeometry(0.22, 0.38, 3.2, 7), bark, 0.9, 5.4, 0.2); b1.rotation.z = -0.7; g.add(b1);
-  const b2 = mesh(new THREE.CylinderGeometry(0.2, 0.34, 3, 7), bark, -0.9, 5.6, -0.3); b2.rotation.z = 0.8; g.add(b2);
-  const leaves: THREE.Object3D[] = [];
-  const cols = ['#4f9a3c', '#62ad44', '#3f8a3a', '#78bb4c'];
-  for (let i = 0; i < 9; i++) {
-    const a = rand() * Math.PI * 2, r = 0.8 + rand() * 2.4;
-    const l = leafClump({ radius: 1.5 + rand() * 0.8, color: cols[i % 4], seed: i + 3 });
-    l.position.set(Math.cos(a) * r, 6.4 + rand() * 2.6, Math.sin(a) * r); g.add(l); leaves.push(l);
+  const bark = texToon('#6a4e3a', woodTex), barkDark = toon('#4f3a2c');
+  // trunk: two leaning, twisted stems grown together, with flared roots
+  const t1 = mesh(new THREE.CylinderGeometry(1.0, 1.9, 8.5, 11), bark, 0, 4.1, 0); t1.rotation.z = 0.08; t1.rotation.y = 0.4; g.add(t1);
+  const t2 = mesh(new THREE.CylinderGeometry(0.75, 1.3, 7.5, 9), bark, 0.7, 3.8, -0.5); t2.rotation.z = -0.14; t2.rotation.x = 0.1; g.add(t2);
+  for (let i = 0; i < 9; i++) { // ridges of bark running up the trunk
+    const a = i / 9 * Math.PI * 2;
+    const r = mesh(new THREE.CylinderGeometry(0.12, 0.28, 7.5, 5), barkDark, Math.cos(a) * 1.35, 3.6, Math.sin(a) * 1.35);
+    r.rotation.z = -Math.cos(a) * 0.12; r.rotation.x = Math.sin(a) * 0.12; g.add(r);
   }
-  // roots
-  for (let i = 0; i < 5; i++) { const a = i * 1.3; const rt = mesh(new THREE.CylinderGeometry(0.12, 0.3, 1.8, 5), bark, Math.cos(a) * 0.9, 0.25, Math.sin(a) * 0.9); rt.rotation.z = Math.cos(a) * 1.2; rt.rotation.x = -Math.sin(a) * 1.2; g.add(rt); }
+  for (let i = 0; i < 8; i++) { // roots spreading over the ground
+    const a = i * 0.8 + 0.3, L = 2.6 + (i % 3) * 0.8;
+    const rt = mesh(new THREE.CylinderGeometry(0.18, 0.6, L, 6), bark, Math.cos(a) * (1.4 + L * 0.35), 0.3, Math.sin(a) * (1.4 + L * 0.35));
+    rt.rotation.z = Math.cos(a) * 1.25; rt.rotation.x = -Math.sin(a) * 1.25; g.add(rt);
+  }
+  // a knot hole, dark, at eye height
+  const hole = mesh(new THREE.SphereGeometry(0.38, 10, 8), toon('#2a1e18'), 0.2, 2.4, 1.62); hole.scale.set(0.8, 1.2, 0.4); g.add(hole);
+  // great limbs reaching out
+  const limbs: [number, number, number][] = [[0.3, 2.6, 0.9], [2.4, 2.3, 0.8], [4.4, 2.8, 0.85], [-1.9, 2.4, 0.95], [1.3, 2.0, 0.7]];
+  const tips: THREE.Vector3[] = [];
+  for (const [a, len, lean] of limbs) {
+    const dir = new THREE.Vector3(Math.cos(a) * Math.sin(lean), Math.cos(lean), Math.sin(a) * Math.sin(lean));
+    const L = len * 2.2;
+    const base = new THREE.Vector3(Math.cos(a) * 0.6, 7.8, Math.sin(a) * 0.6);
+    const limb = mesh(new THREE.CylinderGeometry(0.28, 0.7, L, 7), bark, 0, 0, 0);
+    limb.position.copy(base).addScaledVector(dir, L / 2);
+    limb.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    g.add(limb);
+    tips.push(base.clone().addScaledVector(dir, L));
+  }
+  // the crown: a wide dome of pale, sunny willow green
+  const leaves: THREE.Object3D[] = [];
+  const cols = ['#9cc94e', '#b2d65a', '#86bb46', '#c4dd6a'];
+  for (let i = 0; i < 22; i++) {
+    const a = i * 2.39996, r = i < 6 ? 1.5 + i * 0.4 : 3.2 + (i % 5) * 0.9;
+    const l = leafClump({ radius: 2.4 + (i % 4) * 0.35, color: cols[i % 4], seed: i + 3, squash: 0.7 });
+    l.position.set(Math.cos(a) * r, 12.2 + Math.sin(i * 1.7) * 1.2 - r * 0.25, Math.sin(a) * r); g.add(l); leaves.push(l);
+  }
+  for (const tip of tips) { const l = leafClump({ radius: 2.6, color: cols[1], seed: tip.x * 7 | 0, squash: 0.7 }); l.position.copy(tip); g.add(l); leaves.push(l); }
+  // weeping strands: long ribbons that hang from the crown's rim and sway
+  const strands: THREE.Object3D[] = [];
+  const strandMat = toon('#a6cf58');
+  const strandMat2 = toon('#8cbf48');
+  for (let i = 0; i < 70; i++) {
+    const a = i / 70 * Math.PI * 2 + Math.sin(i * 3.1) * 0.08, r = 5.4 + Math.sin(i * 2.3) * 1.1;
+    const L = 3.6 + (i % 5) * 0.8;
+    const piv = new THREE.Group(); piv.position.set(Math.cos(a) * r, 11.0 - (i % 3) * 0.5, Math.sin(a) * r);
+    // a strand is a thin stem with leaves strung along it, tapering to a point
+    const st = mesh(new THREE.CylinderGeometry(0.02, 0.05, L, 3), strandMat2, 0, -L / 2, 0); st.userData.noOutline = true; piv.add(st);
+    for (let k = 0; k < 6; k++) {
+      const lf = mesh(new THREE.SphereGeometry(0.16 - k * 0.015, 5, 3), k % 2 ? strandMat : strandMat2, (k % 2 ? 0.06 : -0.06), -0.4 - k * (L - 0.6) / 6, 0);
+      lf.scale.set(0.7, 2.6, 0.5); lf.userData.noOutline = true; piv.add(lf);
+    }
+    piv.userData.a = a; g.add(piv); strands.push(piv);
+  }
   ink(g, 0.05);
   g.userData.leaves = leaves;
+  g.userData.strands = strands;
   return g;
 }
 
