@@ -85,7 +85,7 @@ export function populatePeaks(p: Planet, scene: THREE.Scene, c: WorldContent,
   // the fire Ysolde will light beside it on the long night
   const hf = put(P.campfire(), PK.holloFire[0], PK.holloFire[1], 0); R.holloFire = hf; hf.visible = false;
   solid(hf, circle(0.9), 0.6, 'hollofire');
-  anim((_dt, t) => { if (!hf.visible) return; hf.userData.flame.scale.y = 1 + Math.sin(t * 13) * 0.12 + Math.sin(t * 7.3) * 0.08; hf.userData.light.intensity = 26 + Math.sin(t * 17) * 4; });
+  anim((dt, t) => { if (!hf.visible) return; hf.userData.spirit.update(t, dt); hf.userData.light.intensity = 26 + Math.sin(t * 17) * 4 + Math.sin(t * 5.3) * 3; });
   const tree = put(Q.oldTree(), PK.tree[0], PK.tree[1], 0, undefined, 0.4);
   solid(tree, circle(2.0), 9, 'oldtree');
   const chimes = Q.treeChimes(); chimes.position.set(2.6, 7.6, 2.4); chimes.scale.setScalar(1.6); tree.add(chimes); R.chimes = chimes;
@@ -116,7 +116,7 @@ export function populatePeaks(p: Planet, scene: THREE.Scene, c: WorldContent,
   R.chimneys = houses.map(h => h.localToWorld((h.userData.chimney as THREE.Vector3).clone()));
   const fire = put(P.campfire(), PK.fire[0], PK.fire[1], 0); R.fire = fire;
   solid(fire, circle(0.9), 0.6, 'fire');
-  anim((_dt, t) => { fire.userData.flame.scale.y = 1 + Math.sin(t * 13) * 0.12 + Math.sin(t * 7.3) * 0.08; fire.userData.light.intensity = 26 + Math.sin(t * 17) * 4; });
+  anim((dt, t) => { fire.userData.spirit.update(t, dt); fire.userData.light.intensity = 26 + Math.sin(t * 17) * 4 + Math.sin(t * 5.3) * 3; });
   for (let i = 0; i < 5; i++) { const a = i / 5 * Math.PI * 2; const log = put(Q.woodpile(), PK.fire[0] + Math.cos(a) * 2.6, PK.fire[1] + Math.sin(a) * 3.0, 0, faceTo([PK.fire[0] + Math.cos(a) * 2.6, PK.fire[1] + Math.sin(a) * 3.0], PK.fire)); log.scale.set(0.6, 0.45, 0.5); }
   lm('Hearth village', 60, -17, 'hut');
   const mill = put(Q.windmill(), PK.windmill[0], PK.windmill[1], 0, faceTo(PK.windmill, [50, 0]), 0.2);
@@ -146,6 +146,10 @@ export function populatePeaks(p: Planet, scene: THREE.Scene, c: WorldContent,
   };
   bunt([58.6, -21.8], [61.8, -13.8], 3.6); bunt([62.4, -22.2], [62.6, -14.2], 3.3);
   R.flags = flags;
+  // washing on the line lifts and swings too
+  anim((_dt, t) => (R.cloth as THREE.Object3D[]).forEach((c, i) => { c.rotation.x = 0.18 + Math.sin(t * 1.9 + i * 0.8) * 0.22 + Math.sin(t * 5.3 + i) * 0.04; c.rotation.y = Math.sin(t * 1.3 + i) * 0.1; }));
+  // the little flags swing and flutter in the wind, each a beat behind the one before
+  anim((_dt, t) => flags.forEach((f, i) => { const gust = 0.6 + 0.4 * Math.sin(t * 0.37 + i * 0.05); f.rotation.x = (0.25 + Math.sin(t * 2.6 - i * 0.55) * 0.3 + Math.sin(t * 7.1 + i) * 0.06) * gust; f.rotation.z = Math.sin(t * 3.3 - i * 0.7) * 0.12 * gust; }));
   R.lanterns = PK.lanterns.map(ll => put(Q.lanternPost(), ll[0], ll[1], 0, faceTo(ll, [ll[0], 0])));
   for (let i = 0; i < 3; i++) solid(put(Q.stoneWall(5), 68 + i * 2.2, -30 - i * 4, 0, faceTo([68 + i * 2.2, -30 - i * 4], [68 + i * 2.2, -20])), box(2.6, 0.32), 0.62, 'wall');
   solid(put(Q.goatShed(), PK.pen[0] + 1.5, PK.pen[1] - 5, 0, faceTo([PK.pen[0] + 1.5, PK.pen[1] - 5], PK.fire)), circle(1.85), 2.6, 'shed');

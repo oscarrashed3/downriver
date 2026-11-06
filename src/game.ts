@@ -11,6 +11,7 @@ import { prepare, populate, type WorldContent, type Interactable } from './world
 import * as Q from './world/props2';
 import { talkSpot, overShoulder, segmentClear, chooseShot } from './systems/stage';
 import { resolveSolids } from './world/collide';
+import { fireView } from './world/fire';
 import { PK, peaksFlowers } from './world/peaks';
 import { latLonOf, orientTo, wrapDeg } from './world/sphere';
 import { clamp, lerp, smoothstep } from './world/noise';
@@ -237,6 +238,7 @@ export class Game {
 
     this.scene.add(this.player.root, this.fold.root, this.fold.string);
     this.rig = new CameraRig(this.camera);
+    fireView.cam = this.camera;
     // keep the camera out of houses, trunks and rocks: it pushes in toward Nilo instead
     // (the bridge only counts when choosing a talk shot: Nilo walks on it, so it must not shove the follow camera)
     this.rig.block = (look, pos) => !this.planet.solids.length ? 1 : this.talkCam || this.meet ? segmentClear(this.planet.solids, look, pos, this.planet.center) : segmentClear(this.planet.solids.filter(s => !s.camOnly), look, pos, this.planet.center);

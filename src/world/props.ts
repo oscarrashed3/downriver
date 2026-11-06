@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { paint, softRamp } from '../render/paint';
+import { fireSpirit } from './fire';
 
 const mats = new Map<string, THREE.Material>();
 export function toon(color: string, emissive?: string, ei = 0.6): THREE.MeshToonMaterial {
@@ -51,9 +52,11 @@ export function campfire(): THREE.Group {
     const a = (i / 6) * Math.PI * 2;
     g.add(mesh(new THREE.DodecahedronGeometry(0.35), toon('#6a6478'), Math.cos(a) * 0.9, 0.15, Math.sin(a) * 0.9));
   }
-  const flame = mesh(new THREE.ConeGeometry(0.45, 1.3, 6), new THREE.MeshBasicMaterial({ color: '#ffb35a' }), 0, 0.7, 0);
-  const core = mesh(new THREE.ConeGeometry(0.25, 0.8, 6), new THREE.MeshBasicMaterial({ color: '#fff0b0' }), 0, 0.5, 0);
-  g.add(flame, core);
+  // the fire is alive: a little flame spirit sitting on its logs
+  const spirit = fireSpirit();
+  g.add(spirit.root);
+  const flame = spirit.root;
+  g.userData.spirit = spirit;
   const light = new THREE.PointLight('#ffa860', 30, 16, 1.6);
   light.position.y = 1.2;
   g.add(light);
