@@ -23,8 +23,9 @@ export default async ({ page, shot, ev }) => {
   }
   if (want('flags')) { await ev(`(() => { __place([57, -17.5], [61, -18]); __cam([56.5, -19], [61, -18], 2.0, 3.2); })()`); await snap('flags'); await snap('flags-later', 700); }
   if (want('hollo')) {
-    await ev(`(() => { __place([22, -4], [13.2, 0]); __cam([24, -5], [13.2, 0], 3.2, 2.4); })()`); await snap('hollo');
-    await ev(`(() => { __cam([16, 9], [13.2, 0], 2.4, 2.4); })()`); await snap('hollo-side', 900);
+    await ev(`(() => { __place([8, -14], [13.2, 0]); __cam([33, -12], [13.2, 0], 7, 5); })()`); await snap('hollo');
+    await ev(`(() => { __cam([28, -10], [13.2, 0], 3.5, 3); })()`); await snap('hollo-face', 900);
+    await ev(`(() => { __cam([2, -12], [13.2, 0], 7, 4); })()`); await snap('hollo-back', 900);
   }
   if (want('village')) {
     await ev(`(() => { __place([52, -15.8], [62.6, -12.6]); __cam([51, -14], [61, -18], 4, 2); })()`); await snap('village');
