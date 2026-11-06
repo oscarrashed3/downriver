@@ -24,7 +24,7 @@ const ICON = `<svg viewBox="0 0 40 40" aria-hidden="true"><path d="M6 25 L20 9 L
   <path d="M20 9 L20 25" stroke="#2b2540" stroke-width="1.6"/><path d="M4 26 Q20 33 36 26 L32 30 Q20 35 8 30 Z" fill="#e8d9b8" stroke="#2b2540" stroke-width="2" stroke-linejoin="round"/></svg>`;
 
 export const CONTROLS_HTML = `
-  <p><b>W A S D</b> walk &nbsp; <b>Shift</b> run &nbsp; <b>Space</b> jump (hold to glide, once you have the kite)</p>
+  <p><b>W A S D</b> walk &nbsp; <b>Shift</b> run &nbsp; <b>C</b> roll &nbsp; <b>Space</b> jump (at a run: a front flip; hold to glide, once you have the kite)</p>
   <p><b>Mouse</b> look (click to capture, or hold right button and drag) &nbsp; <b>Arrows</b> turn</p>
   <p><b>E</b> talk, use, sit, board Fold &nbsp; <b>Q</b> Skyreading (once learned) &nbsp; <b>F</b> whistle</p>
   <p><b>Esc</b> or the paper boat, top right: this menu &nbsp; <b>M</b> map &nbsp; <b>B</b> backpack &nbsp; <b>L</b> letters &nbsp; <b>K</b> sketchbook &nbsp; <b>J</b> journal</p>

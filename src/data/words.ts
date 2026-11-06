@@ -37,7 +37,7 @@ export const NEW_GOAL = 'New goal';
 
 /** Short notes that pop up in the corner. */
 export const NOTE = {
-  walkHint: '<b>W A S D</b> walk &nbsp; <b>Shift</b> run &nbsp; <b>Mouse</b> look',
+  walkHint: '<b>W A S D</b> walk &nbsp; <b>Shift</b> run &nbsp; <b>C</b> roll &nbsp; <b>Mouse</b> look',
   willow: 'A straight willow branch. <i>Light, and it bends without breaking.</i>',
   pole: (i: number, now: number, old: number) => `Snow pole ${i}: <b>${now} m</b> today. Grandpa's oldest mark: <b>${old} m</b>.`,
   warm: 'Warm again.',

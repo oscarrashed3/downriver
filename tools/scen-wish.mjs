@@ -35,14 +35,21 @@ export default async ({ page, shot, ev }) => {
   await ev(`(() => { const g = __game; g.cutCam = null; g.rig.override = null; })()`);
   if (want('menu')) { await ev(`__game.openTab('goal')`); await snap('menu', 900); await ev(`__game.closeOverlay()`); }
   if (want('roll')) {
-    await ev(`(() => { __place([40, 2], [50, 2]); const g = __game; g.cutCam = null; })()`);
+    await ev(`(() => { __place([36, -16], [44, -16]); const g = __game; g.cutCam = null; g.renderEvery = 1; })()`);
     await page.waitForTimeout(800);
     await ev(`(() => { const g = __game, inp = g.input; inp.down.add('KeyW'); inp.pressed.add('KeyW'); })()`);
-    await page.waitForTimeout(500);
-    await ev(`(() => { const g = __game, inp = g.input; inp.pressed.add('ShiftLeft'); inp.pressed.add('KeyC'); })()`);
-    for (let i = 0; i < 40 && !(await ev('__game.player.rollT > 0.15')); i++) await page.waitForTimeout(30);
-    await ev(`(() => { const g = __game, pl = g.player; const side = new V3().crossVectors(pl.up, pl.facing).normalize(); g.cutCam = { pos: pl.pos.clone().addScaledVector(side, 4).addScaledVector(pl.up, 1.2), look: pl.pos.clone().addScaledVector(pl.up, 0.6), up: pl.up.clone() }; g.timeScale = 0.05; })()`);
-    await snap('roll', 300);
-    await ev(`(() => { const g = __game; g.timeScale = 1; g.cutCam = null; g.rig.override = null; g.input.down.delete('KeyW'); })()`);
+    await page.waitForTimeout(600);
+    for (let i = 0; i < 100 && !(await ev('__game.player.grounded && __game.mode === "play"')); i++) await page.waitForTimeout(100);
+    console.log('mode', await ev('__game.mode'), await ev('__game.player.grounded'));
+    await ev(`(() => { const g = __game, inp = g.input; inp.pressed.add('KeyC'); })()`);
+    let seen = false;
+    for (let i = 0; i < 60; i++) { if (await ev('__game.player.rollT > 0')) { seen = true; break; } await page.waitForTimeout(30); }
+    console.log('roll started', seen, await ev('__game.player.grounded'), await ev(`(() => { const g = __game, pl = g.player, P = g.planet; return (pl.pos.distanceTo(P.center) - P.surfaceRadius(pl.up)).toFixed(2); })()`));
+    // freeze time and pose the roll at three moments for the shots
+    await ev(`(() => { const g = __game, pl = g.player; g.timeScale = 0.0001; g.input.down.delete('KeyW'); const side = new V3().crossVectors(pl.up, pl.facing).normalize(); g.cutCam = { pos: pl.pos.clone().addScaledVector(side, 3.0).addScaledVector(pl.up, 2.1), look: pl.pos.clone().addScaledVector(pl.up, 0.45), up: pl.up.clone() }; })()`);
+    for (const k of [0.75, 0.5, 0.25]) { await ev(`(() => { const pl = __game.player; pl.rollT = ${k} * 0.55; for (let i = 0; i < 12; i++) pl.animate(0.02, 6, false); pl.rollT = ${k} * 0.55; pl.animate(0.0001, 6, false); })()`); await snap('roll-' + k, 400); }
+    await ev(`(() => { const pl = __game.player; pl.rollT = 0; pl.flipT = 0.31; for (let i = 0; i < 12; i++) { pl.flipT = 0.31; pl.animate(0.02, 9, false); } })()`); await snap('flip-mid', 400);
+    await ev(`(() => { const g = __game; g.timeScale = 1; g.cutCam = null; g.rig.override = null; })()`);
   }
+
 };

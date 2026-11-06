@@ -294,6 +294,7 @@ export class Game {
 
     this.player.onStep = () => this.sound.sfxPlay(this.surfaceSound());
     this.player.onJump = () => { this.sound.sfxPlay('jump'); };
+    this.player.onRoll = () => { this.sound.sfxPlay('soft'); };
     this.player.onLand = () => { this.sound.sfxPlay('land'); this.fold.hop(); };
 
     this.ch1 = new ChapterOne(this);
@@ -1255,9 +1256,12 @@ export class Game {
     this.sound.sfxPlay('paper');
   }
 
+  /** Slow motion, for looking closely (1 is normal speed). */
+  timeScale = 1;
+
   frame() {
     this.timer.update();
-    const dt = Math.min(0.05, this.timer.getDelta());
+    const dt = Math.min(0.05, this.timer.getDelta()) * this.timeScale;
     this.time += dt;
     this.fps = lerp(this.fps, 1 / Math.max(1e-3, dt), 0.05);
     PAINT.uTime.value = this.time;
@@ -1448,7 +1452,7 @@ export class Game {
       else { pl.animate(dt, 0, false); pl.sync(); this.hud.setPrompt(null); return; }
     }
     if (this.kneelT > 0) { this.kneelT -= dt; if (this.kneelT <= 0 || mv.lengthSq() > 0.01) { this.kneelT = 0; pl.pose = {}; } }
-    pl.update(dt, p, mv, inp.hit('Space'), inp.key('ShiftLeft') || inp.key('ShiftRight'), inp.key('Space'));
+    pl.update(dt, p, mv, inp.hit('Space'), inp.key('ShiftLeft') || inp.key('ShiftRight'), inp.key('Space'), inp.hit('KeyC'));
     this.softPush(dt);
     this.fold.kiteMode = pl.gliding;
     if (inp.hit('KeyQ') && this.flags.has('power:skyreading')) { this.skyread.active = !this.skyread.active; this.sound.sfxPlay('soft'); }

@@ -55,6 +55,10 @@ export interface PoseInput {
   sit?: number;
   /** Kneel on one knee and reach forward (picking something up). */
   kneel?: number;
+  /** Curled into a ball for a roll or a somersault. */
+  tuck?: number;
+  /** A deep crouch on landing from a height. */
+  crouch?: number;
   lie?: number;
   wave?: number;
   listen?: number;
@@ -438,6 +442,8 @@ export class Person {
     const sit = this.s('sit', p.sit ?? 0, dt, 5);
     const lie = this.s('lie', p.lie ?? 0, dt, 4);
     const kneel = this.s('kneel', p.kneel ?? 0, dt, 7);
+    const tuck = this.s('tuck', p.tuck ?? 0, dt, 22);
+    const crouch = this.s('crouch', p.crouch ?? 0, dt, 16);
     const wave = this.s('wave', p.wave ?? 0, dt, 6);
     const listen = this.s('listen', p.listen ?? 0, dt, 5);
     const surprise = this.s('surprise', p.surprise ?? 0, dt, 10);
@@ -464,6 +470,9 @@ export class Person {
       thigh = lerp(thigh, this.sitThigh, sit); knee = lerp(knee, this.sitKnee, sit);
       // kneeling: left foot forward, right knee on the ground
       thigh = lerp(thigh, i === 0 ? -1.35 : 0.15, kneel); knee = lerp(knee, i === 0 ? 1.55 : 1.85, kneel);
+      // landing crouch, then curled up tight for a roll
+      thigh = lerp(thigh, -0.75, crouch); knee = lerp(knee, 1.35, crouch);
+      thigh = lerp(thigh, -1.75 + (i ? 0.12 : -0.12), tuck); knee = lerp(knee, 2.3, tuck);
       L.thigh.rotation.x = thigh; L.knee.rotation.x = knee;
       L.thigh.rotation.z = lerp(0, (i ? 1 : -1) * 0.08, sit);
     }
@@ -474,6 +483,8 @@ export class Person {
     let lean = moving * 0.06 + run * 0.16 - air * 0.05 + climb * 0.35 + listen * 0.08 + (this.look.hunch ?? 0) * 0.3;
     lean = lerp(lean, -0.12, sit);
     lean = lerp(lean, 0.5, kneel);
+    this.hips.position.y -= this.hipY * (0.28 * crouch + 0.3 * tuck);
+    lean = lerp(lean, 0.35, crouch); lean = lerp(lean, 0.95, tuck);
     this.torso.rotation.x = lean + breath * 0.3 + Math.sin(t * 34) * shiver * 0.02;
     this.torso.rotation.z = Math.sin(t * 41) * shiver * 0.03 + Math.sin(ph) * moving * 0.035;
     this.torso.rotation.y = Math.sin(ph) * moving * 0.1;
@@ -520,6 +531,9 @@ export class Person {
         x = lerp(x, -0.8, chest); z = lerp(z, -0.6, chest); el = lerp(el, -1.85, chest);
       }
       x = lerp(x, -0.2, surprise); z = lerp(z, 0.7 * s, surprise); el = lerp(el, -0.6, surprise);
+      // landing: arms swing out for balance; rolling: hug the knees
+      x = lerp(x, -0.5, crouch); z = lerp(z, 0.55 * s, crouch); el = lerp(el, -0.5, crouch);
+      x = lerp(x, -1.1, tuck); z = lerp(z, -0.15 * s, tuck); el = lerp(el, -1.7, tuck);
       A.sh.rotation.set(x, 0, z);
       A.el.rotation.set(el, 0, 0);
     }

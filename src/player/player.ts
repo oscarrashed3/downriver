@@ -44,6 +44,15 @@ export class Player {
   onStep?: (surface: string) => void;
   onLand?: (impact: number) => void;
   onJump?: () => void;
+  /** Time left in a forward roll (C while moving), and its direction. */
+  rollT = 0;
+  rollDir = new THREE.Vector3();
+  /** Time into a running front flip (jumping at full run). */
+  flipT = 0;
+  /** Crouch left from a hard landing. */
+  landT = 0;
+  onRoll?: () => void;
+  private tumble = 0;
   private lastSpeed = 0;
   private lastVUp = 0;
   private satchelMat: THREE.MeshToonMaterial;
@@ -84,7 +93,7 @@ export class Player {
   }
 
   /** Movement on a small round world: gravity points to the planet's center. */
-  update(dt: number, planet: Planet, moveDir: THREE.Vector3, wantJump: boolean, run: boolean, wantGlide = false) {
+  update(dt: number, planet: Planet, moveDir: THREE.Vector3, wantJump: boolean, run: boolean, wantGlide = false, wantRoll = false) {
     const toC = this.pos.clone().sub(planet.center);
     this.up.copy(toC).normalize();
     const surfR = planet.surfaceRadius(this.up);
@@ -107,6 +116,22 @@ export class Player {
     const accel = this.grounded ? 14 : 3.5;
     vTan.lerp(target, 1 - Math.exp(-accel * dt));
 
+    // A forward roll: a quick tumble along the ground, a burst of speed that eases off.
+    if (wantRoll && this.grounded && this.rollT <= 0 && !climbing && this.mode === 'walk') {
+      this.rollT = Player.ROLL;
+      this.rollDir.copy(moveDir.lengthSq() > 0.01 ? moveDir : this.facing).projectOnPlane(this.up).normalize();
+      this.squash = 0.18; this.onRoll?.();
+    }
+    if (this.rollT > 0) {
+      this.rollT = Math.max(0, this.rollT - dt);
+      const k = this.rollT / Player.ROLL;
+      this.rollDir.projectOnPlane(this.up).normalize();
+      // a little steering, like a real roll
+      if (moveDir.lengthSq() > 0.01) this.rollDir.lerp(moveDir.clone().normalize(), dt * 3).normalize();
+      vTan.copy(this.rollDir).multiplyScalar(5 + 7.5 * Math.sin(Math.PI * Math.min(1, (1 - k) * 1.4 + 0.15)));
+      this.facing.copy(this.rollDir);
+    }
+
     // Too steep with no warmth left: slide back down gently.
     if (steep && this.warmth <= 0.02) {
       const downhill = this.downhill(planet);
@@ -117,6 +142,8 @@ export class Player {
     if (this.jumpBuffer > 0 && this.coyote > 0) {
       vU = 8.2; this.jumpBuffer = 0; this.coyote = 0; this.grounded = false;
       this.squash = -0.25; this.onJump?.();
+      // jumping at a full run (or out of a roll) turns into a front flip
+      if (vTan.length() > 8 || this.rollT > 0) { this.flipT = 0.001; this.rollT = 0; }
     }
 
     // Gliding under the kite: hold Space while falling from a height.
@@ -134,7 +161,8 @@ export class Player {
     const ground = planet.surfaceRadius(nUp);
     const nr = this.pos.distanceTo(planet.center);
     if (nr <= ground + 0.02) {
-      if (!this.grounded && vU < -4) { this.squash = Math.min(0.35, -vU * 0.025); this.onLand?.(-vU); }
+      if (!this.grounded && vU < -4) { this.squash = Math.min(0.35, -vU * 0.025); this.onLand?.(-vU); if (vU < -11) this.landT = 0.35; }
+      if (!this.grounded) this.flipT = 0;
       this.pos.copy(nUp).multiplyScalar(ground).add(planet.center);
       const vu2 = this.vel.dot(nUp);
       if (vu2 < 0) this.vel.addScaledVector(nUp, -vu2);
@@ -198,12 +226,33 @@ export class Player {
     this.squash = lerp(this.squash, 0, 1 - Math.exp(-9 * dt));
     const sq = 1 - this.squash;
     this.person.root.scale.set(1 / Math.sqrt(Math.max(0.5, sq)), sq, 1 / Math.sqrt(Math.max(0.5, sq)));
+    // Tumbling: a forward roll on the ground, or a front flip in the air, turning about the middle of the body.
+    let tuck = 0;
+    if (this.rollT > 0) {
+      const p = 1 - this.rollT / Player.ROLL;
+      this.tumble = Math.PI * 2 * (p * p * (3 - 2 * p));
+      tuck = Math.min(1, Math.sin(Math.PI * p) * 2.2);
+    } else if (this.flipT > 0) {
+      this.flipT += dt;
+      const p = Math.min(1, this.flipT / 0.62);
+      this.tumble = Math.PI * 2 * (p * p * (3 - 2 * p));
+      tuck = Math.min(1, Math.sin(Math.PI * p) * 2);
+      if (p >= 1) this.flipT = 0;
+    } else this.tumble = 0;
+    const c = 0.48;
+    // curled into a ball: shorter and rounder
+    this.person.root.scale.y *= 1 - tuck * 0.2; this.person.root.scale.x *= 1 + tuck * 0.08; this.person.root.scale.z *= 1 + tuck * 0.12;
+    this.person.root.rotation.x = this.tumble;
+    this.person.root.position.set(0, c - c * Math.cos(this.tumble) - (tuck * 0.18), -c * Math.sin(this.tumble));
+    this.landT = Math.max(0, this.landT - dt);
+    const crouch = this.landT > 0 ? Math.min(1, this.landT / 0.12) : 0;
     this.lastSpeed = sp;
     const cold = this.hasDrop && this.warmth < 0.45 ? clamp((0.45 - this.warmth) / 0.35) : 0;
     this.person.animate(dt, {
       speed: sp, grounded: this.grounded, climbing, vUp: this.lastVUp,
       shiver: Math.max(cold, this.pose.shiver ?? 0),
       lookAt: this.lookAt, windLocal: this.windLocal,
+      tuck, crouch,
       ...this.pose,
     } as PoseInput);
     const t = performance.now() / 1000;
@@ -215,6 +264,8 @@ export class Player {
     this.satchelMat.emissive.set('#ffd890');
     this.satchelMat.emissiveIntensity = this.satchelGlow * (0.55 + 0.45 * Math.sin(t * 3));
   }
+
+  static ROLL = 0.55;
 
   sync() {
     this.root.position.copy(this.pos);
