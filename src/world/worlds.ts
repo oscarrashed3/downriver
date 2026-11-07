@@ -39,7 +39,7 @@ function placeAt(i: number): THREE.Vector3 {
 export const WORLDS: WorldConfig[] = [
   {
     id: 'peaks', name: 'The Spring Peaks', subtitle: 'where the river begins', shape: 'peaks',
-    center: placeAt(0), radius: 62, seed: 11, detail: 70, amplitude: 17, valleyWidth: 20,
+    center: placeAt(0), radius: 59, seed: 11, detail: 70, amplitude: 17, valleyWidth: 20,
     riverStartLat: 14, meander: 16, meanderWaves: 3, riverWidth: 2.4, riverBed: 1.0, bankWidth: 5, waterDepth: 0.55,
     palette: {
       low: PEAKS.meadowLow, mid: PEAKS.meadowMid, high: PEAKS.heights, rock: PEAKS.rock, bank: PEAKS.bank,
