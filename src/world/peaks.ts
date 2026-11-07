@@ -8,6 +8,7 @@ import type { WorldContent } from './content';
 import type { Landmark } from '../systems/mapView';
 import { smoothstep } from './noise';
 import { makeHollo } from './hollo';
+import { addLife } from './life';
 import { leafClump } from '../render/foliage';
 import { AREAS } from '../data/areas';
 import type { Shape2 } from './collide';
@@ -302,6 +303,8 @@ export function populatePeaks(p: Planet, scene: THREE.Scene, c: WorldContent,
   }
   // a dock where the raft can always be boarded
   put(Q.dock(), PK.dock[0], PK.dock[1], 0, faceTo(PK.dock, [PK.dock[0], 0]));
+  // hens, a cat, butterflies, ducks, fish, birds, marmots, hares, bees and little things on the ground
+  addLife(p, scene, c);
 }
 
 function addOutlinesSoft(o: THREE.Object3D) {

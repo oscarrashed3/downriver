@@ -1414,6 +1414,7 @@ export class Game {
     (this.beacon.material as THREE.SpriteMaterial).depthTest = far < 0.3;
     fog.density = lerp(FOG_BASE, 0.00006, far);
 
+    (this.contents[this.cur].refs.lifeNear as THREE.Vector3 | undefined)?.copy(this.player.pos);
     for (const c of this.contents) c.animate.forEach(f => f(dt, this.time));
     const npcWind = east.clone();
     for (const n of this.contents[this.cur].npcs) n.update(dt, this.mode === 'cut' ? null : this.player.pos, npcWind.clone().applyQuaternion(n.root.quaternion.clone().invert()));
