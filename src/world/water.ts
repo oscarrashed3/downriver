@@ -81,3 +81,41 @@ export function makeWaterMaterial(color: string, deep: string, ocean = false): T
     `,
   });
 }
+
+/**
+ * The falling stream between two worlds, as one piece of water: at the lip it is as wide and flat as the river it
+ * leaves (so the two meet without a seam), then it gathers into a rounded column as it falls. The uv matches the
+ * river's (x across from -1 to 1, y along in metres), so the same painted water shader runs down it.
+ */
+export function fallGeometry(curve: THREE.Curve<THREE.Vector3>, side0: THREE.Vector3, riverW: number, r: number, n = 200, m = 18): THREE.BufferGeometry {
+  const pos: number[] = [], uv: number[] = [], idx: number[] = [];
+  const P = curve.getSpacedPoints(n);
+  const len = curve.getLength();
+  const T = new THREE.Vector3(), B = side0.clone(), N = new THREE.Vector3(), v = new THREE.Vector3();
+  for (let i = 0; i <= n; i++) {
+    const s = i / n;
+    curve.getTangentAt(s, T);
+    // carry the river's own "across" down the fall, so the sheet never twists
+    B.addScaledVector(T, -B.dot(T)).normalize();
+    N.crossVectors(T, B).normalize();
+    const k = s < 0.14 ? (s / 0.14) * (s / 0.14) * (3 - 2 * s / 0.14) : 1;
+    const width = riverW * (1 - k) + r * 1.35 * k - (s > 0.85 ? (s - 0.85) / 0.15 * r * 0.35 : 0);
+    const thick = 0.1 * (1 - k) + r * 0.75 * k;
+    for (let j = 0; j <= m; j++) {
+      const a = (j / m) * Math.PI * 2;
+      v.copy(P[i]).addScaledVector(B, Math.cos(a) * width).addScaledVector(N, Math.sin(a) * thick);
+      pos.push(v.x, v.y, v.z);
+      uv.push(Math.cos(a), s * len);
+    }
+  }
+  for (let i = 0; i < n; i++) for (let j = 0; j < m; j++) {
+    const a = i * (m + 1) + j, b = a + 1, c = a + m + 1, d = c + 1;
+    idx.push(a, c, b, b, c, d);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}

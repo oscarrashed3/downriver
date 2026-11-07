@@ -15,6 +15,7 @@ import { fireView } from './world/fire';
 import { PK, peaksFlowers } from './world/peaks';
 import { latLonOf, orientTo, wrapDeg } from './world/sphere';
 import { clamp, lerp, smoothstep } from './world/noise';
+import { fallGeometry } from './world/water';
 import { Player } from './player/player';
 import { Fold } from './player/fold';
 import { CameraRig } from './player/camera';
@@ -334,7 +335,7 @@ export class Game {
   // ------------------------------------------------------------------ setup
   /** Falling streams: each world's river leaves over its south pole and pours into the next world's spring. */
   buildStreams() {
-    this.streams.forEach(s => { this.scene.remove(s); s.geometry.dispose(); });
+    this.streams.forEach(s => { this.scene.remove(s); s.geometry.dispose(); s.children.forEach(c => (c as THREE.Mesh).geometry?.dispose()); });
     this.streams = [];
     if (!this.streamMat) {
       this.streamMat = this.planets[0].waterMat.clone();
@@ -344,8 +345,20 @@ export class Game {
     for (let i = 0; i < this.planets.length - 1; i++) {
       const curve = this.streamCurve(i);
       const f = flowArrivingAt(this.river, i);
-      const g = new THREE.TubeGeometry(curve, 160, 0.6 + f * 1.4, 10, false);
+      // the sheet leaves the lip exactly as wide as the river there, and in the river's own across direction
+      const a = this.planets[i], P = a.path, end = P[P.length - 1];
+      const side = new THREE.Vector3().crossVectors(end, end.clone().sub(P[P.length - 3]).normalize()).normalize();
+      const g = fallGeometry(curve, side, a.cfg.riverWidth * a.flowWidth, 0.6 + f * 1.4);
       const m = new THREE.Mesh(g, this.streamMat);
+      // where it leaves, the water pours into a soft bank of cloud and spray, so the lip reads as a fall
+      const out = curve.getTangentAt(0.02), lip = curve.getPointAt(0.03);
+      const mistMat = new THREE.MeshToonMaterial({ color: '#f6f2f4', transparent: true, opacity: 0.88 });
+      for (let k = 0; k < 9; k++) {
+        const b = new THREE.Mesh(new THREE.SphereGeometry(1.6 + (k % 3) * 0.9, 12, 9), mistMat);
+        const sx = new THREE.Vector3().crossVectors(out, end).normalize();
+        b.position.copy(lip).addScaledVector(sx, (k - 4) * 1.5 + Math.sin(k * 2.1) * 0.6).addScaledVector(out, 1.5 + (k % 2) * 2).addScaledVector(end, -1.2 + (k % 3) * 0.5);
+        b.scale.y = 0.6; m.add(b);
+      }
       this.scene.add(m);
       this.streams.push(m);
     }
@@ -354,11 +367,12 @@ export class Game {
   streamCurve(i: number): THREE.CubicBezierCurve3 {
     const a = this.planets[i], b = this.planets[i + 1];
     const endDir = a.path[a.path.length - 1];
-    const p0 = a.center.clone().addScaledVector(endDir, a.waterLevelRadius() + 0.3);
+    const p0 = a.center.clone().addScaledVector(endDir, a.waterLevelRadius() + 0.02);
     const startDir = b.path[0];
     const p3 = b.center.clone().addScaledVector(startDir, b.waterLevelRadius() + 0.3);
     const tangentOut = a.path[a.path.length - 1].clone().sub(a.path[a.path.length - 4]).normalize();
-    const p1 = p0.clone().addScaledVector(endDir, 50).addScaledVector(tangentOut, 40);
+    // the water runs on off the lip first, then bends away in one long arc: a ribbon in the sky, not a spout
+    const p1 = p0.clone().addScaledVector(endDir, 14).addScaledVector(tangentOut, 70);
     const p2 = p3.clone().addScaledVector(startDir, 120);
     return new THREE.CubicBezierCurve3(p0, p1, p2, p3);
   }
