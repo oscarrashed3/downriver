@@ -22,7 +22,7 @@ import { Input } from './core/input';
 import { Sound } from './core/audio';
 import { Hud, esc } from './ui/hud';
 import { Conversation, type Mood, type Script, type Node } from './systems/connection';
-import { SCRIPTS } from './data/scripts';
+import { SCRIPTS, pickReturnLine } from './data/scripts';
 import { JOURNAL } from './data/journal';
 import { MapView, PIECES } from './systems/mapView';
 import { createRiverState, flowArrivingAt, riverHealth, riverWidthFor, type RiverState } from './systems/riverState';
@@ -800,7 +800,9 @@ export class Game {
     let script: Script = base;
     const closed = this.flags.has('closed:' + npc.id);
     if (this.flags.has('talked:' + npc.id) && !closed && this.sigs[npc.id] === this.sigFor(npc.id)) {
-      script = { ...base, nodes: (base.after ?? ['...']).map(t => ({ type: 'say' as const, text: t })) };
+      // nothing changed for them: one fresh line that fits where the story is, never repeated until they run out
+      const line = pickReturnLine(npc.id, this.flags);
+      script = { ...base, nodes: (line ? [line] : base.after ?? ['...']).map(t => ({ type: 'say' as const, text: t })) };
     }
     const mood = this.moods[npc.id] ?? { ...base.start };
     if (closed) { this.flags.delete('closed:' + npc.id); mood.trust = Math.min(1, mood.trust + 0.12); }
