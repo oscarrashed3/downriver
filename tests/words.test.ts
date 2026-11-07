@@ -8,7 +8,7 @@ import { GOAL, goalWords } from '../src/data/words';
 const WORLD1 = ['ysolde', 'bram', 'nima', 'tor', 'odo'];
 /** Proper names a goal line may use. Each must have been heard before it shows up. */
 const NAMES = ['Ysolde', 'Tor', 'Bram', 'Pebble', 'Nima', 'Odo', 'Hollo', 'Kite Ridge'];
-const VERBS = ['Read', 'Talk', 'Find', 'Get', 'Bring', 'Walk', 'Ask', 'Build', 'Invite', 'Sit', 'Say', 'Follow'];
+const VERBS = ['Read', 'Talk', 'Find', 'Get', 'Bring', 'Walk', 'Ask', 'Build', 'Invite', 'Sit', 'Say', 'Follow', 'Listen', 'Play', 'Light', 'Carry'];
 
 /** A fresh playthrough of world 1: real conversations, recording every line heard and every goal line shown. */
 function playthrough() {
@@ -44,12 +44,11 @@ function playthrough() {
   set('item:spar');
   talk('tor');
   heard.push(...KITE_FLIGHT); set('kite-flown', 'power:skyreading');
-  talk('bram');
-  set('goat-following');
-  flags.delete('goat-following'); set('goat-home');
-  talk('bram');
-  set('fence:a'); set('fence:b'); set('fence:c');
-  set('fences-done', 'quest:night');
+  set('stone-heard:0'); set('stone-heard:1'); set('stone-heard:2'); set('stone-heard:3');
+  set('stones-done');
+  set('talked:odo', 'quest:ember'); // Odo shows Nilo who Fold is
+  set('ember-carry');
+  set('ember-delivered', 'quest:night');
   talk('nima'); // she runs to you with the news
   for (const id of WORLD1) if (id !== 'nima') talk(id);
   set('gathered');
@@ -81,7 +80,7 @@ describe('Goal lines', () => {
 
   it('describe people the player has not met yet', () => {
     expect(GOAL.meetYsolde).not.toContain('Ysolde');
-    const before = stepDetail({ flags: new Set(['read-letter', 'quest:hollo', 'kite-flown', 'fences-done', 'quest:night', 'invited:ysolde', 'invited:bram']), projected: 0, echoes: 0 });
+    const before = stepDetail({ flags: new Set(['read-letter', 'quest:hollo', 'kite-flown', 'stones-done', 'ember-delivered', 'quest:night', 'invited:ysolde', 'invited:bram']), projected: 0, echoes: 0 });
     expect(before).toContain('the cloud girl');
   });
 });

@@ -12,8 +12,8 @@ const has = (c: QuestCtx, f: string) => c.flags.has(f);
 /** The three stops that wake Hollo. Each lights one lantern on Odo's bridge. */
 export const LANTERNS = [
   { id: 'wind', flag: 'kite-flown', who: 'Tor', title: 'Read the wind' },
-  { id: 'fences', flag: 'fences-done', who: 'Bram', title: 'Snow fences' },
-  { id: 'night', flag: 'gathered', who: 'Everyone', title: 'The long night' },
+  { id: 'stones', flag: 'stones-done', who: 'Hollo', title: 'The singing stones' },
+  { id: 'ember', flag: 'ember-delivered', who: 'Odo', title: 'Carry the fire' },
 ] as const;
 
 export const FRIENDS = ['ysolde', 'bram', 'nima', 'tor', 'odo'] as const;
@@ -21,6 +21,8 @@ export const FRIENDS = ['ysolde', 'bram', 'nima', 'tor', 'odo'] as const;
 export function lanternsLit(c: QuestCtx): number {
   return LANTERNS.filter(l => has(c, l.flag) || has(c, 'peaks-healed')).length;
 }
+
+export function stonesHeard(c: QuestCtx): number { return [0, 1, 2, 3].filter(i => has(c, 'stone-heard:' + i)).length; }
 
 export function invitedCount(c: QuestCtx): number {
   return FRIENDS.filter(f => has(c, 'invited:' + f)).length;
@@ -30,7 +32,8 @@ export const MAIN_STEPS: Step[] = [
   { id: 'letter', text: GOAL.letter, done: c => has(c, 'read-letter') },
   { id: 'hollo', text: GOAL.meetYsolde, done: c => has(c, 'quest:hollo') },
   { id: 'wind', text: GOAL.findTor('Tor'), done: c => has(c, 'kite-flown') },
-  { id: 'fences', text: GOAL.askBram, done: c => has(c, 'fences-done') },
+  { id: 'stones', text: GOAL.stones(0), done: c => has(c, 'stones-done') },
+  { id: 'ember', text: GOAL.odoFold, done: c => has(c, 'ember-delivered') },
   { id: 'night', text: GOAL.invite('everyone', 'all over the valley', 0), done: c => has(c, 'gathered') },
   { id: 'sit', text: GOAL.sit, done: c => has(c, 'peaks-healed') },
   { id: 'odo', text: GOAL.odo, done: c => has(c, 'boat-ready') },
@@ -59,11 +62,8 @@ export function stepDetail(c: QuestCtx): string | null {
     if (has(c, 'quest:kite')) return GOAL.getBranch;
     return GOAL.findTor('Tor');
   }
-  if (s.id === 'fences') {
-    if (!has(c, 'goat-home')) return has(c, 'goat-following') ? GOAL.leadPebble : has(c, 'quest:goat') ? GOAL.findPebble : GOAL.askBram;
-    if (!has(c, 'flag:tor-fences')) return GOAL.railsBram;
-    return GOAL.fences(c.fences ?? 0);
-  }
+  if (s.id === 'stones') { const n = stonesHeard(c); return n >= 4 ? GOAL.stonesTune : GOAL.stones(n); }
+  if (s.id === 'ember') return !has(c, 'quest:ember') ? GOAL.odoFold : has(c, 'ember-carry') ? GOAL.carryEmber : GOAL.lightEmber;
   if (s.id === 'night') {
     const who = nextToInvite(c);
     return who ? GOAL.invite(knownAs(c, who), WHERE[who], invitedCount(c)) : GOAL.sit;
@@ -83,9 +83,7 @@ export function nextPerson(c: QuestCtx): string | null {
   switch (s.id) {
     case 'hollo': return 'ysolde';
     case 'wind': return has(c, 'quest:kite') && !has(c, 'item:spar') && !has(c, 'flag:tor-follow') ? null : 'tor';
-    case 'fences':
-      if (!has(c, 'goat-home')) return has(c, 'quest:goat') && !has(c, 'goat-following') ? null : 'bram';
-      return has(c, 'flag:tor-fences') ? null : 'bram';
+    case 'ember': return has(c, 'quest:ember') ? null : 'odo';
     case 'night': return nextToInvite(c);
     case 'odo': return 'odo';
     default: return null;
@@ -100,6 +98,10 @@ export function currentStep(c: QuestCtx): Step | null {
 export interface SideQuest { id: string; title: string; start: string; done: string; text: (c: QuestCtx) => string }
 
 export const SIDE_QUESTS: SideQuest[] = [
+  {
+    id: 'pebble', title: 'Pebble the runaway', start: 'quest:goat', done: 'goat-home',
+    text: c => has(c, 'goat-following') ? GOAL.leadPebble : GOAL.findPebble,
+  },
   {
     id: 'cloud', title: "Nima's little cloud", start: 'quest:cloud', done: 'journal:cloud',
     text: c => has(c, 'cloud-caught') ? 'Let the cloud go over the dry meadow by the goat terraces.' : 'Catch the little cloud asleep on the tall peak, east of the river.',

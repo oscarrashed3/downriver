@@ -331,14 +331,14 @@ export class Motion {
     for (let i = 0; i < 2; i++) {
       const A = P.arms[i], other = P.legs[1 - i];
       const s = i === 0 ? -1 : 1;
-      const swing = this.armSw[i].step(-other.thigh.rotation.x * lerp(0.75, 1.15, runK) - 0.05, dt);
-      const elT = -(0.35 + runK * 1.05) - Math.max(0, -swing) * 0.5;
+      const swing = this.armSw[i].step(-other.thigh.rotation.x * lerp(1.15, 1.7, runK) * (0.6 + 0.4 * moving) - 0.08 - runK * 0.12, dt); // a full swing from the shoulder, like the legs
+      const elT = -(0.45 + runK * 1.15) - Math.max(0, -swing) * 0.6;
       const el = this.elb[i].step(elT, dt);
       A.sh.rotation.x = lerp(A.sh.rotation.x, swing, aw);
-      A.sh.rotation.z = lerp(A.sh.rotation.z, (0.1 + runK * 0.12) * s, aw);
+      A.sh.rotation.z = lerp(A.sh.rotation.z, (0.2 + runK * 0.2 + Math.abs(swing) * 0.08) * s, aw); // arms held a little away from the body
       A.el.rotation.x = lerp(A.el.rotation.x, el, aw);
       const w = P.wrists[i];
-      if (w) w.rotation.x = this.wristS[i].step(-(swing - this.armSw[i].x) * 0 + this.armSw[i].v * 0.04, dt);
+      if (w) w.rotation.x = this.wristS[i].step(0.15 + this.armSw[i].v * 0.06, dt); // relaxed hands that trail the swing
     }
     // skid: arms fly forward for balance
     if (I.skid > 0) for (let i = 0; i < 2; i++) { const A = P.arms[i]; A.sh.rotation.x = lerp(A.sh.rotation.x, -1.1, I.skid); A.sh.rotation.z = lerp(A.sh.rotation.z, (i ? 1 : -1) * 0.5, I.skid); A.el.rotation.x = lerp(A.el.rotation.x, -0.5, I.skid); }

@@ -174,14 +174,7 @@ export class Sound {
         o.connect(g).connect(this.sfx); o.start(w); o.stop(w + 0.1);
       }
     }
-    // crickets at night
-    if (a.day < 0.4 && Math.random() < 0.5) {
-      const o = ctx.createOscillator(); const g = ctx.createGain(); o.type = 'square'; o.frequency.value = 4200 + Math.random() * 300;
-      const am = ctx.createOscillator(); am.frequency.value = 38; const ag = ctx.createGain(); ag.gain.value = 0.5;
-      am.connect(ag).connect(g.gain);
-      g.gain.setValueAtTime(0.0, t); g.gain.linearRampToValueAtTime(0.004 * (1 - a.day), t + 0.03); g.gain.linearRampToValueAtTime(0, t + 0.22);
-      o.connect(g).connect(this.sfx); o.start(t); o.stop(t + 0.25); am.start(t); am.stop(t + 0.25);
-    }
+    // (no crickets at night: Oscar found them annoying)
     // the campfire crackles
     if (a.fire > 0.05 && t > this.fireT) {
       this.fireT = t + 0.05 + Math.random() * 0.25;

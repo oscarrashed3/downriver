@@ -30,7 +30,7 @@ describe('Chapter One main quest', () => {
     expect(currentStep(ctx(['read-letter']))?.id).toBe('hollo');
   });
   it('walks through every step in order as the story flags arrive', () => {
-    const order = ['read-letter', 'quest:hollo', 'kite-flown', 'fences-done', 'gathered', 'peaks-healed', 'boat-ready', 'chapter1-complete'];
+    const order = ['read-letter', 'quest:hollo', 'kite-flown', 'stones-done', 'ember-delivered', 'gathered', 'peaks-healed', 'boat-ready', 'chapter1-complete'];
     const flags: string[] = [];
     order.forEach((f, i) => { expect(currentStep(ctx(flags))?.id).toBe(MAIN_STEPS[i].id); flags.push(f); });
     expect(currentStep(ctx(flags))?.id).toBe('home');
@@ -39,12 +39,13 @@ describe('Chapter One main quest', () => {
   });
   it('lights one lantern per stop', () => {
     expect(lanternsLit(ctx(['kite-flown']))).toBe(1);
-    expect(lanternsLit(ctx(['kite-flown', 'fences-done', 'gathered']))).toBe(3);
+    expect(lanternsLit(ctx(['kite-flown', 'stones-done', 'ember-delivered']))).toBe(3);
     expect(lanternsLit(ctx(['peaks-healed']))).toBe(3);
   });
-  it('the step detail counts fences and invitations', () => {
-    expect(stepDetail({ ...ctx(['read-letter', 'quest:hollo', 'kite-flown', 'goat-home', 'flag:tor-fences']), fences: 2 })).toMatch(/2 of 3/);
-    expect(stepDetail(ctx(['read-letter', 'quest:hollo', 'kite-flown', 'fences-done', 'invited:tor', 'invited:odo']))).toMatch(/2 of 5/);
+  it('the step detail counts stones and invitations', () => {
+    expect(stepDetail(ctx(['read-letter', 'quest:hollo', 'kite-flown', 'stone-heard:0', 'stone-heard:3']))).toMatch(/2 of 4/);
+    expect(stepDetail(ctx(['read-letter', 'quest:hollo', 'kite-flown', 'stones-done', 'quest:ember', 'ember-carry']))).toMatch(/wind/);
+    expect(stepDetail(ctx(['read-letter', 'quest:hollo', 'kite-flown', 'stones-done', 'ember-delivered', 'invited:tor', 'invited:odo']))).toMatch(/2 of 5/);
   });
   it('every step has words, and every step id is unique', () => {
     expect(new Set(MAIN_STEPS.map(s => s.id)).size).toBe(MAIN_STEPS.length);

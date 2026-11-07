@@ -25,7 +25,7 @@ export const OPENING = {
   lookDown: 'Look down.',
   homeLight: 'Far below the clouds, one small light is blinking. Somehow, you know it is home.',
   firstStep: 'The river is too thin to carry you. Find out why.',
-  walkHint: '<b>W A S D</b> walk &nbsp; <b>Shift</b> run &nbsp; <b>Mouse</b> look',
+  walkHint: '<b>W A S D</b> walk &nbsp; <b>X</b> run &nbsp; <b>Mouse</b> look',
 };
 
 export const CAMPFIRE: { who: string; text: string }[] = [

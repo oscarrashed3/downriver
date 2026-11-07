@@ -30,7 +30,7 @@ export class Hud {
   constructor() {
     this.root.append(this.sky, this.frost, this.labels, this.goal, this.banner, this.prompt, this.toast, this.hold, this.caption, this.dlg, this.story, this.panel, this.letter, this.chapter, this.fade, this.help);
     this.help.innerHTML = `<h2>How to travel</h2>
-      <p><b>W A S D</b> walk &nbsp; <b>Shift</b> run &nbsp; <b>C</b> roll &nbsp; <b>Space</b> jump (at a run: a front flip; hold to glide, once you have the kite) &nbsp; <b>Mouse</b> look (click to capture, or hold right button and drag) &nbsp; <b>Arrows</b> turn</p>
+      <p><b>W A S D</b> walk &nbsp; <b>X</b> run &nbsp; <b>C</b> roll &nbsp; <b>Space</b> jump (at a run: a front flip; hold to glide, once you have the kite) &nbsp; <b>Mouse</b> look (click to capture, or hold right button and drag) &nbsp; <b>Arrows</b> turn</p>
       <p><b>E</b> talk, use, sit, board Fold &nbsp; <b>Q</b> Skyreading (once learned) &nbsp; <b>F</b> whistle</p>
       <p><b>Tab</b> or <b>scroll out</b> see all the worlds &nbsp; <b>M</b> map &nbsp; <b>J</b> journal &nbsp; <b>B</b> backpack, letters, sketchbook &nbsp; <b>G</b> hide the goal line</p>
       <p><b>P</b> picture quality &nbsp; <b>N</b> sound on/off &nbsp; <b>H</b> this help</p>

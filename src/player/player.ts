@@ -63,7 +63,7 @@ export class Player {
   private skidDir = new THREE.Vector3();
   private planet: Planet | null = null;
   private lastMove = new THREE.Vector3();
-  private running = false;
+  running = false;
   private lastBusy = 0;
   private tumble = 0;
   private lastSpeed = 0;

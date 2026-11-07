@@ -1443,7 +1443,8 @@ export class Game {
     const qc = this.questCtx();
     const step = currentStep(qc);
     const goal = step && this.flags.has('read-letter') ? stepDetail(qc) : null;
-    const lit = this.cur === 0 && this.flags.has('quest:hollo') && !this.flags.has('chapter1-complete') ? `Lanterns  ${'●'.repeat(lanternsLit(qc))}${'○'.repeat(3 - lanternsLit(qc))}` : '';
+    const ember = this.cur === 0 ? this.ch1.lanterns.meter() : '';
+    const lit = ember ? ember : this.cur === 0 && this.flags.has('quest:hollo') && !this.flags.has('chapter1-complete') ? `Lanterns  ${'●'.repeat(lanternsLit(qc))}${'○'.repeat(3 - lanternsLit(qc))}` : '';
     this.hud.setGoal(showGoal && goal ? goal : null, lit);
     // A new task: a toast with the same words as the goal line, once the conversation or scene is over.
     if (goal && (this.mode === 'play' || this.mode === 'raft')) {
@@ -1499,7 +1500,7 @@ export class Game {
       else { pl.animate(dt, 0, false); pl.sync(); this.hud.setPrompt(null); return; }
     }
     if (this.kneelT > 0) { this.kneelT -= dt; if (this.kneelT <= 0 || mv.lengthSq() > 0.01) { this.kneelT = 0; pl.pose = {}; } }
-    pl.update(dt, p, mv, inp.hit('Space'), inp.key('ShiftLeft') || inp.key('ShiftRight'), inp.key('Space'), inp.hit('KeyC'));
+    pl.update(dt, p, mv, inp.hit('Space'), inp.key('KeyX') || inp.key('ShiftLeft') || inp.key('ShiftRight'), inp.key('Space'), inp.hit('KeyC'));
     this.softPush(dt);
     this.fold.kiteMode = pl.gliding;
     if (inp.hit('KeyQ') && this.flags.has('power:skyreading')) { this.skyread.active = !this.skyread.active; this.sound.sfxPlay('soft'); }

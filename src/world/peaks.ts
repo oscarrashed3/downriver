@@ -238,7 +238,7 @@ export function populatePeaks(p: Planet, scene: THREE.Scene, c: WorldContent,
   lm('East road', 44, -90, 'peak'); lm('West road', 50, -112, 'peak');
 
   // ---- echo stones
-  R.echoes = PK.echo.map(ll => put(Q.echoStone(), ll[0], ll[1], 0, faceTo(ll, [ll[0], 0]), 0.2));
+  R.echoes = PK.echo.map(ll => solid(put(Q.echoStone(), ll[0], ll[1], 0, faceTo(ll, [ll[0], 0]), 0.2), circle(0.55), 2.3, 'echo')); // stones are solid: you walk round them
   anim((_dt, t) => (R.echoes as THREE.Object3D[]).forEach((e, i) => { const m = e.userData.glow as THREE.MeshBasicMaterial; if (!e.userData.heard) m.opacity = 0.18 + 0.12 * Math.sin(t * 1.5 + i); }));
 
   // ---- trees and boulders, kept clear of paths, places and the river

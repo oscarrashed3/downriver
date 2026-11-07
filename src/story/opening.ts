@@ -47,14 +47,16 @@ export function wakeBeats(g: Game): Beat[] {
   const p = g.planets[0], pl = g.player;
   let drop: THREE.Mesh | null = null;
   let from: CamPose | null = null;
-  // From above, looking straight down at him lying in the grass, head at the top of the frame.
+  // Low and to the side, at his head: Nilo lying in the snow in the foreground, the sleeping Hollo beyond him.
+  // k drifts the camera slowly in; it never looks straight down and never starts inside Hollo or the snow.
   const closeShot = (k: number): CamPose => {
-    const up = pl.up, side = new THREE.Vector3().crossVectors(up, pl.facing).normalize();
-    const body = pl.pos.clone().addScaledVector(pl.facing, -0.55).addScaledVector(up, 0.25);
-    return {
-      pos: body.clone().addScaledVector(up, 2.4 + k * 4).addScaledVector(side, 0.5 + k * 1.2).addScaledVector(pl.facing, 0.3 + k),
-      look: body, up: pl.facing.clone().negate(),
-    };
+    const up = pl.up, f = pl.facing, side = new THREE.Vector3().crossVectors(up, f).normalize();
+    const head = pl.pos.clone().addScaledVector(f, -0.75).addScaledVector(up, 0.25);
+    const hollo = (g.contents[0].refs.hollo as { root: THREE.Object3D }).root.position;
+    const toH = hollo.clone().sub(head).projectOnPlane(up).normalize();
+    const look = head.clone().lerp(hollo.clone().addScaledVector(up, 1.2), 0.25 + k * 0.1);
+    const pos = head.clone().addScaledVector(toH, -2.6 + k * 0.8).addScaledVector(side, 1.6 - k * 0.4).addScaledVector(up, 1.0 + k * 0.3);
+    return { pos, look, up: up.clone() };
   };
   return [
     ...stormBeats(g),

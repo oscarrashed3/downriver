@@ -1,5 +1,6 @@
 // Chapter One: Where the Water Begins. Everything that happens in the Spring Peaks lives here.
 import { safeSpot } from '../world/spots';
+import { LanternTasks } from './lanterns';
 import * as THREE from 'three';
 import type { Game } from '../game';
 import type { Beat } from './sequencer';
@@ -62,6 +63,7 @@ export class ChapterOne {
   nimaAway = false;
   sparGlow: THREE.Sprite;
   windPosts: Record<string, THREE.Mesh> = {};
+  lanterns: LanternTasks;
 
   constructor(private g: Game) {
     this.p = g.planets[0];
@@ -80,7 +82,8 @@ export class ChapterOne {
     this.frozenMat = Props.toon('#e6f0f8', '#c8dcec', 0.1);
     water.material = this.frozenMat;
     // stupa sites are not part of this story: hide their cairns
-    for (const s of g.snow.sites) if (s.kind !== 'fence') (this.R.cairns[s.id] as THREE.Object3D).visible = false;
+    // snow fences and towers are not part of this story any more: hide their markers
+    for (const s of g.snow.sites) (this.R.cairns[s.id] as THREE.Object3D).visible = false;
     // three lanterns on Odo's bridge, one for each thing that wakes Hollo
     const bridge = this.at(PK.bridge);
     const bup = bridge.clone().sub(this.p.center).normalize();
@@ -127,6 +130,11 @@ export class ChapterOne {
     this.postman.root.visible = false;
     g.scene.add(this.postman.root);
     this.register();
+    this.lanterns = new LanternTasks(g, this.p, this.c);
+    this.lanterns.onDelivered = () => {
+      // the ember lights the fire beside Hollo: now the long night can begin, and Nima comes running
+      setTimeout(() => { g.give('quest:night'); this.nimaRun = 'wait'; g.save(); }, 2500);
+    };
   }
 
   npc(id: string): Npc { return this.c.npcs.find(n => n.id === id)!; }
@@ -179,7 +187,7 @@ export class ChapterOne {
         id: site.id, world: 0, pos: pos(cairn), radius: 5,
         label: () => {
           const s = g.snow.sites.find(x => x.id === site.id)!;
-          if (s.built) return null;
+          if (s.built || true) return null; // fences are no longer part of the story
           if (s.kind === 'fence') {
             if (!this.has('flag:tor-fences')) return this.has('quest:hollo') ? PROMPT.fencePosts : null;
             if (g.skyread.active) return s.windExposure > 0.5 ? PROMPT.fenceWindy : PROMPT.fenceCalm;
@@ -435,6 +443,7 @@ export class ChapterOne {
 
   afterTalk(id: string) {
     const g = this.g;
+    if (id === 'odo' && this.has('quest:ember')) this.lanterns.foldScene();
     if (id === 'tor' && this.has('flag:tor-follow')) bagTake(g.bag, 'item:spar');
     if (id === 'bram' && this.has('flag:tor-fences') && !this.has('got-rails')) { g.flags.add('got-rails'); g.give('item:rails'); }
     if (id === 'nima' && this.has('invited:nima') && this.has('quest:night')) this.nimaAway = true;
@@ -549,21 +558,11 @@ export class ChapterOne {
       g.hud.notify(NOTE.windSeen);
       g.save();
     }
-    if (!this.has('fences-done') && this.has('flag:tor-fences') && projectedSnowpack(g.snow) >= 0.7 - 1e-6) {
-      g.give('fences-done'); g.give('journal:fences'); bagTake(g.bag, 'item:rails');
-      setTimeout(() => {
-        g.give('quest:night');
-        (this.R.holloFire as THREE.Object3D).visible = true;
-        g.sound.sfxPlay('chime');
-        g.hud.notify(NOTE.lantern2);
-        this.nimaRun = 'wait';
-        g.save();
-      }, 2500);
-      g.save();
-    }
+    if (this.has('kite-flown') && !this.has('told:stones') && g.mode === 'play') { g.flags.add('told:stones'); setTimeout(() => g.hud.notify(NOTE.stonesBegin), 4000); }
+    this.lanterns.update(dt);
     if (this.has('quest:night') && !this.has('gathered') && FRIENDS.every(f => this.has('invited:' + f))) {
       g.give('gathered'); g.sound.sfxPlay('chime');
-      g.hud.notify(NOTE.lantern3);
+      g.hud.notify(NOTE.gatheredAll);
       g.save();
     }
     this.updateGuides(dt);
@@ -632,12 +631,8 @@ export class ChapterOne {
         if (this.has('item:spar')) return npcAt('tor');
         if (this.has('quest:kite')) return (this.R.spar as THREE.Object3D).position.clone();
         return npcAt('tor');
-      case 'fences': {
-        if (!this.has('goat-home')) return this.has('goat-following') ? npcAt('bram') : this.has('quest:goat') ? (this.R.pebble as THREE.Object3D).position.clone() : npcAt('bram');
-        if (!this.has('flag:tor-fences')) return npcAt('bram');
-        const next = g.snow.sites.filter(x => x.kind === 'fence' && !x.built).sort((a, b) => b.windExposure - a.windExposure)[0];
-        return next ? (this.R.cairns[next.id] as THREE.Object3D).position.clone() : null;
-      }
+      case 'stones': return this.lanterns.guide();
+      case 'ember': return this.lanterns.guide() ?? npcAt('odo');
       case 'night': {
         if (this.nimaRun) return npcAt('nima');
         const who = FRIENDS.find(f => !this.has('invited:' + f));
