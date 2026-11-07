@@ -1,8 +1,9 @@
 import type { Card } from '../systems/connection';
+import { Compass } from './compass';
 
 const $ = (html: string) => { const d = document.createElement('div'); d.innerHTML = html.trim(); return d.firstElementChild as HTMLElement; };
 
-/** All on-screen UI. Deliberately quiet: no minimap, no quest markers, no meters. */
+/** All on-screen UI. Deliberately quiet: no minimap, no meters; one thin compass strip at the top. */
 export class Hud {
   root = document.getElementById('ui')!;
   prompt = $(`<div class="prompt"></div>`);
@@ -21,6 +22,8 @@ export class Hud {
   panel = $(`<div class="kpanel hidden"><div class="frame"></div><div class="kc"></div></div>`);
   hold = $(`<div class="hold"><svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" class="bg"/><circle cx="22" cy="22" r="18" class="fg"/></svg><span></span></div>`);
   labels = $(`<div class="labels"></div>`);
+  /** The compass strip at the top of the screen (task pin, your pin, which way to turn). */
+  compass = new Compass();
   goalHidden = false;
   private chapterT = 0;
   private toastQ: string[] = [];
@@ -28,7 +31,7 @@ export class Hud {
   private bannerT = 0;
 
   constructor() {
-    this.root.append(this.sky, this.frost, this.labels, this.goal, this.banner, this.prompt, this.toast, this.hold, this.caption, this.dlg, this.story, this.panel, this.letter, this.chapter, this.fade, this.help);
+    this.root.append(this.sky, this.frost, this.labels, this.compass.el, this.goal, this.banner, this.prompt, this.toast, this.hold, this.caption, this.dlg, this.story, this.panel, this.letter, this.chapter, this.fade, this.help);
     this.help.innerHTML = `<h2>How to travel</h2>
       <p><b>W A S D</b> walk &nbsp; <b>X</b> run &nbsp; <b>C</b> roll &nbsp; <b>Space</b> jump (at a run: a front flip; hold to glide, once you have the kite) &nbsp; <b>Mouse</b> look (click to capture, or hold right button and drag) &nbsp; <b>Arrows</b> turn</p>
       <p><b>E</b> talk, use, sit, board Fold &nbsp; <b>Q</b> Skyreading (once learned) &nbsp; <b>F</b> whistle</p>
