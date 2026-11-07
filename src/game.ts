@@ -1116,15 +1116,36 @@ export class Game {
   // ------------------------------------------------------------------ sitting, sky view, fast travel
   sit(bench: THREE.Object3D) {
     this.sitting = bench;
-    const up = bench.position.clone().sub(this.planet.center).normalize();
-    const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(bench.quaternion).projectOnPlane(up).normalize();
+    bench.updateWorldMatrix(true, false);
+    const at = bench.getWorldPosition(new THREE.Vector3());
+    const up = at.clone().sub(this.planet.center).normalize();
+    const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(bench.getWorldQuaternion(new THREE.Quaternion())).projectOnPlane(up).normalize();
     // Nilo has walked up in front of the seat: he settles back onto it while he sits
-    this.sitSlide = { from: this.player.pos.clone(), to: bench.position.clone().addScaledVector(up, 0.02).addScaledVector(fwd, 0.08), t: 0 };
+    this.sitSlide = { from: this.player.pos.clone(), to: at.clone().addScaledVector(up, 0.02).addScaledVector(fwd, 0.08), t: 0 };
     this.player.up.copy(up); this.player.facing.copy(fwd); this.player.vel.set(0, 0, 0);
     this.player.pose = { sit: 1 };
     this.player.sync();
-    this.hud.notify('You sit for a while. The day goes by a little faster. <i>Move to stand up.</i>');
+    if (bench.userData.fireSeat) {
+      // on a log by the fire: the camera comes round behind him and looks into the flames
+      const side = new THREE.Vector3().crossVectors(up, fwd).normalize();
+      const fire = at.clone().addScaledVector(fwd, 2.1);
+      this.rig.easeFromHere(1.0);
+      // behind his shoulder, a little to one side; try the other side or closer in if a house or tree is in the way
+      const head = at.clone().addScaledVector(up, 1.1);
+      const solids = this.planet.solids.filter(s => !s.camOnly);
+      let cp = new THREE.Vector3();
+      for (const [back, off] of [[2.3, 0.7], [2.3, -0.7], [1.8, 1.4], [1.8, -1.4], [1.4, 0]]) {
+        cp = at.clone().addScaledVector(fwd, -back).addScaledVector(side, off);
+        const ground = this.planet.surfacePoint(cp.clone().sub(this.planet.center).normalize()).distanceTo(this.planet.center) - this.planet.center.distanceTo(at);
+        cp.addScaledVector(up, Math.max(0, ground) + 1.75);
+        if (segmentClear(solids, head, cp, this.planet.center) >= 1) break;
+      }
+      this.rig.override = { pos: cp, look: fire.addScaledVector(up, 0.45), up };
+      this.seatCam = true;
+      this.hud.notify('You sit on a log by the fire. It crackles and pops. <i>E to stand up.</i>');
+    } else this.hud.notify('You sit for a while. The day goes by a little faster. <i>Move to stand up.</i>');
   }
+  seatCam = false;
 
   /** Open a door: a short fade, then the room inside. Nilo stays on the step outside the whole time. */
   enterRoom(kind: Q.RoomKind, wall: string, text: string) {
@@ -1496,7 +1517,7 @@ export class Game {
         pl.pos.lerpVectors(sl.from, sl.to, sl.t * sl.t * (3 - 2 * sl.t));
         if (sl.t >= 1) this.sitSlide = null;
       }
-      if (!this.sitSlide && (mv.lengthSq() > 0.01 || inp.hit('Space') || inp.hit('KeyE'))) { this.sitting = null; pl.pose = {}; }
+      if (!this.sitSlide && (mv.lengthSq() > 0.01 || inp.hit('Space') || inp.hit('KeyE'))) { this.sitting = null; pl.pose = {}; if (this.seatCam) { this.seatCam = false; this.rig.easeFromHere(0.8); this.rig.override = null; } }
       else { pl.animate(dt, 0, false); pl.sync(); this.hud.setPrompt(null); return; }
     }
     if (this.kneelT > 0) { this.kneelT -= dt; if (this.kneelT <= 0 || mv.lengthSq() > 0.01) { this.kneelT = 0; pl.pose = {}; } }

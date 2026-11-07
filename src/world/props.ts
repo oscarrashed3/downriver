@@ -52,6 +52,21 @@ export function campfire(): THREE.Group {
     const a = (i / 6) * Math.PI * 2;
     g.add(mesh(new THREE.DodecahedronGeometry(0.35), toon('#6a6478'), Math.cos(a) * 0.9, 0.15, Math.sin(a) * 0.9));
   }
+  // log stools round the fire: upright rounds of wood, bark on the sides, a pale cut top; each faces the fire (+z)
+  const seats: THREE.Object3D[] = [];
+  const bark = toon('#6a4a32'), cut = toon('#d8b884');
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + 0.4;
+    const st = new THREE.Group();
+    st.position.set(Math.cos(a) * 2.1, 0, Math.sin(a) * 2.1);
+    st.lookAt(0, 0, 0);
+    const log = mesh(new THREE.CylinderGeometry(0.24, 0.27, 0.42, 9), bark, 0, 0.21, 0);
+    const top = mesh(new THREE.CylinderGeometry(0.235, 0.235, 0.02, 9), cut, 0, 0.425, 0);
+    st.add(log, top);
+    st.userData.fireSeat = true;
+    g.add(st); seats.push(st);
+  }
+  g.userData.seats = seats;
   // the fire is alive: a little flame spirit sitting on its logs
   const spirit = fireSpirit();
   g.add(spirit.root);

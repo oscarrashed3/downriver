@@ -3,9 +3,9 @@ export default async ({ page, shot, ev }) => {
   const only = (process.env.ONLY ?? 'rocks,people,lineup,globe,compass').split(',');
   await page.click('button[data-a="new"]');
   if (only.includes('wake')) {
-    // skip the storm panels, then watch the first seconds of waking up
-    for (let i = 0; i < 120; i++) { const po = await ev(`+getComputedStyle(__game.hud.panel).opacity`); const story = await ev(`document.querySelector('.story')?.classList.contains('on') ?? false`); if (po < 0.05 && !story && (await ev('__game.time')) > 3) break; await ev(`__game.input.pressed.add('Space')`); await page.waitForTimeout(250); }
-    for (let k = 0; k < 4; k++) { await page.waitForTimeout(900); await shot('wake-' + k); }
+    // skip the storm panels only, then watch Nilo lying in the snow
+    for (let i = 0; i < 200; i++) { if ((await ev(`__game.player.pose?.lie ?? 0`)) > 0.9) break; const po = await ev(`+getComputedStyle(__game.hud.panel).opacity`); const story = await ev(`document.querySelector('.story')?.classList.contains('on') ?? false`); if (po > 0.5 || story) await ev(`__game.input.pressed.add('Space')`); await page.waitForTimeout(150); }
+    for (let k = 0; k < 4; k++) { await page.waitForTimeout(k ? 1400 : 700); await shot('wake-' + k); }
   }
   for (let i = 0; i < 160 && (await ev('__game.mode')) !== 'play'; i++) { await page.waitForTimeout(200); await ev(`(() => { const g = __game; g.input.pressed.add(g.mode === 'letter' ? 'KeyE' : 'Space'); })()`); }
   await ev(`(() => { const g = __game; g.give('read-letter'); g.meet = null; for (const n of g.contents[0].npcs) g.flags.add('met:' + n.id); window.V3 = g.player.pos.constructor; })()`);
@@ -77,6 +77,20 @@ export default async ({ page, shot, ev }) => {
     await cam(`const p = g.planets[0], f = g.contents[0].refs.holloFire.position; const d = f.clone().sub(p.center).normalize(); g.player.placeAt(p, d.clone().applyAxisAngle(new V3(0,0,1).cross(d).normalize(), 2.5 / p.R)); g.rig.faceDir(g.player.up, f.clone().sub(g.player.pos)); g.rig.snap(); g.ch1.lanterns.deliver();`);
     await page.waitForTimeout(4000); await shot('ember-delivered');
     console.log('fire', await ev(`__game.contents[0].refs.holloFire.visible`), 'night', await ev(`__game.flags.has('quest:night')`), 'lit', await ev(`__game.ch1.lanterns.meter() || document.querySelector('.goal .gl').textContent`));
+  }
+  if (only.includes('seat')) {
+    await cam(`const it = g.contents[0].interactables.find(i => i.id === 'fire-seat0'); const p = g.planets[0]; const w = it.walkTo(); g.player.placeAt(p, w.spot.clone().sub(p.center).normalize()); g.rig.snap(); it.act();`);
+    await page.waitForTimeout(9000); await shot('seat-0');
+    console.log('sitting', await ev(`!!__game.sitting`), 'seatCam', await ev(`__game.seatCam`));
+    await ev(`__game.input.pressed.add('KeyE')`); await page.waitForTimeout(1500); await shot('seat-up');
+    console.log('after E sitting', await ev(`!!__game.sitting`));
+  }
+  if (only.includes('sketch')) {
+    await ev(`(() => { const g = __game; const it = g.contents[0].interactables.find(i => i.id === 'vp-ridge'); it.act(); })()`);
+    await page.waitForTimeout(1200); await shot('sketch-settle-a');
+    await page.waitForTimeout(1600); await shot('sketch-settle-b');
+    await page.waitForTimeout(3000); await shot('sketch-draw');
+    for (let k = 0; k < 40 && (await ev('__game.mode')) !== 'play'; k++) await page.waitForTimeout(300);
   }
   if (only.includes('globe')) {
     await ev(`__game.openTab('map')`); await page.waitForTimeout(1500); await shot('globe-0');

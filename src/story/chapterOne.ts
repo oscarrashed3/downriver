@@ -269,6 +269,24 @@ export class ChapterOne {
       act: () => g.cut(this.sketchBeats(vp)),
     }));
 
+    // Log stools round both fires: sit and look into the flames
+    for (const [fid, fireObj] of [['fire', R.fire], ['hollofire', R.holloFire]] as const) {
+      const f = fireObj as THREE.Object3D; f.updateMatrixWorld(true);
+      (f.userData.seats as THREE.Object3D[] | undefined)?.forEach((seat, i) => {
+        const wp = seat.getWorldPosition(new THREE.Vector3());
+        add({
+          id: `${fid}-seat${i}`, world: 0, pos: wp, radius: 1.5,
+          walkTo: () => {
+            const up = wp.clone().sub(this.p.center).normalize();
+            const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(seat.getWorldQuaternion(new THREE.Quaternion())).projectOnPlane(up).normalize();
+            const spot = wp.clone().addScaledVector(fwd, 0.7);
+            return { spot, face: spot.clone().addScaledVector(fwd, 3) };
+          },
+          label: () => (!f.visible || (fid === 'hollofire' && this.has('gathered') && !this.has('peaks-healed')) || g.sitting ? null : PROMPT.fireSeat),
+          act: () => g.sit(seat),
+        });
+      });
+    }
     // Benches: sit and watch the day go by
     (R.benches as THREE.Object3D[]).forEach((b, i) => add({
       id: 'bench' + i, world: 0, pos: pos(b), radius: 2.4, walkTo: seatAt(b),
@@ -702,24 +720,33 @@ export class ChapterOne {
     const from = this.at(vp.at), up = from.clone().sub(this.p.center).normalize();
     const target = this.at(vp.look);
     const dir = target.clone().sub(from).projectOnPlane(up).normalize();
+    // the view itself, for the sketch: from just above where Nilo sits, looking at the subject
     const cam = { pos: from.clone().addScaledVector(up, 2.4).addScaledVector(dir, 0.6), look: target.clone().addScaledVector(up, 3), up };
+    // while he settles: over his shoulder, Nilo small in the lower corner and the view opening up beyond him
+    const right = new THREE.Vector3().crossVectors(up, dir).normalize();
+    const settle = (k: number) => ({ pos: from.clone().addScaledVector(dir, -3.6 + k * 0.9).addScaledVector(right, 1.5).addScaledVector(up, 2.3 + k * 0.5),
+      look: from.clone().lerp(target, 0.35 + k * 0.1).addScaledVector(up, 2.2), up });
     let sk: ReturnType<typeof makeSketch> | null = null;
     let view: HTMLElement | null = null;
     const already = g.sketches.some(s => s.id === vp.id);
     return [
       {
-        dur: 2.2,
+        // he sits down on the grass by the easel, and the camera eases round to frame the view past his shoulder
+        dur: 3.4,
         enter: () => {
           pl.placeAt(this.p, this.p.dirRiver(vp.at[0], vp.at[1]));
           pl.facing.copy(dir); pl.pose = { sit: 1 }; pl.sync();
-          pl.root.visible = false; g.fold.root.visible = false;
-          g.cutCam = cam;
+          g.cutCam = settle(0);
           g.hud.setGoal(null);
         },
+        tick: k => { g.cutCam = settle(k * k * (3 - 2 * k)); },
       },
       {
         dur: 7, line: { text: vp.label },
         enter: () => {
+          // the page shows the view itself, without Nilo in it
+          pl.root.visible = false; g.fold.root.visible = false;
+          g.cutCam = cam; g.camera.position.copy(cam.pos); g.camera.up.copy(cam.up); g.camera.lookAt(cam.look);
           g.composer.render();
           const c = g.renderer.domElement;
           sk = makeSketch(c, c.width, c.height);

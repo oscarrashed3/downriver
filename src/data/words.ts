@@ -84,6 +84,7 @@ export const NOTE = {
 
 /** What the E prompt says. */
 export const PROMPT = {
+  fireSeat: 'Sit on a log by the fire',
   stoneListen: 'Listen to the old stone',
   stonePlay: "Play this stone's note",
   holloHum: 'Listen to Hollo hum',

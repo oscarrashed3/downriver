@@ -54,8 +54,9 @@ export function wakeBeats(g: Game): Beat[] {
     const head = pl.pos.clone().addScaledVector(f, -0.75).addScaledVector(up, 0.25);
     const hollo = (g.contents[0].refs.hollo as { root: THREE.Object3D }).root.position;
     const toH = hollo.clone().sub(head).projectOnPlane(up).normalize();
-    const look = head.clone().lerp(hollo.clone().addScaledVector(up, 1.2), 0.25 + k * 0.1);
-    const pos = head.clone().addScaledVector(toH, -2.6 + k * 0.8).addScaledVector(side, 1.6 - k * 0.4).addScaledVector(up, 1.0 + k * 0.3);
+    // beside his face, a little toward his feet, so Hollo sits behind him in the frame instead of over him
+    const look = head.clone().addScaledVector(toH, 0.5).addScaledVector(up, 0.25 + k * 0.3);
+    const pos = head.clone().addScaledVector(side, -(1.9 - k * 0.5)).addScaledVector(toH, -1.1 + k * 0.2).addScaledVector(up, 0.75 + k * 0.35);
     return { pos, look, up: up.clone() };
   };
   return [
@@ -65,6 +66,9 @@ export function wakeBeats(g: Game): Beat[] {
       enter: () => {
         g.hud.setFade(1, '#fff8ee', true);
         const d = p.dirRiver(PK.wake[0], PK.wake[1]);
+        // a few steps further from Hollo than the old spot, so the first shot is Nilo's face and not the giant's
+        const hd = (g.contents[0].refs.hollo as { root: THREE.Object3D }).root.position.clone().sub(p.center).normalize();
+        d.applyAxisAngle(new THREE.Vector3().crossVectors(hd, d).normalize(), 3.5 / p.R);
         pl.placeAt(p, d);
         pl.facing.copy(p.surfacePoint(p.dirRiver(PK.spring[0], PK.spring[1])).sub(pl.pos).projectOnPlane(pl.up).normalize().negate());
         pl.hasDrop = false;
