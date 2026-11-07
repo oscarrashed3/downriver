@@ -918,22 +918,18 @@ export class Game {
       case 'bag': case 'letters': case 'sketches':
         this.bagView.tab = kind; this.renderBag(); this.bagView.show(true); break;
       case 'map': {
-        const ll = latLonOf(this.player.up);
-        const f = this.player.facing, up = this.player.up;
-        const north = new THREE.Vector3(0, 1, 0).projectOnPlane(up).normalize();
-        const east = new THREE.Vector3().crossVectors(north, up).normalize();
-        const heading = Math.atan2(f.dot(east), f.dot(north));
         const c = this.questCtx();
         const toLL = (v: THREE.Vector3) => { const l = latLonOf(v.clone().sub(this.planet.center).normalize()); return { lat: l.lat, lonOff: wrapDeg(l.lon - this.planet.lonAtLat(l.lat)) }; };
         if (this.cur === 0) {
-          // world 1: only the named areas you have walked into, the people you have met, and where to go next
+          // world 1: only the named areas you have walked into, the people you have met, and the task pin
           const night = this.flags.has('quest:night') && !this.flags.has('peaks-healed');
           this.map.people = this.contents[0].npcs.filter(n => this.flags.has('talked:' + n.id)).map(n => ({ name: SCRIPTS[n.id].name, ...toLL(n.root.position), invited: night && this.flags.has('invited:' + n.id) }));
-          this.map.areas = discoveredAreas(0, this.flags).map(a => ({ name: a.name, at: toLL(this.planet.surfacePoint(this.planet.dirRiver(a.at[0], a.at[1]))), outline: this.areaOutline(a).map(v => toLL(v)) }));
+          this.map.areas = discoveredAreas(0, this.flags).map(a => ({ id: a.id, name: a.name, at: toLL(this.planet.surfacePoint(this.planet.dirRiver(a.at[0], a.at[1]))), outline: this.areaOutline(a).map(v => toLL(v)) }));
           const t = this.ch1.guideTarget();
-          this.map.goal = t ? toLL(t) : null;
-        } else { this.map.people = []; this.map.areas = null; this.map.goal = null; }
-        this.map.draw(this.planet, this.flags, { lat: ll.lat, lonOff: wrapDeg(ll.lon - this.planet.lonAtLat(ll.lat)), heading });
+          const label = this.flags.has('read-letter') ? stepDetail(c) : null;
+          this.map.task = t ? { dir: t, label: (label ?? 'Next').replace(/\s*\(\d+ of \d+\)\s*$/, '') } : null;
+        } else { this.map.people = []; this.map.areas = null; this.map.task = null; }
+        this.map.draw(this.planet, this.flags, { dir: this.player.up.clone(), facing: this.player.facing.clone() });
         this.map.show(true); break;
       }
       case 'journal': this.renderJournal(); this.journalEl.classList.remove('hidden'); break;
@@ -1446,6 +1442,7 @@ export class Game {
     const ember = this.cur === 0 ? this.ch1.lanterns.meter() : '';
     const lit = ember ? ember : this.cur === 0 && this.flags.has('quest:hollo') && !this.flags.has('chapter1-complete') ? `Lanterns  ${'●'.repeat(lanternsLit(qc))}${'○'.repeat(3 - lanternsLit(qc))}` : '';
     this.hud.setGoal(showGoal && goal ? goal : null, lit);
+    this.hud.compass.update(dt, { show: (this.mode === 'play' || this.mode === 'raft') && !this.hud.goalHidden && this.flags.has('read-letter'), center: this.planet.center, radius: this.planet.R, worldId: this.planet.cfg.id, pos: this.player.pos, camera: this.camera, task: this.cur === 0 && goal ? this.ch1.guideTarget() : null, taskLabel: goal ? goal.replace(/\s*\(\d+ of \d+\)\s*$/, '') : null, pins: this.map });
     // A new task: a toast with the same words as the goal line, once the conversation or scene is over.
     if (goal && (this.mode === 'play' || this.mode === 'raft')) {
       const key = goal.replace(/\(\d+ of \d+\)\s*$/, '').trim();
