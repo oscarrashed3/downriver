@@ -3,6 +3,7 @@ import { toon } from '../world/props';
 import { addOutlines } from '../render/paint';
 import { clamp, lerp } from '../world/noise';
 import { buildWanderer } from './wanderer';
+import { buildVillager, GAIT_DEFAULT, type Gait, type Sway, type VillagerKind } from './villagers';
 
 /** How someone looks. Every person in the game is built from this, so they share one style. */
 export interface PersonLook {
@@ -41,11 +42,15 @@ export interface PersonLook {
   props?: PersonProp[];
   /** Nilo's own build: the hooded wanderer from the turnaround sheet. */
   wanderer?: boolean;
+  /** A hand-built villager (src/player/villagers.ts) instead of the shared plain body. */
+  villager?: VillagerKind;
+  /** Their own walk; defaults to Nilo's. */
+  gait?: Partial<Gait>;
 }
 
 export type PersonProp = 'stick' | 'tinCup' | 'kettle' | 'notebook' | 'goggles' | 'bell' | 'lavender' | 'brooch' | 'kneePads' | 'boatPeek' | 'kiteString' | 'towel';
 
-export type IdleKind = 'weave' | 'tinker' | 'count' | 'fold' | 'point' | 'lean' | 'scratch' | 'polish' | 'none';
+export type IdleKind = 'weave' | 'tinker' | 'count' | 'fold' | 'point' | 'lean' | 'scratch' | 'polish' | 'warm' | 'heels' | 'wind' | 'sketch' | 'none';
 
 export interface PoseInput {
   speed: number;
@@ -136,6 +141,9 @@ export class Person {
   hipY: number;
   /** How this body sits: hip height, thigh and knee angles. */
   sitHip = 0.2; sitThigh = -1.5; sitKnee = 1.45; sitArm = -0.9;
+  /** Villagers only: cloth, hair and hanging things on springs. */
+  sway: Sway | null = null;
+  private gait: Gait;
   private glanceT = 3;
   private glance = 0;
   private sm: Record<string, number> = {};
@@ -150,6 +158,8 @@ export class Person {
     this.body.add(this.hips);
     this.hips.position.y = this.hipY;
     this.body.scale.setScalar(H);
+    this.gait = { ...GAIT_DEFAULT, ...look.gait };
+    if (look.villager && !look.wanderer) { buildVillager(this, look); addOutlines(this.root, '#3a2a2e', 0.012); return; }
     if (look.wanderer) { buildWanderer(this, look); addOutlines(this.root, '#2a1e24', 0.011); return; }
 
     // Legs
@@ -450,7 +460,8 @@ export class Person {
     const sp = p.speed;
     const moving = clamp(sp / 5.5);
     const run = clamp((sp - 5.5) / 4);
-    this.phase += dt * (sp > 0.2 ? 3.2 + sp * 1.05 : 0);
+    const GT = this.gait;
+    this.phase += dt * (sp > 0.2 ? (3.2 + sp * 1.05) * GT.rate : 0);
     const ph = this.phase;
     const sit = this.s('sit', p.sit ?? 0, dt, 5);
     const lie = this.s('lie', p.lie ?? 0, dt, 4);
@@ -469,7 +480,7 @@ export class Person {
     const idle = p.idle ?? 'none';
 
     // Legs: stride when walking, tuck in the air, fold when sitting.
-    const amp = moving * (0.55 + run * 0.35) * (1 - sit) * (1 - lie);
+    const amp = moving * (0.55 + run * 0.35) * (1 - sit) * (1 - lie) * GT.stride;
     for (let i = 0; i < 2; i++) {
       const L = this.legs[i];
       const o = i === 0 ? 0 : Math.PI;
@@ -490,7 +501,7 @@ export class Person {
       L.thigh.rotation.z = lerp(0, (i ? 1 : -1) * 0.08, sit);
     }
     // Body bob and lean.
-    const bob = Math.abs(Math.sin(ph)) * moving * (0.035 + run * 0.03) * (1 - air);
+    const bob = Math.abs(Math.sin(ph)) * moving * (0.035 + run * 0.03) * (1 - air) * GT.bounce;
     this.hips.position.y = lerp(lerp(this.hipY + bob - moving * 0.02, this.sitHip, sit), this.hipY * 0.5, kneel);
     const breath = Math.sin(t * 1.7) * 0.012;
     let lean = moving * 0.06 + run * 0.16 - air * 0.05 + climb * 0.35 + listen * 0.08 + (this.look.hunch ?? 0) * 0.3;
@@ -499,11 +510,13 @@ export class Person {
     this.hips.position.y -= this.hipY * (0.28 * crouch + 0.3 * tuck);
     lean = lerp(lean, 0.35, crouch); lean = lerp(lean, 0.95, tuck);
     this.torso.rotation.x = lean + breath * 0.3 + Math.sin(t * 34) * shiver * 0.02;
-    this.torso.rotation.z = Math.sin(t * 41) * shiver * 0.03 + Math.sin(ph) * moving * 0.035;
+    this.torso.rotation.z = Math.sin(t * 41) * shiver * 0.03 + Math.sin(ph) * moving * (0.035 + GT.waddle);
     this.torso.rotation.y = Math.sin(ph) * moving * 0.1;
     this.torso.scale.set(1, 1 + breath, 1);
     // Lying down: rotate the whole body onto its back.
     this.body.rotation.x = -lie * Math.PI / 2;
+    // Odo rocks on his heels while he waits
+    if (idle === 'heels' && sp < 0.3 && sit < 0.5) this.body.rotation.x += Math.sin(t * 1.7) * 0.045;
     this.body.position.y = lie * 0.18 * this.H;
     this.body.position.z = -lie * 0.6 * this.H;
 
@@ -512,7 +525,7 @@ export class Person {
       const A = this.arms[i];
       const s = i === 0 ? -1 : 1;
       const o = i === 0 ? Math.PI : 0;
-      let x = Math.sin(ph + o) * amp * 0.9, z = 0.08 * s + air * 0.5 * s, el = -0.25 - run * 0.9;
+      let x = Math.sin(ph + o) * amp * 0.9 * GT.arm, z = 0.08 * s + air * 0.5 * s, el = -0.25 - run * 0.9;
       // climbing: reach up alternately
       x = lerp(x, -2.5 + Math.sin(t * 6 + o) * 0.4, climb); el = lerp(el, -0.3, climb);
       // idle activities
@@ -527,6 +540,25 @@ export class Person {
         if (idle === 'scratch' && i === 1 && Math.sin(t * 0.45) > 0.2) { x = -1.5; el = -2.25 + Math.sin(t * 9) * 0.12; z = -0.35; }
         if (idle === 'polish' && i === 1) { x = -0.75; el = -1.05; z = -0.25; }
         if (idle === 'polish' && i === 0) { x = -0.85 + Math.sin(t * 5) * 0.12; el = -1.45; z = -0.45 + Math.cos(t * 5) * 0.08; }
+        // Ysolde: both hands on her staff; now and then the right one cups her ear to listen to the water
+        if (idle === 'warm') {
+          const ear = this.cycle(t, 11, 4.5);
+          if (i === 0) { x = -0.55; el = -0.55; z = -0.05; }
+          else { x = lerp(-0.5, -0.35, ear); el = lerp(-0.75, -2.5, ear); z = lerp(-0.45, 0.55, ear); }
+        }
+        // Odo: one hand on his pole, the other behind his back
+        if (idle === 'heels') { if (i === 0) { x = 0.35; el = -1.1; z = 0.12; } else { x = -0.25; el = -0.55; z = 0.0; } }
+        // Tor: tinkers with the kite, then licks a finger and holds it up to test the wind
+        if (idle === 'wind') {
+          const up = this.cycle(t, 9, 3);
+          if (i === 1) { x = lerp(-0.9, -2.9, up); el = lerp(-1.0 + Math.abs(Math.sin(t * 5)) * 0.5, -0.1, up); z = lerp(-0.25, 0.05, up); }
+          else { x = -0.75; el = -0.6; z = -0.1; }
+        }
+        // Nima: notebook up, pencil moving, eyes going between the page and the sky
+        if (idle === 'sketch') {
+          if (i === 0) { x = -0.75; el = -1.25; z = -0.2; }
+          else { x = -0.8 + Math.sin(t * 6) * 0.04; el = -1.5 + Math.sin(t * 4.3) * 0.08; z = -0.42 + Math.cos(t * 6) * 0.03; }
+        }
       }
       if (p.talking && sp < 0.3) { x += Math.sin(t * 2.3 + i * 1.7) * 0.12 - 0.2; el += Math.sin(t * 3.1 + i) * 0.15 - 0.3; }
       // listening: hands together in front
@@ -564,11 +596,17 @@ export class Person {
     if (idle === 'point' && sp < 0.3) pitch = -0.6;
     if (idle === 'polish' && sp < 0.3 && !p.lookAt) pitch = 0.35;
     if (idle === 'count' && sp < 0.3) yaw = Math.sin(t * 0.6) * 0.7;
+    if (sp < 0.3 && !p.lookAt) {
+      if (idle === 'warm') { const ear = this.cycle(t, 11, 4.5); pitch = 0.1 - ear * 0.1; yaw = ear * 0.5; }
+      if (idle === 'wind') pitch = -0.45 * this.cycle(t, 9, 3);
+      if (idle === 'sketch') pitch = lerp(0.4, -0.55, this.cycle(t, 7, 3.2));
+      if (idle === 'heels') pitch = -0.08;
+    }
     pitch = lerp(pitch, -0.35, shield * 0.6);
     pitch = lerp(pitch, 0.25, chest * 0.5);
     this.headYaw = lerp(this.headYaw, yaw, 1 - Math.exp(-5 * dt));
     this.headPitch = lerp(this.headPitch, pitch, 1 - Math.exp(-5 * dt));
-    this.head.rotation.set(this.headPitch, this.headYaw, listen * 0.18 + Math.sin(t * 0.9) * 0.02);
+    this.head.rotation.set(this.headPitch, this.headYaw, listen * 0.18 + Math.sin(t * 0.9) * 0.02 + (idle === 'warm' && sp < 0.3 ? this.cycle(t, 11, 4.5) * 0.25 : 0));
 
     // Face: blink, brows, mouth.
     this.blinkT -= dt;
@@ -597,5 +635,14 @@ export class Person {
     });
     this.hairClumps.forEach((h, i) => { h.rotation.y = Math.sin(t * 4 + i) * 0.05 * (0.5 + trail); });
     if (this.coat) this.coat.rotation.x = -(trail * 0.12) + Math.sin(ph * 2) * moving * 0.02 - air * 0.08 + lerp(0, 0.25, sit);
+    this.sway?.update(dt, w, moving, ph, t);
+  }
+
+  /** 0 most of the time, easing up to 1 for `hold` seconds once every `period` seconds. */
+  private cycle(t: number, period: number, hold: number) {
+    const u = ((t % period) + period) % period, e = 0.6;
+    if (u > hold + 2 * e) return 0;
+    const k = Math.min(1, u / e, (hold + 2 * e - u) / e);
+    return k * k * (3 - 2 * k);
   }
 }
