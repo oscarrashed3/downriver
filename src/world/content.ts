@@ -1,3 +1,4 @@
+import { safeSpot, spotProblem, type Avoid } from './spots';
 import * as THREE from 'three';
 import type { Planet } from './planet';
 import * as P from './props';
@@ -23,6 +24,8 @@ export interface Interactable {
 
 export interface WorldContent {
   npcs: Npc[];
+  /** Places no one should stand: the bridge, the spring basin. */
+  avoid: Avoid[];
   interactables: Interactable[];
   animate: ((dt: number, t: number) => void)[];
   landmarks: Landmark[];
@@ -44,7 +47,7 @@ export function prepare(p: Planet) {
 }
 
 export function populate(p: Planet, scene: THREE.Scene, index: number): WorldContent {
-  const c: WorldContent = { npcs: [], interactables: [], animate: [], landmarks: [], refs: {} };
+  const c: WorldContent = { npcs: [], avoid: [], interactables: [], animate: [], landmarks: [], refs: {} };
   const put = (obj: THREE.Object3D, lat: number, lon: number, offset = 0, face?: 'river' | THREE.Vector3, sink = 0.15) => {
     const d = p.dirRiver(lat, lon);
     p.surfacePoint(d, offset - sink, obj.position);
@@ -59,7 +62,9 @@ export function populate(p: Planet, scene: THREE.Scene, index: number): WorldCon
   };
   const npc = (id: string, lat: number, lon: number) => {
     const n = new Npc(id, LOOKS[id], SCRIPTS[id].start);
-    const d = p.dirRiver(lat, lon);
+    // stand on dry ground near the planned spot, never in the river or inside the bridge, a wall or a tree
+    const d = safeSpot(p, p.dirRiver(lat, lon), c.avoid);
+    const bad = spotProblem(p, d, c.avoid); if (bad) console.warn(`${id} has nowhere good to stand (${bad})`);
     const pos = p.surfacePoint(d, -0.05);
     const fwd = p.surfacePoint(p.dirRiver(lat, 0)).sub(pos);
     n.place(pos, d, fwd);

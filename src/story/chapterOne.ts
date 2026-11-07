@@ -1,4 +1,5 @@
 // Chapter One: Where the Water Begins. Everything that happens in the Spring Peaks lives here.
+import { safeSpot } from '../world/spots';
 import * as THREE from 'three';
 import type { Game } from '../game';
 import type { Beat } from './sequencer';
@@ -135,7 +136,7 @@ export class ChapterOne {
 
   /** Stand a person somewhere for a scene, facing a point. */
   stand(n: Npc, ll: number[], face: THREE.Vector3, pose: Npc['pose'] = {}) {
-    const d = this.p.dirRiver(ll[0], ll[1]);
+    const d = safeSpot(this.p, this.p.dirRiver(ll[0], ll[1]), [], 4);
     const pos = this.p.surfacePoint(d, -0.05);
     n.place(pos, d, face.clone().sub(pos));
     n.pose = pose;
@@ -824,10 +825,10 @@ export class ChapterOne {
     const [hl, ho] = ChapterOne.HOLLO_HOME;
     const startDir = holloAt.clone().sub(this.p.center).normalize();
     const endDir = this.p.dirRiver(hl, ho);
-    const beats: Beat[] = [{
+    const beats: Beat[] = [{ dur: 0.7, tick: k => g.hud.setFade(smoothstep(0, 1, k), '#1a1830') }, {
       dur: 1.8,
       enter: () => {
-        g.hud.setFade(1, '#1a1830');
+        g.hud.setFade(1, '#1a1830', true);
         order.forEach((id, i) => this.stand(this.npc(id), seat(i + 1), fire, { sit: 1 }));
         const d = this.p.dirRiver(seat(0)[0], seat(0)[1]);
         pl.placeAt(this.p, d);
@@ -951,10 +952,10 @@ export class ChapterOne {
       orientTo(pm.root, land, pl.pos.clone().sub(landPos).applyAxisAngle(land, spin));
     };
     const pmAnim = (dt: number, p: Partial<Parameters<typeof pm.person.animate>[1]> = {}) => pm.person.animate(dt, { speed: 0, grounded: true, ...p });
-    const beats: Beat[] = [{
+    const beats: Beat[] = [{ dur: 0.7, tick: k => g.hud.setFade(smoothstep(0, 1, k), '#fff8ee') }, {
       dur: 1.6,
       enter: () => {
-        g.hud.setFade(1, '#fff8ee');
+        g.hud.setFade(1, '#fff8ee', true);
         for (const [id, ll] of Object.entries(spots)) this.stand(this.npc(id), ll, meet);
         pl.placeAt(this.p, this.p.dirRiver(74.6, -2.8));
         pl.facing.copy(this.at([75, -6]).sub(pl.pos).projectOnPlane(pl.up).normalize()); pl.sync();

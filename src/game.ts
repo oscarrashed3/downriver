@@ -255,6 +255,7 @@ export class Game {
     this.menu = new Menu(document.getElementById('ui')!);
     this.nameTags = document.createElement('div'); this.nameTags.className = 'nametags';
     document.getElementById('ui')!.prepend(this.nameTags);
+    this.menu.onGo = i => this.goBack(i);
     this.menu.onTab = t => { if (this.mode === 'play' || this.mode === 'overlay') this.openTab(t); };
     this.menu.onClose = () => this.closeOverlay();
     this.menu.onQuality = () => { const l = this.quality.cycle(); this.applyQuality(); this.hud.notify(NOTE.quality(l)); this.menu.showSettings(this.settingsInfo()); };
@@ -584,6 +585,20 @@ export class Game {
 
   get planet() { return this.planets[this.cur]; }
 
+  /** Worlds whose story is written. The rest are a quiet bank to rest on, with the way home. */
+  worldReady(i: number) { return i === 0; }
+
+  /** A safe place to arrive in each world: on the bank beside the dock, out of the water. */
+  arrivalDir(i: number) {
+    const p = this.planets[i];
+    if (i === 0) return p.dirRiver(PK.benches[3][0] + 1.5, PK.benches[3][1] + 2);
+    const off = (p.cfg.riverWidth + 3.2) / (p.R * Math.PI / 180);
+    return p.dirRiver(20, off);
+  }
+
+  /** Compile every material in view-independent order so a new world's first frame doesn't stall. */
+  warmUp() { try { this.renderer.compile(this.scene, this.camera); } catch { /* ignore */ } }
+
   visited(): Set<number> {
     const s = new Set<number>();
     this.planets.forEach((_, i) => { if (this.flags.has('visited:' + i)) s.add(i); });
@@ -609,9 +624,14 @@ export class Game {
     this.ride = {
       to, curve: this.streamCurve(from), s: 0, dur: 9, kite: false,
       arrive: () => {
+        // set down on the bank by the dock, never adrift: the river only carries you on when you choose it
         const pl = this.planets[to];
-        this.player.placeAt(pl, pl.pathPoint(0.03));
-        this.boardRaft(0.03);
+        this.player.placeAt(pl, this.arrivalDir(to));
+        this.player.facing.copy(pl.surfacePoint(pl.pathPoint(0.08)).sub(this.player.pos).projectOnPlane(this.player.up).normalize());
+        this.rig.faceDir(this.player.up, this.player.facing); this.rig.snap();
+        this.mode = 'play';
+        if (!this.flags.has('told-goback:' + from)) { this.flags.add('told-goback:' + from); this.hud.notify(NOTE.goBack(WORLDS[from].name)); }
+        if (!this.worldReady(to)) this.hud.notify(NOTE.unbuilt(WORLDS[to].name));
       },
     };
     this.sound.sfxPlay('whoosh');
@@ -655,12 +675,14 @@ export class Game {
     if (r.kite) this.fold.updateString(this.player.person.arms[1].hand.getWorldPosition(new THREE.Vector3()));
     const camPos = p.clone().addScaledVector(tan, -9).addScaledVector(camUp, 3.2);
     this.rig.override = { pos: camPos, look: p.clone().addScaledVector(tan, 6), up: camUp };
-    this.hud.setFade(smoothstep(0.92, 1, r.s) * 0.6);
+    this.hud.setFade(smoothstep(0.86, 0.97, r.s), '#fff8ee');
     if (r.s >= 1) {
       this.rig.override = null;
+      this.hud.setFade(1, '#fff8ee', true);
       this.enterWorld(r.to);
       r.arrive();
-      this.hud.setFade(0);
+      this.warmUp();
+      this.hud.setFade(0, '#fff8ee');
       this.rig.snap();
       this.ride = null;
       this.save();
@@ -734,7 +756,11 @@ export class Game {
       if (this.cur === 0 && !this.flags.has('chapter1-complete')) {
         pl.raftT = 0.97;
         if (!this.edgeWarned) { this.edgeWarned = true; this.hud.notify(NOT_YET.edgeEarly); }
-      } else if (this.cur < this.planets.length - 1) { pl.pose = {}; this.startRide(this.cur, this.cur + 1); }
+      } else if (this.cur < this.planets.length - 1) {
+        pl.raftT = 0.99;
+        this.hud.setPrompt(`<b>R</b> ride the falling stream down to ${WORLDS[this.cur + 1].name} &nbsp; <b>E</b> step ashore`);
+        if (this.input.hit('KeyR')) { pl.pose = {}; this.startRide(this.cur, this.cur + 1); }
+      }
     }
     if (this.cur === 5 && pl.raftT > 0.95) pl.raftT = 0.95;
   }
@@ -910,6 +936,7 @@ export class Game {
       }
       case 'journal': this.renderJournal(); this.journalEl.classList.remove('hidden'); break;
       case 'goal': this.menu.showGoal(this.goalInfo()); break;
+      case 'worlds': this.menu.showWorlds(this.worldList()); break;
       case 'controls': this.menu.showControls(); break;
       case 'settings': this.menu.showSettings(this.settingsInfo()); break;
     }
@@ -934,6 +961,18 @@ export class Game {
       next: who ? { name: raw.charAt(0).toUpperCase() + raw.slice(1), where: WHERE[who] ?? '' } : null,
       side: activeSideQuests(c),
     };
+  }
+  worldList() {
+    return WORLDS.map((w, i) => ({ name: w.name, n: CHAPTERS[i].n,
+      state: (i === this.cur ? 'here' : this.worldDone(i) ? 'done' : this.flags.has('visited:' + i) ? 'visited' : 'ahead') as 'here' | 'done' | 'visited' | 'ahead' }));
+  }
+  worldDone(i: number) { return i === 0 ? this.flags.has('chapter1-complete') : false; }
+  /** Fly back to a world from the menu: close it, open the sky, and travel. */
+  goBack(i: number) {
+    if (i === this.cur || !this.flags.has('visited:' + i)) return;
+    this.closeOverlay();
+    this.openSky();
+    this.startTravel(i);
   }
   settingsInfo() { return { quality: this.quality.level.charAt(0).toUpperCase() + this.quality.level.slice(1), volume: this.sound.volume, muted: this.sound.muted }; }
   /** Open the journal during a scene (no mode change). */
@@ -1208,8 +1247,8 @@ export class Game {
       if (tr.t >= 0.5 && !tr.done) {
         tr.done = true;
         const pl = this.planets[tr.to];
-        this.enterWorld(tr.to);
-        const dir = tr.to === 0 ? pl.dirRiver(PK.benches[3][0] + 1.5, PK.benches[3][1] + 2) : pl.dirRiver(20, 6);
+        this.enterWorld(tr.to); this.warmUp();
+        const dir = this.arrivalDir(tr.to);
         this.player.placeAt(pl, dir);
         this.rig.snap();
         this.rig.update(0.016, this.player.pos, this.player.up, pl, 0, 0, 0);
@@ -1221,7 +1260,7 @@ export class Game {
       return;
     }
     if (inp.hit('Tab') || inp.wheel < 0 || inp.hit('Escape')) { this.skyView.exit(); this.sound.sfxPlay('soft'); }
-    const canTravel = this.flags.has('power:kite');
+    const canTravel = true; // any world you have been to is always one flight away
     for (const c of inp.clicks) {
       const i = this.skyView.pick(c, this.camera);
       if (i === null) continue;
@@ -1347,7 +1386,7 @@ export class Game {
     this.rig.blockOverride = !!this.talkCam || !!this.meet;
     this.rig.update(dt, this.player.pos, this.player.up, p, free ? inp.mouseDX : 0, free ? inp.mouseDY : 0, free ? inp.axis(['ArrowLeft'], ['ArrowRight']) : 0);
     if (this.mode === 'sky' || this.skyView.open) {
-      const pose = this.skyView.update(dt, { pos: this.rig.pos.clone(), look: this.rig.look.clone(), up: this.rig.smoothUp.clone() }, this.player.pos, this.cur, this.visited(), this.flags.has('power:kite'), this.camera);
+      const pose = this.skyView.update(dt, { pos: this.rig.pos.clone(), look: this.rig.look.clone(), up: this.rig.smoothUp.clone() }, this.player.pos, this.cur, this.visited(), true, this.camera);
       if (pose) { this.camera.position.copy(pose.pos); this.camera.up.copy(pose.up); this.camera.lookAt(pose.look); }
       else if (this.mode === 'sky' && !this.travel) { this.mode = 'play'; this.input.allowLock = true; }
     }
@@ -1412,7 +1451,7 @@ export class Game {
         this.lastGoal = key;
       }
     }
-    if (this.mode === 'play' || this.mode === 'raft') { const lv = this.quality.sample(dt); if (lv) { this.applyQuality(); this.hud.notify(NOTE.qualityAuto(lv)); } }
+    if (this.mode === 'play' || this.mode === 'raft') { const lv = this.quality.sample(dt); if (lv) { this.applyQuality(); this.warmUp(); this.hud.notify(NOTE.qualityAuto(lv)); } }
     this.updateNameTags();
     if (this.trailOn && this.mode !== 'title') {
       this.trailT -= dt;
@@ -1481,7 +1520,10 @@ export class Game {
     }
     // Walking off the end of the world: carried on by the falling stream anyway, once the river is ready.
     const near = p.riverNearest(pl.up);
-    if (near.t > 0.995 && this.cur < this.planets.length - 1 && (this.cur > 0 || this.flags.has('chapter1-complete'))) this.startRide(this.cur, this.cur + 1);
+    if (near.t > 0.99 && !n && this.cur < this.planets.length - 1 && (this.cur > 0 || this.flags.has('chapter1-complete'))) {
+      this.hud.setPrompt(`<b>E</b>Ride the falling stream down to ${WORLDS[this.cur + 1].name}`);
+      if (inp.hit('KeyE')) this.startRide(this.cur, this.cur + 1);
+    }
   }
 
   run() {

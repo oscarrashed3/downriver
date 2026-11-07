@@ -54,7 +54,18 @@ export class Hud {
     this.banner.classList.add('on'); this.bannerT = 5;
   }
 
-  setFade(a: number, color = '#fff8ee') { this.fade.style.opacity = String(a); this.fade.style.background = color; }
+  /** Fades always ease: the screen can't jump to dark or snap back in one frame (only lightning is instant). */
+  fadeTarget = 0; fadeNow = 0;
+  setFade(a: number, color = '#fff8ee', instant = false) {
+    this.fadeTarget = Math.max(0, Math.min(1, a));
+    if (instant) { this.fadeNow = this.fadeTarget; this.fade.style.opacity = String(this.fadeNow); }
+    if (this.fade.style.background !== color) this.fade.style.background = color;
+  }
+  private stepFade(dt: number) {
+    const d = this.fadeTarget - this.fadeNow, max = 3.2 * Math.min(dt, 0.05);
+    this.fadeNow += Math.abs(d) <= max ? d : Math.sign(d) * max;
+    this.fade.style.opacity = this.fadeNow < 0.002 ? '0' : this.fadeNow.toFixed(3);
+  }
   setFrost(a: number) { this.frost.style.opacity = String(a); }
 
   // ---- dialogue ----
@@ -137,6 +148,7 @@ export class Hud {
   }
 
   update(dt: number) {
+    this.stepFade(dt);
     if (this.chapterT > 0) { this.chapterT -= dt; if (this.chapterT <= 0) this.chapter.classList.remove('on'); }
     this.toastT -= dt;
     if (this.toastT <= 0) {

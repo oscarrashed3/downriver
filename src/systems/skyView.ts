@@ -63,7 +63,7 @@ export class SkyView {
     this.marker.position.copy(playerPos);
     this.silhouettes.forEach((m, i) => { m.visible = show && !visited.has(i); (m.material as THREE.MeshBasicMaterial).opacity = 0.92 * smoothstep(0.3, 0.9, this.k); });
     this.hintEl.style.display = this.k > 0.9 ? 'block' : 'none';
-    this.hintEl.innerHTML = canTravel ? 'Click a world you have visited to fly there. <b>Tab</b> or scroll in to return.' : '<b>Tab</b> or scroll in to return to Nilo.';
+    this.hintEl.innerHTML = canTravel ? 'Click a world you have been to and fly back. Everything there is as you left it. <b>Tab</b> or scroll in to return.' : '<b>Tab</b> or scroll in to return to Nilo.';
     const v = new THREE.Vector3();
     this.planets.forEach((p, i) => {
       const el = this.labelEls[i];
@@ -73,7 +73,7 @@ export class SkyView {
       el.style.left = `${(v.x * 0.5 + 0.5) * 100}%`; el.style.top = `${(-v.y * 0.5 + 0.5) * 100}%`;
       const known = visited.has(i);
       el.className = 'wl' + (known ? '' : ' unknown') + (i === cur ? ' here' : '');
-      el.innerHTML = known ? `<div class="wc">${CHAPTERS[i].n}</div><div class="wn">${WORLDS[i].name}</div>` : `<div class="wn">?</div>`;
+      el.innerHTML = known ? `<div class="wc">${CHAPTERS[i].n}</div><div class="wn">${WORLDS[i].name}</div><div class="wg">${i === cur ? 'You are here' : 'Click to go back'}</div>` : `<div class="wn">Not yet</div>`;
     });
     if (this.k <= 0 && this.dir === 0) { this.labelEls.forEach(e => (e.style.display = 'none')); return null; }
     const s = this.skyPose();

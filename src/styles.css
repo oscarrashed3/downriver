@@ -96,7 +96,9 @@ canvas#game { display: block; width: 100vw; height: 100vh; }
 .labels .wl .wn { font-size: 20px; }
 .labels .wl .wc { font-size: 12px; letter-spacing: .2em; text-transform: uppercase; font-family: system-ui, sans-serif; opacity: .8; }
 .labels .wl.unknown .wn { font-size: 26px; opacity: .7; }
-.labels .wl.here .wn::after { content: ' \00B7 you are here'; font-size: 13px; opacity: .8; font-style: italic; }
+.labels .wl .wg { font-size: 12px; font-style: italic; opacity: .85; margin-top: 2px; }
+.labels .wl.here .wg { color: #ffe6a8; }
+.labels .wl.unknown .wn { font-size: 15px; opacity: .55; font-style: italic; }
 .labels .hint { position: absolute; left: 50%; bottom: 6vh; transform: translateX(-50%); color: #fffaf0; font-size: 16px; text-shadow: 0 1px 8px rgba(30,20,50,.9); font-style: italic; }
 .title h1 { font-style: italic; font-weight: 400; letter-spacing: .06em; }
 .title h1 span { display: inline-block; }
@@ -206,3 +208,12 @@ canvas#game { display: block; width: 100vw; height: 100vh; }
 .mapwrap { position: relative; display: inline-block; }
 .goalring { position: absolute; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; border: 3px solid #e8b04a; pointer-events: none; animation: goalpulse 1.6s ease-out infinite; }
 @keyframes goalpulse { 0% { transform: scale(.4); opacity: 1; } 100% { transform: scale(1.6); opacity: 0; } }
+
+/* Worlds tab */
+.menusheet.worlds .lead { margin: 4px 0 10px; opacity: .8; }
+.menusheet .wrow > span { flex-basis: auto; flex: 1; font-size: 16px; letter-spacing: 0; text-transform: none; opacity: 1; font-family: inherit; }
+.menusheet .wrow small { display: block; font-family: system-ui, sans-serif; font-size: 10px; letter-spacing: .2em; text-transform: uppercase; opacity: .55; }
+.menusheet .wrow em { font-style: italic; opacity: .7; min-width: 7em; }
+.menusheet .wrow.here em { color: #b07a1c; opacity: 1; }
+.menusheet .wrow.done em { color: #3f7a4a; opacity: 1; }
+.menusheet .wrow.ahead { opacity: .45; }

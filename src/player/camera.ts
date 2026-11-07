@@ -79,6 +79,12 @@ export class CameraRig {
       up2 = this.ease.up.clone().lerp(up2, k).normalize();
       if (e >= 1) this.ease = null;
     }
+    // every shot, scripted or not, stays above the ground and the water: a camera under them shows a dark frame
+    {
+      const cd = pos.clone().sub(planet.center); const r = cd.length(); cd.divideScalar(r);
+      const floor = Math.max(planet.surfaceRadius(cd), planet.waterLevelRadius()) + 0.45;
+      if (r < floor && r > floor - 40) pos.copy(cd.multiplyScalar(floor).add(planet.center));
+    }
     this.camera.position.copy(pos);
     this.camera.up.copy(up2);
     this.camera.lookAt(look);

@@ -3,11 +3,12 @@
 // tabs show their own sheets underneath it, and Goal, Controls and Settings are drawn here.
 import { esc } from './hud';
 
-export type MenuTab = 'goal' | 'map' | 'bag' | 'letters' | 'sketches' | 'journal' | 'controls' | 'settings';
+export type MenuTab = 'goal' | 'map' | 'worlds' | 'bag' | 'letters' | 'sketches' | 'journal' | 'controls' | 'settings';
 
 export const MENU_TABS: { id: MenuTab; label: string; key?: string }[] = [
   { id: 'goal', label: 'Goal' },
   { id: 'map', label: 'Map', key: 'M' },
+  { id: 'worlds', label: 'Worlds' },
   { id: 'bag', label: 'Backpack', key: 'B' },
   { id: 'letters', label: 'Letters', key: 'L' },
   { id: 'sketches', label: 'Sketchbook', key: 'K' },
@@ -43,6 +44,7 @@ export class Menu {
   onVolume: (v: number) => void = () => {};
   onMute: () => void = () => {};
   onReset: () => void = () => {};
+  onGo: (i: number) => void = () => {};
 
   constructor(root: HTMLElement) {
     this.button = document.createElement('button');
@@ -65,6 +67,7 @@ export class Menu {
       if (e.target === this.page) { this.onClose(); return; }
       const a = (e.target as HTMLElement).closest('[data-a]') as HTMLElement | null;
       if (!a) return;
+      if (a.dataset.a === 'go') this.onGo(Number(a.dataset.i));
       if (a.dataset.a === 'quality') this.onQuality();
       if (a.dataset.a === 'mute') this.onMute();
       if (a.dataset.a === 'reset') { if (this.confirmReset) this.onReset(); else { this.confirmReset = true; a.textContent = 'Click again to erase your journey and start over'; a.classList.add('warn'); } }
@@ -95,6 +98,13 @@ export class Menu {
     const side = g.side.length ? `<div class="sub">Along the way</div><ul>${g.side.map(q => `<li><b>${esc(q.title)}.</b> ${esc(q.text)}</li>`).join('')}</ul>` : '';
     this.open(`<div class="sheet menusheet"><h2>The way home</h2><div class="sub">${esc(g.quest)}</div>
       ${g.step ? `<div class="now">${esc(g.step)}</div>` : '<div class="now">Nothing right now. Follow the water.</div>'}${lamps}${next}${side}</div>`);
+  }
+
+  /** Every world: where you are, where you can fly back to, and what is still ahead. */
+  showWorlds(list: { name: string; n: string; state: 'here' | 'done' | 'visited' | 'ahead' }[]) {
+    const tag = { here: 'You are here', done: '✓ Finished', visited: 'Visited', ahead: 'Not yet' };
+    this.open(`<div class="sheet menusheet worlds"><h2>Worlds</h2><p class="lead">Fly back to any world you have been to. Everything there stays as you left it. <i>Tab shows them in the sky, too.</i></p>
+      ${list.map((w, i) => `<div class="row wrow ${w.state}"><span><small>${esc(w.n)}</small> ${esc(w.name)}</span><em>${tag[w.state]}</em>${w.state === 'done' || w.state === 'visited' ? `<button data-a="go" data-i="${i}">Go back</button>` : ''}</div>`).join('')}</div>`);
   }
 
   showControls() { this.open(`<div class="sheet menusheet help2"><h2>Controls</h2>${CONTROLS_HTML}</div>`); }

@@ -34,11 +34,11 @@ export function stormBeats(g: Game): Beat[] {
     },
     tick: (k: number) => {
       // the lightning: two hard white flashes, and then the figure is just there
-      if (i === 1) g.hud.setFade(Math.min(1, Math.max(0, 1 - Math.abs(k - 0.04) * 25) + Math.max(0, 1 - Math.abs(k - 0.14) * 30)), '#ffffff');
+      if (i === 1) g.hud.setFade(Math.min(1, Math.max(0, 1 - Math.abs(k - 0.04) * 25) + Math.max(0, 1 - Math.abs(k - 0.14) * 30)), '#ffffff', true);
       const fr = panels[i].parentElement as HTMLElement | null;
       if (fr) fr.style.opacity = String(smoothstep(0, 0.12, k) * (1 - smoothstep(0.9, 1, k)));
     },
-    exit: () => { if (i === 2) { g.hud.showPanel(null); g.hud.setFade(1, '#fff8ee'); } },
+    exit: () => { if (i === 2) { g.hud.showPanel(null); g.hud.setFade(1, '#fff8ee', true); } },
   }));
 }
 
@@ -61,7 +61,7 @@ export function wakeBeats(g: Game): Beat[] {
     {
       dur: 1.6,
       enter: () => {
-        g.hud.setFade(1, '#fff8ee');
+        g.hud.setFade(1, '#fff8ee', true);
         const d = p.dirRiver(PK.wake[0], PK.wake[1]);
         pl.placeAt(p, d);
         pl.facing.copy(p.surfacePoint(p.dirRiver(PK.spring[0], PK.spring[1])).sub(pl.pos).projectOnPlane(pl.up).normalize().negate());

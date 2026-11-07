@@ -165,7 +165,8 @@ export function populatePeaks(p: Planet, scene: THREE.Scene, c: WorldContent,
   // ---- benches (places to sit and look)
   R.benches = PK.benches.map((ll, i) => i === 3 ? put(Q.bench(), ll[0], ll[1], 0, faceTo(ll, PK.fire)) : put(Q.bench(), ll[0], ll[1], 0, faceTo(ll, i === 1 ? [70, 40] : [ll[0] + 10, ll[1]])));
 
-  // ---- people
+  // ---- people: never on the bridge itself (or its steps) or in the spring basin
+  c.avoid.push({ pos: at([PK.bridge[0], 0]), r: 7.8 }, { pos: at(PK.spring), r: 3.8 });
   npc('ysolde', PK.ysoldeSpring[0], PK.ysoldeSpring[1]);
   npc('tor', PK.tor[0], PK.tor[1]);
   npc('bram', PK.bram[0], PK.bram[1]);
@@ -292,8 +293,10 @@ export function populatePeaks(p: Planet, scene: THREE.Scene, c: WorldContent,
     const sideV = new THREE.Vector3().crossVectors(d, tan).normalize();
     const w = p.cfg.riverWidth;
     const dir = d.clone().addScaledVector(sideV, -side * w / p.R).normalize();
-    const rock = Q.riverRock(0.6 + P.rand() * 0.3);
-    p.surfacePoint(dir, 0.1, rock.position); orientTo(rock, dir);
+    // the stone sits on the river bed, a third of it under the water, its moss facing upstream
+    const waterY = Math.max(0.15, Math.min(0.6, p.waterLevelRadius() - p.surfaceRadius(dir)));
+    const rock = Q.riverRock(0.6 + P.rand() * 0.3, waterY);
+    p.surfacePoint(dir, 0, rock.position); orientTo(rock, dir, tan.clone().negate());
     scene.add(rock);
     R.riverRocks.push({ t, side, obj: rock });
   }

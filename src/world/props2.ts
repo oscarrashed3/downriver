@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { toon, rand } from './props';
-import { addOutlines } from '../render/paint';
+import { addOutlines, paint, softRamp } from '../render/paint';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { leafClump, firTier } from '../render/foliage';
 import { texToon, plasterTex, roofTex, woodTex, stoneTex } from '../render/textures';
@@ -479,14 +479,61 @@ export function dock(): THREE.Group {
   return g;
 }
 
-export function riverRock(s = 1): THREE.Group {
+let rockMat: THREE.MeshToonMaterial | null = null;
+let foamMat: THREE.MeshBasicMaterial | null = null;
+/** One water-worn stone: a lumpy, flattened ball, darker and wet below the waterline, dry and pale on top, moss on the upstream side. */
+function riverStone(r: number, waterY: number, flat: number): THREE.Mesh {
+  const geo = new THREE.IcosahedronGeometry(r, 2);
+  const pos = geo.attributes.position as THREE.BufferAttribute;
+  const a = rand() * 6, b = rand() * 6, c = rand() * 6;
+  const col = new Float32Array(pos.count * 3);
+  const dry = new THREE.Color('#d8d0c2'), mid = new THREE.Color('#aaa192'), wet = new THREE.Color('#6a6560'), moss = new THREE.Color('#6d8a46'), tmp = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) {
+    const v = new THREE.Vector3().fromBufferAttribute(pos, i).normalize();
+    // smooth lumps, so it reads as worn by water rather than cut
+    const n = 1 + 0.13 * Math.sin(v.x * 3.1 + a) * Math.cos(v.z * 2.7 + b) + 0.07 * Math.sin(v.y * 5 + c) + 0.04 * Math.sin((v.x + v.z) * 7 + a);
+    let y = v.y * r * n * flat;
+    if (y > r * flat * 0.55) y = r * flat * 0.55 + (y - r * flat * 0.55) * 0.35; // flattened top
+    if (y < waterY - 0.12 * r) y = waterY - 0.12 * r - (waterY - 0.12 * r - y) * 0.15; // under the water it spreads flat, so it doesn't show as a bowl
+    pos.setXYZ(i, v.x * r * n * 1.15, y, v.z * r * n);
+    const top = THREE.MathUtils.smoothstep(v.y, 0.2, 0.9);
+    tmp.copy(mid).lerp(dry, top);
+    const wetK = 1 - THREE.MathUtils.smoothstep(y, waterY - 0.02, waterY + 0.12);
+    tmp.lerp(wet, wetK * 0.8);
+    // moss on the upstream face (+z), above the water
+    const m = THREE.MathUtils.smoothstep(v.z, 0.25, 0.75) * THREE.MathUtils.smoothstep(v.y, -0.1, 0.4) * (1 - wetK);
+    tmp.lerp(moss, m * (0.55 + 0.3 * Math.sin(v.x * 9 + b)));
+    col[i * 3] = tmp.r; col[i * 3 + 1] = tmp.g; col[i * 3 + 2] = tmp.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  geo.computeVertexNormals();
+  rockMat ??= paint(new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: softRamp() }), { variation: 0.25 });
+  return new THREE.Mesh(geo, rockMat);
+}
+
+/** A river stone or a small cluster, seated a third under the water with foam on the downstream side.
+ *  waterY: the water surface height above the group's origin. */
+export function riverRock(s = 1, waterY = 0.35): THREE.Group {
   const g = new THREE.Group();
-  const r = mesh(new THREE.DodecahedronGeometry(0.7 * s, 0), toon('#8a8698'), 0, 0.1, 0);
-  r.scale.set(1.3, 0.7, 1); r.rotation.y = rand() * 6;
-  const top = mesh(new THREE.SphereGeometry(0.5 * s, 7, 4, 0, Math.PI * 2, 0, Math.PI / 2), toon('#6f9a4a'), 0, 0.45 * s, 0);
-  top.scale.set(1.2, 0.35, 0.9);
-  g.add(r, top);
+  const main = riverStone(0.75 * s, -0.08 * s, 0.78); // the waterline, in the stone's own space
+  main.position.y = waterY + 0.08 * s; main.rotation.y = rand() * 6;
+  g.add(main);
+  const extra = rand() < 0.6 ? 1 + Math.floor(rand() * 2) : 0;
+  for (let k = 0; k < extra; k++) {
+    const rr = (0.28 + rand() * 0.22) * s;
+    const st = riverStone(rr, -rr * 0.05, 0.6);
+    const ang = rand() * 6.28, d = 0.75 * s + rr * 0.7;
+    st.position.set(Math.cos(ang) * d, waterY + rr * 0.05, Math.sin(ang) * d); st.rotation.y = rand() * 6;
+    g.add(st);
+  }
   ink(g, 0.03);
+  // foam: a soft ring at the waterline, heavier downstream (-z), and a short wake
+  foamMat ??= new THREE.MeshBasicMaterial({ color: '#f4fbff', transparent: true, opacity: 0.8, depthWrite: false });
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.55 * s, 1.0 * s, 20, 1), foamMat);
+  ring.rotation.x = -Math.PI / 2; ring.position.y = waterY + 0.03; ring.scale.set(1.15, 1, 1); ring.userData.noOutline = true;
+  const wake = new THREE.Mesh(new THREE.CircleGeometry(0.55 * s, 12), foamMat);
+  wake.rotation.x = -Math.PI / 2; wake.position.set(0, waterY + 0.025, -1.15 * s); wake.scale.set(0.8, 1.9, 1); wake.userData.noOutline = true;
+  g.add(ring, wake);
   return g;
 }
 
