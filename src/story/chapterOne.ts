@@ -13,7 +13,7 @@ import { orientTo, anyTangent } from '../world/sphere';
 import { clamp, lerp, smoothstep } from '../world/noise';
 import { SCRIPTS } from '../data/scripts';
 import { NOTE, PROMPT, DOORS } from '../data/words';
-import { CAMPFIRE, WINTER_LINES, DAWN_LINES, FAREWELL, KITE_GIFT, KITE_FLIGHT, POSTMAN, ECHOES, NOT_YET } from '../data/story';
+import { CAMPFIRE, WINTER_LINES, DAWN_LINES, FAREWELL, KITE_GIFT, KITE_FLIGHT, POSTMAN, SENDOFF, ECHOES, NOT_YET } from '../data/story';
 import { passWinter, isHealed, projectedSnowpack } from '../systems/snowpack';
 import { currentStep, invitedCount, lanternsLit, FRIENDS } from './quests';
 import { letterPanel } from './panels';
@@ -1040,15 +1040,107 @@ export class ChapterOne {
       },
       exit: () => { pm.root.visible = false; for (const n of this.c.npcs) n.lookAt = null; },
     });
+    // The send-off: the boat slides away from the bridge, everyone walks down to the bank and waves,
+    // then they light paper lanterns and let them go, and the camera rises until the boat is a speck on the river.
+    const p = this.p;
+    let raftT = p.riverNearest(this.ll(PK.bridge[0] + 0.6, 0)).t;
+    const raftAt = (dt: number, speed: number) => {
+      raftT = Math.min(0.9, raftT + speed * dt / (Math.PI * p.R));
+      const d = p.pathPoint(raftT), tan = p.pathPoint(Math.min(1, raftT + 0.004)).sub(d).normalize();
+      pl.pos.copy(d).multiplyScalar(p.waterLevelRadius() + 0.22 + Math.sin(g.time * 2.4) * 0.05).add(p.center);
+      pl.up.copy(d); pl.facing.copy(tan); pl.pose = { sit: 1, wave: 0.6 }; pl.animate(dt, 0, false); pl.sync();
+      g.fold.update(dt, pl.pos, pl.up, pl.facing, true);
+      return { d, tan };
+    };
+    const bankLL = (i: number): number[] => [PK.bridge[0] + 2.2 + i * 1.3, -8.5 - (i % 2) * 1.6];
+    const ids = ['odo', 'tor', 'nima', 'bram', 'ysolde'];
+    const bank = this.at([PK.bridge[0] + 4.8, -9.5]);
+    const bankUp = bank.clone().sub(p.center).normalize();
+    const river = this.at([PK.bridge[0] + 4.8, 0]);
+    const away = bank.clone().sub(river).projectOnPlane(bankUp).normalize();
+    const downstream = this.at([PK.bridge[0] + 12, 0]).sub(river).projectOnPlane(bankUp).normalize();
+    // paper lanterns: a warm paper drum with a glow, rising and swaying, each let go a moment after the last
+    const lanterns: { o: THREE.Group; at: number; v: number; ph: number; up: THREE.Vector3 }[] = [];
+    const lanternLayer = new THREE.Group(); g.scene.add(lanternLayer);
+    const lantern = (from: THREE.Vector3, up: THREE.Vector3, at: number) => {
+      const o = new THREE.Group();
+      const paper = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.2, 0.34, 10, 1, true), new THREE.MeshBasicMaterial({ color: '#ffcf86', side: THREE.DoubleSide, transparent: true, opacity: 0.95 }));
+      paper.position.y = 0.17; o.add(paper);
+      const glow = glowSprite('rgba(255,200,120,0.9)'); glow.scale.setScalar(1.3); glow.position.y = 0.15; o.add(glow);
+      o.position.copy(from); o.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), up); o.scale.setScalar(1.6); o.visible = false;
+      lanternLayer.add(o); lanterns.push({ o, at, v: 0.55 + Math.random() * 0.35, ph: Math.random() * 9, up });
+    };
+    let clock = 0;
+    const lift = (dt: number) => {
+      clock += dt;
+      for (const L of lanterns) {
+        if (clock < L.at) continue;
+        L.o.visible = true;
+        const s = clock - L.at;
+        L.o.position.addScaledVector(L.up, L.v * dt * Math.min(1, s)).addScaledVector(downstream, Math.sin(s * 0.7 + L.ph) * 0.25 * dt + 0.2 * dt);
+        L.o.rotation.z = Math.sin(s * 1.3 + L.ph) * 0.08;
+      }
+    };
+    beats.push({
+      line: { text: SENDOFF.push }, dur: 5.5,
+      enter: () => {
+        pl.lookAt = null;
+        ids.forEach((id, i) => { const n = this.npc(id); this.stand(n, bankLL(i), river, { wave: 1 }); n.lookAt = null; n.smileT = 6; });
+        g.sound.sfxPlay('splash');
+      },
+      tick: (k, dt) => {
+        raftAt(dt, 1.2 + k * 0.6);
+        // low on the bank behind them, the boat sliding past beyond their waving arms
+        g.cutCam = { pos: bank.clone().addScaledVector(away, 5).addScaledVector(downstream, -3).addScaledVector(bankUp, 2.8), look: bank.clone().lerp(pl.pos, 0.6).addScaledVector(bankUp, 0.8), up: bankUp };
+      },
+    });
+    beats.push({
+      line: { text: SENDOFF.lanterns }, dur: 7.5,
+      enter: () => {
+        clock = 0;
+        ids.forEach((id, i) => {
+          const n = this.npc(id); n.pose = { wave: 0.3 };
+          const hand = n.root.position.clone().addScaledVector(n.up, 1.3);
+          lantern(hand, n.up.clone(), 0.4 + i * 0.7);
+          lantern(hand.clone().addScaledVector(downstream, 0.6), n.up.clone(), 1.0 + i * 0.7 + Math.random() * 0.4);
+        });
+        g.sound.melody([62, 0, 66, 0, 69, 0, 74], 0.55);
+      },
+      tick: (k, dt) => {
+        raftAt(dt, 1.8); lift(dt);
+        // the camera rises behind them with the lanterns, the river opening up below
+        const e = k * k * (3 - 2 * k);
+        g.cutCam = { pos: bank.clone().addScaledVector(away, 5 + e * 4).addScaledVector(downstream, -3).addScaledVector(bankUp, 1.6 + e * 5),
+          look: bank.clone().lerp(pl.pos, 0.55).addScaledVector(bankUp, 1.5 + e * 2.5), up: bankUp };
+      },
+    });
+    beats.push({
+      line: { text: SENDOFF.hollo }, dur: 6.5,
+      enter: () => g.sound.melody([50, 0, 0, 57, 0, 0, 55, 0, 50], 0.7),
+      tick: (k, dt) => {
+        const { d } = raftAt(dt, 2.2); lift(dt);
+        // high and wide: the lanterns drifting up, the boat a speck on the river below
+        const up = d.clone();
+        g.cutCam = { pos: bank.clone().addScaledVector(away, 10 + k * 6).addScaledVector(downstream, -6 - k * 4).addScaledVector(bankUp, 7 + k * 9),
+          look: pl.pos.clone().lerp(bank, 0.3).addScaledVector(up, 2 + k * 3), up: bankUp };
+      },
+    });
     beats.push({
       dur: 4.6,
       enter: () => { g.hud.showChapter('Chapter One', 'Where the Water Begins', 'complete', 4.4); g.sound.melody([62, 66, 69, 74, 0, 73, 69, 66, 0, 64, 66, 62], 0.42); },
+      tick: (k, dt) => {
+        raftAt(dt, 2.2); lift(dt);
+        for (const L of lanterns) ((L.o.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.95 * (1 - smoothstep(0.6, 1, k));
+        for (const L of lanterns) (L.o.children[1] as THREE.Sprite).material.opacity = 1 - smoothstep(0.6, 1, k);
+      },
       exit: () => {
+        g.scene.remove(lanternLayer);
+        lanternLayer.traverse(o => { const m = o as THREE.Mesh; m.geometry?.dispose(); });
+        for (const id of ids) this.npc(id).pose = {};
         pl.pose = {}; pl.lookAt = null;
         g.give('chapter1-complete');
         g.save();
-        pl.placeAt(this.p, this.p.dirRiver(PK.bridge[0] + 0.5, 0));
-        g.boardRaft();
+        g.boardRaft(raftT);
         g.departure = true;
         g.hud.notify(NOTE.riverStrong);
       },

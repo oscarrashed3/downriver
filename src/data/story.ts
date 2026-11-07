@@ -55,6 +55,13 @@ export const FAREWELL: { who: string; text: string }[] = [
   { who: 'Odo', text: 'Hold on tight. The edge is the best part.' },
 ];
 
+/** The send-off: the boat pushes away from the bridge, and everyone lets a paper lantern go. */
+export const SENDOFF = {
+  push: 'Odo unties the rope. The river takes the boat gently, as if it had been waiting.',
+  lanterns: 'Along the bank, one by one, they light paper lanterns and let them go.',
+  hollo: 'Far up the valley, Hollo hums. The lanterns rise on his breath.',
+};
+
 /** The postman drops out of the sky with the first letter from the light keeper. */
 export const POSTMAN = {
   arrive: 'Something green comes tumbling down the sky. An umbrella. Under it, a very small postman.',
