@@ -1337,10 +1337,13 @@ export class Game {
 
   /** Slow motion, for looking closely (1 is normal speed). */
   timeScale = 1;
+  /** For recording videos: the browser's own loop stops, and a script steps the game with a fixed dt per frame. */
+  filming = false;
+  fixedDt: number | null = null;
 
   frame() {
     this.timer.update();
-    const dt = Math.min(0.05, this.timer.getDelta()) * this.timeScale;
+    const dt = this.fixedDt ?? Math.min(0.05, this.timer.getDelta()) * this.timeScale;
     this.time += dt;
     this.fps = lerp(this.fps, 1 / Math.max(1e-3, dt), 0.05);
     PAINT.uTime.value = this.time;
@@ -1564,7 +1567,7 @@ export class Game {
   }
 
   run() {
-    const loop = () => { this.frame(); requestAnimationFrame(loop); };
+    const loop = () => { if (!this.filming) this.frame(); requestAnimationFrame(loop); };
     loop();
   }
 }

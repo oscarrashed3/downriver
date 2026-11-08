@@ -5,25 +5,38 @@ import fs from 'fs';
 const out = process.argv[2] ?? 'shots/video';
 fs.mkdirSync(out, { recursive: true });
 const browser = await pw.chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 }, recordVideo: { dir: out, size: { width: 1280, height: 720 } } });
+const ctx = await browser.newContext({ viewport: { width: 854, height: 480 } });
 const page = await ctx.newPage();
 page.on('pageerror', e => console.log('[pageerror]', e.message));
 await page.addInitScript(() => { localStorage.removeItem('downriver-save-v2'); localStorage.removeItem('nilo-save-v3'); });
 await page.goto((process.env.URL ?? 'http://localhost:5174/downriver/'));
 await page.waitForTimeout(6000);
 const ev = (js) => page.evaluate(js);
-const wait = (ms) => page.waitForTimeout(ms);
+// Film: the game is stepped by hand, 0.15 s of game time per video frame (three 0.05 s steps, drawn once),
+// so the video plays smoothly at 20 fps and three times real speed however slowly this machine draws.
+const STEP = 0.05, PER = 3;
+fs.mkdirSync(out + '/f', { recursive: true });
+let n = 0;
+async function wait(ms) {
+  const frames = Math.max(1, Math.round(ms / 1000 / (STEP * PER)));
+  for (let k = 0; k < frames; k++) {
+    await ev(`(() => { const g = __game; g.renderEvery = ${PER}; for (let i = 0; i < ${PER}; i++) g.frame(); })()`);
+    await page.screenshot({ path: `${out}/f/${String(++n).padStart(6, '0')}.jpg`, type: 'jpeg', quality: 82 });
+  }
+}
 const mark = async (label) => console.log(label, await ev('__game.mode'));
 const press = (k) => ev(`__game.input.pressed.add('${k}')`);
 
-/** Click through talk lines and scenes until Nilo is free again (Space, or E for a letter). */
-async function advance(max = 80, gap = 1500) {
+/** Click through talk lines and scenes until Nilo is free again: hold Space to read, pick the first answer, E for letters. */
+async function advance(max = 80, gap = 1200) {
   for (let i = 0; i < max; i++) {
     const m = await ev('__game.mode');
-    if (m === 'play' || m === 'raft') return;
-    await press(m === 'letter' ? 'KeyE' : 'Space');
+    if (m === 'play' || m === 'raft') { await page.keyboard.up('Space'); await ev('__game.fast = 1'); return; }
+    if (m === 'talk') { await ev('__game.fast = 2'); await page.keyboard.down('Space'); await press('Digit1'); await ev(`document.querySelector('.card')?.click()`); }
+    else { await page.keyboard.up('Space'); await press(m === 'letter' ? 'KeyE' : 'Space'); }
     await wait(gap);
   }
+  await page.keyboard.up('Space'); await ev('__game.fast = 1');
 }
 /** Put Nilo a few metres from a point and walk him to it, steering the camera so W heads there. */
 async function walkTo(js, start = 9, ms = 3500) {
@@ -47,6 +60,7 @@ async function talk(id) {
 
 // 1. the storm, waking, the letter
 await page.click('button[data-a="new"]');
+await ev(`(() => { const g = __game; g.filming = true; g.fixedDt = ${STEP}; })()`);
 await mark('storm');
 for (let i = 0; i < 400; i++) { if ((await ev('__game.mode')) === 'letter') break; await wait(250); }
 await wait(4500); await advance(); await mark('letter read');
@@ -91,6 +105,5 @@ await ev(`__game.fast = 1`);
 await wait(2500); await press('KeyR');
 for (let i = 0; i < 60 && (await ev('__game.mode')) === 'ride'; i++) await wait(500);
 await wait(3000); await mark('arrived');
-const vid = await page.video().path();
 await ctx.close(); await browser.close();
-console.log('video', vid);
+console.log('frames', n);
