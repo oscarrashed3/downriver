@@ -152,12 +152,13 @@ export class LanternTasks {
     const g = this.g, pl = g.player, fold = g.fold;
     if (this.has('fold:shown')) return;
     g.flags.add('fold:shown');
-    const at = fold.root.position.clone(), up = at.clone().sub(this.p.center).normalize();
-    const side = new THREE.Vector3().crossVectors(up, pl.facing).normalize();
+    const up = pl.up.clone(), side = new THREE.Vector3().crossVectors(up, pl.facing).normalize();
+    // Fold drifts about Nilo, so the shot follows it, from far enough back that it can never fill the screen
+    const frame = () => { const at = fold.root.position.clone(); g.cutCam = { pos: at.clone().addScaledVector(side, 3.4).addScaledVector(pl.facing, 1.6).addScaledVector(up, 1.2), look: at.clone().lerp(pl.pos, 0.25).addScaledVector(up, 0.3), up }; };
     g.cut([
-      { dur: 2.4, enter: () => { g.cutCam = { pos: at.clone().addScaledVector(side, 2.2).addScaledVector(pl.facing, 1.2).addScaledVector(up, 1.0), look: at.clone().addScaledVector(up, 0.3), up }; fold.hop(); g.sound.sfxPlay('paper'); },
-        tick: k => fold.root.scale.setScalar(1 + Math.sin(k * Math.PI * 2) * 0.3), exit: () => fold.root.scale.setScalar(1) },
-      { line: { text: 'Fold turns, creases, and opens into a little paper lantern. It looks very pleased with itself.' }, enter: () => fold.hop() },
+      { dur: 2.4, enter: () => { frame(); fold.hop(); g.sound.sfxPlay('paper'); },
+        tick: k => { frame(); fold.root.scale.setScalar(1 + Math.sin(k * Math.PI * 2) * 0.3); }, exit: () => fold.root.scale.setScalar(1) },
+      { line: { text: 'Fold turns, creases, and opens into a little paper lantern. It looks very pleased with itself.' }, enter: () => fold.hop(), tick: () => frame() },
     ], () => { g.save(); });
   }
 
