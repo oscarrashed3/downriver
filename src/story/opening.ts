@@ -6,7 +6,7 @@ import type { CamPose } from '../systems/skyView';
 import { CHAPTERS, LETTER, OPENING } from '../data/story';
 import { PK } from '../world/peaks';
 import { smoothstep } from '../world/noise';
-import { stormPanel } from './panels';
+import { stormPanel } from './paintedPanels';
 
 export const LETTER_TEXT = LETTER;
 

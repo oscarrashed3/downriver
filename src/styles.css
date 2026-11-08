@@ -83,7 +83,7 @@ canvas#game { display: block; width: 100vw; height: 100vh; }
 .letter .lk { margin-top: 36px; text-align: center; font-family: system-ui, sans-serif; font-size: 12px; letter-spacing: .14em; opacity: .5; text-transform: uppercase; }
 @keyframes unfold { from { transform: rotate(-1.2deg) scaleY(.05); opacity: 0; } to { transform: rotate(-1.2deg) scaleY(1); opacity: 1; } }
 .kpanel { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #0a0816; transition: none; }
-.kpanel .frame canvas { width: min(760px, 82vw); height: auto; border-radius: 6px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+.kpanel .frame canvas { width: min(1080px, 88vw); height: auto; border-radius: 6px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
 .kpanel .kc { margin-top: 26px; color: #fff4e0; font-size: 26px; font-style: italic; max-width: 760px; text-align: center; }
 .hold { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; opacity: 0; transition: opacity .3s; color: #fffaf0; text-shadow: 0 1px 8px rgba(30,20,50,.9); font-size: 17px; }
 .hold.on { opacity: 1; }

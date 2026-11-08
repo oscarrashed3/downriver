@@ -1,6 +1,6 @@
 // Small lives in world 1: hens in the village, a cat asleep on a step, butterflies over the flowers,
 // ducks on the river, fish that leap, birds wheeling over the ridge, marmots on the cliffs,
-// snow hares by the spring, bees round a hive, and little things on the ground (mushrooms, flowers, pinwheels).
+// bees round a hive, and little things on the ground (mushrooms, flowers, pinwheels).
 // Everything is built in code from a handful of shapes, and most of it reacts when Nilo comes close.
 import * as THREE from 'three';
 import type { Planet } from './planet';
@@ -237,29 +237,6 @@ export function addLife(p: Planet, scene: THREE.Scene, c: WorldContent) {
     up.rotation.y = Math.sin(t * 0.5 + m.ph) * 0.8;
   }));
 
-  // ---- snow hares round the spring: white, long-eared, bounding off when you come close
-  const hare = () => {
-    const g = new THREE.Group(), f = toon('#f6f4f0'), pink = toon('#e8b0b0');
-    const b = mesh(new THREE.SphereGeometry(0.17, 10, 8), f, 0, 0.18, 0); b.scale.set(0.85, 0.9, 1.2); g.add(b);
-    const h = new THREE.Group(); h.position.set(0, 0.32, 0.15); g.add(h);
-    h.add(mesh(new THREE.SphereGeometry(0.09, 8, 6), f));
-    for (const x of [-0.035, 0.035]) { const e = mesh(new THREE.CapsuleGeometry(0.025, 0.16, 3, 6), f, x, 0.13, -0.02); e.rotation.x = -0.25; h.add(e); }
-    h.add(mesh(new THREE.SphereGeometry(0.014, 5, 4), pink, 0, -0.01, 0.09));
-    h.add(mesh(new THREE.SphereGeometry(0.016, 5, 4), toon('#2a2230'), 0.05, 0.02, 0.05), mesh(new THREE.SphereGeometry(0.016, 5, 4), toon('#2a2230'), -0.05, 0.02, 0.05));
-    g.add(mesh(new THREE.SphereGeometry(0.05, 6, 4), f, 0, 0.2, -0.2));
-    ink(g); return g;
-  };
-  const hares = ([[22, 9], [24, -8], [27, 4]] as LL[]).map(ll => walker(hare(), spotNear(ll, 4), 7));
-  anim((dt, t) => hares.forEach(h => {
-    h.t -= dt;
-    const scared = distTo(h.obj) < 4.5;
-    if (scared) { const away = h.obj.position.clone().sub(near).projectOnPlane(h.dir).normalize(); h.head.copy(away); h.state = 1; h.t = 0.8; }
-    else if (h.t < 0) { h.state = rand() < 0.35 ? 1 : 0; h.t = 0.5 + rand() * 2; if (h.state) h.head.applyAxisAngle(h.dir, (rand() - 0.5) * 3); }
-    if (h.state) step(h, scared ? 5 : 1.4, dt);
-    const hop = h.state ? Math.abs(Math.sin(t * (scared ? 14 : 9))) * (scared ? 0.35 : 0.15) : 0;
-    place(h.obj, h.dir, h.head, hop);
-  }));
-
   // ---- a straw beehive in the garden, bees drifting round it
   const hiveD = spotNear([56.6, -18.4], 3);
   const hive = new THREE.Group();
@@ -315,6 +292,6 @@ export function addLife(p: Planet, scene: THREE.Scene, c: WorldContent) {
   };
   const wheels: THREE.Object3D[] = [];
   for (let i = 0; i < 5; i++) { const d = spotNear([50, 47], 9); const o = pinwheel(); place(o, d, tangent(d)); add(o); wheels.push(o); }
-  c.refs.life = { hen: hens[0].obj, cat: cats[0].o, duck: ducks[0].o, hive, marmot: marmots[3].o, hare: hares[0].obj, wheel: wheels[0], fly: flies[8].o };
+  c.refs.life = { hen: hens[0].obj, cat: cats[0].o, duck: ducks[0].o, hive, marmot: marmots[3].o, wheel: wheels[0], fly: flies[8].o };
   anim((dt, t) => wheels.forEach((w, i) => { (w.userData.hub as THREE.Object3D).rotation.z -= dt * (4 + Math.sin(t * 0.7 + i) * 3); }));
 }

@@ -562,7 +562,8 @@ export class Game {
         this.hud.showBanner(WORLDS[this.cur].name, CHAPTERS[this.cur].n + '. ' + CHAPTERS[this.cur].title);
       } else {
         clearSave();
-        this.cut(Opening.wakeBeats(this), () => { this.mode = 'play'; });
+        // once he is on his feet, the letter in his satchel opens by itself
+        this.cut(Opening.wakeBeats(this), () => { this.mode = 'play'; setTimeout(() => { if (this.mode === 'play' && !this.flags.has('read-letter')) this.openLetter(); }, 700); });
       }
     }));
   }
