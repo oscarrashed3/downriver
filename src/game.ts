@@ -1540,6 +1540,7 @@ export class Game {
       if (!this.sitSlide && (mv.lengthSq() > 0.01 || inp.hit('Space') || inp.hit('KeyE'))) { this.sitting = null; pl.pose = {}; if (this.seatCam) { this.seatCam = false; this.rig.easeFromHere(0.8); this.rig.override = null; } }
       else { pl.animate(dt, 0, false); pl.sync(); this.hud.setPrompt(null); return; }
     }
+    if (this.ch1.kiteGame.active) { this.ch1.kiteGame.update(dt); return; }
     if (this.kneelT > 0) { this.kneelT -= dt; if (this.kneelT <= 0 || mv.lengthSq() > 0.01) { this.kneelT = 0; pl.pose = {}; } }
     pl.update(dt, p, mv, inp.hit('Space'), inp.key('KeyX') || inp.key('ShiftLeft') || inp.key('ShiftRight'), inp.key('Space'), inp.hit('KeyC'));
     this.softPush(dt);

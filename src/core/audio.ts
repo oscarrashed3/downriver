@@ -114,6 +114,9 @@ export class Sound {
     if (this.health > 0.6 && r(4) < 0.25) this.note(root + 12 + scale[Math.floor(r(5) * scale.length)], when + 0.12, this.voice, 0.25);
   }
 
+  /** Play one note now (or after `delay` s); safe before the sound has started. */
+  tone(m: number, delay = 0, voice: Voice = 'bells', vel = 0.5, len?: number) { if (this.ctx) this.note(m, this.ctx.currentTime + delay, voice, vel, len); }
+
   note(m: number, when: number, voice: Voice, vel = 0.5, len?: number) {
     const ctx = this.ctx!; const f = midi(m);
     const g = ctx.createGain(); g.connect(this.music);

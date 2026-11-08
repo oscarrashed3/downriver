@@ -1,6 +1,7 @@
 // Chapter One: Where the Water Begins. Everything that happens in the Spring Peaks lives here.
 import { safeSpot } from '../world/spots';
 import { LanternTasks } from './lanterns';
+import { KiteGame } from './kiteGame';
 import * as THREE from 'three';
 import type { Game } from '../game';
 import type { Beat } from './sequencer';
@@ -43,7 +44,10 @@ export class ChapterOne {
   rainT = 0;
   avalancheT = -1;
   captionT = 0;
-  kiteK = 0;
+  kitePending = false;
+  /** Tor watches the kite while you fly it. */
+  kiteWatch = false;
+  kiteGame!: KiteGame;
   kiteString: THREE.Line;
   pebbleDir = new THREE.Vector3();
   torAway = false;
@@ -75,6 +79,7 @@ export class ChapterOne {
     this.kiteString = new THREE.Line(sg, new THREE.LineBasicMaterial({ color: '#f4ead2', transparent: true, opacity: 0.8 }));
     this.kiteString.frustumCulled = false; this.kiteString.visible = false;
     g.scene.add(this.kiteString);
+    this.kiteGame = new KiteGame(g, this.R.torKite as THREE.Group, this.kiteString);
     this.hollo = this.R.hollo as Hollo;
     // the spring is ice while Hollo sleeps on it
     const water = this.R.spring.userData.water as THREE.Mesh;
@@ -476,6 +481,8 @@ export class ChapterOne {
     const g = this.g, pl = g.player, p = this.p;
     if (this.captionT > 0) { this.captionT -= dt; if (this.captionT <= 0 && g.mode === 'play') g.hud.showCaption(null, null); }
     if (this.rainT > 0) this.rainT -= dt;
+    if (this.kitePending && g.mode === 'play') this.startKiteGame();
+    if (this.kiteWatch) { const tor = this.npc('tor'); tor.lookAt = this.kiteGame.kitePos.clone(); tor.pose = this.kiteGame.caught ? { wave: Math.sin(g.time * 3) > 0.6 ? 1 : 0 } : {}; }
 
     // Night lanterns
     const night = 1 - g.day.day;
@@ -775,52 +782,68 @@ export class ChapterOne {
     return { pos, look, up };
   }
 
+  /**
+   * Tor hands Nilo the string on Kite Ridge. A few lines, then the kite game (kiteGame.ts) takes over in
+   * play; once three gusts are caught, Tor cheers and Fold folds into a kite for the first glide.
+   */
   kiteFlight(): Beat[] {
-    const g = this.g, tor = this.npc('tor'), pl = g.player, kite = this.R.torKite as THREE.Group;
+    const g = this.g, tor = this.npc('tor'), pl = g.player;
     const ridge = this.at(PK.ridge);
-    const place = () => {
-      const up = tor.root.position.clone().sub(this.p.center).normalize();
-      const east = new THREE.Vector3(-up.z, 0, up.x).normalize();
-      const hand = tor.person.arms[1].hand.getWorldPosition(new THREE.Vector3());
-      kite.position.copy(tor.root.position).addScaledVector(up, 1.6 + this.kiteK * 11).addScaledVector(east, 1 + this.kiteK * 7);
-      orientTo(kite, east.clone().negate(), up);
-      kite.rotation.z += Math.sin(g.time * 2) * 0.12;
-      const a = this.kiteString.geometry.attributes.position as THREE.BufferAttribute;
-      a.setXYZ(0, hand.x, hand.y, hand.z); a.setXYZ(1, kite.position.x, kite.position.y, kite.position.z); a.needsUpdate = true;
-      ((kite.userData.tail ?? []) as THREE.Object3D[]).forEach((t, i) => (t.rotation.x = Math.sin(g.time * 6 - i) * 0.4));
-    };
+    const up = ridge.clone().sub(this.p.center).normalize();
+    const east = new THREE.Vector3(-up.z, 0, up.x).normalize();
     const shot = (a: number): CamPose => this.orbit(ridge, 8, 3.2, a);
     const beats: Beat[] = [{
       dur: 1.2,
       enter: () => {
-        this.kiteK = 0;
         this.stand(tor, [PK.ridge[0] + 0.6, PK.ridge[1] + 1], this.at([PK.ridge[0], PK.ridge[1] + 12]));
+        // Nilo takes the string, a step downwind of Tor
+        const d = this.p.dirRiver(PK.ridge[0] - 0.4, PK.ridge[1] - 0.6);
+        pl.placeAt(this.p, d); pl.facing.copy(east).projectOnPlane(pl.up).normalize();
         pl.lookAt = null;
-        kite.visible = true; this.kiteString.visible = true;
         g.cutCam = shot(0.4);
       },
-      tick: () => place(),
     }];
-    KITE_FLIGHT.forEach((text, i) => beats.push({
+    KITE_FLIGHT.slice(0, 2).forEach((text, i) => beats.push({
       line: { who: 'Tor', text },
-      enter: () => { if (i === 2) { g.sound.sfxPlay('whoosh'); tor.pose = { wave: 1 }; } if (i === 3) { tor.smileT = 6; g.sound.sfxPlay('chime'); } },
-      tick: (_k, dt) => {
-        if (i >= 2) this.kiteK = Math.min(1, this.kiteK + dt * 0.2 * g.seq.speed);
-        place();
-        g.cutCam = shot(0.4 + (i + _k) * 0.25);
-        tor.lookAt = kite.position.clone();
-        pl.lookAt = kite.position.clone();
-      },
+      enter: () => { if (i === 1) tor.pose = { wave: 1 }; },
+      tick: k => { g.cutCam = shot(0.4 + (i + k) * 0.25); tor.lookAt = pl.pos.clone().addScaledVector(pl.up, 1.2); },
+      exit: () => { tor.pose = {}; if (i === 1) this.kitePending = true; },
+    }));
+    return beats;
+  }
+
+  /** Called once the cut is over: the kite game runs in play until the third gust. */
+  startKiteGame() {
+    const g = this.g, tor = this.npc('tor');
+    const up = g.player.up, east = new THREE.Vector3(-up.z, 0, up.x).normalize();
+    this.kitePending = false;
+    this.kiteGame.start(east, () => g.cut(this.kiteOutro()));
+    tor.lookAt = null;
+    this.kiteWatch = true;
+  }
+
+  /** Tor cheers, the first bridge lantern lights, and Fold becomes a kite: jump off the ridge to glide. */
+  kiteOutro(): Beat[] {
+    const g = this.g, tor = this.npc('tor'), pl = g.player, ridge = this.at(PK.ridge);
+    this.kiteWatch = false;
+    const beats: Beat[] = KITE_FLIGHT.slice(3).map((text, i) => ({
+      line: { who: 'Tor', text },
+      enter: () => { if (i === 0) { tor.pose = { wave: 1 }; tor.smileT = 6; } },
+      tick: (k: number) => { g.cutCam = this.orbit(ridge, 7, 2.8, 1.2 + (i + k) * 0.3); tor.lookAt = pl.pos.clone().addScaledVector(pl.up, 1.2); pl.lookAt = tor.root.position.clone().addScaledVector(tor.up, 1.3); },
       exit: () => { tor.pose = {}; },
     }));
     beats.push({
-      dur: 1.5,
-      tick: () => place(),
-      exit: () => {
-        kite.visible = false; this.kiteString.visible = false;
-        tor.lookAt = null; pl.lookAt = null;
+      dur: 2.2,
+      enter: () => {
         g.give('kite-flown'); g.give('journal:kite'); g.give('map:ridge'); g.give('power:kite');
         g.give('power:skyreading'); g.give('saw-wind'); g.give('journal:where-snow-goes');
+        g.sound.sfxPlay('power');
+        g.fold.hop();
+      },
+      tick: (k: number) => { g.cutCam = this.orbit(ridge, 6, 2.2, 2.4 + k * 0.4); },
+      exit: () => {
+        tor.lookAt = null; pl.lookAt = null;
+        g.hud.notify(NOTE.firstGlide);
         g.hud.notify(NOTE.kiteWind);
         g.save();
       },

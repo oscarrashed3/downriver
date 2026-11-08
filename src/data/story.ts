@@ -77,6 +77,20 @@ export const POSTMAN = {
 
 export const KITE_GIFT = "Wait! Your boat can be a kite too. If you ever need to come back up, ride the warm air.";
 
+/** Tor beside you while you fly the kite: each line is said once, when it fits. */
+export const KITE_GAME = {
+  start: "Here, you hold it. Watch for the wind. You can see it coming, look!",
+  firstLeft: 'From the left! Lean into it, A!',
+  firstRight: 'From the right! Lean into it, D!',
+  caught1: 'Yes! Now hold E, give it more line!',
+  caught2: "Grandpa used to say: don't fight the wind, ride it.",
+  wrongWay: 'Other way! Into the wind, not away from it.',
+  missed: "That's fine, there's always another one.",
+  stillAir: 'Not yet, the air is still. Wait for a gust.',
+  bounce: "Ha, it bounced. It's tougher than it looks.",
+  top: "It's at the top of the line! Do you hear it? That's the wind lantern!",
+};
+
 export const KITE_FLIGHT = [
   'Okay. Okay okay okay.',
   'Hold the bottom. When I say now, let go.',

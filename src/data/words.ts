@@ -57,6 +57,7 @@ export const NOTE = {
   pebbleHome: 'Pebble trots straight to Bram and bites his sleeve. <i>He looks very happy.</i>',
   torFollows: 'Tor tucks the kite under his arm. <i>Walk to Kite Ridge together.</i>',
   windSeen: 'The wind drops its snow in the still air behind the ridge. <i>Fences on the windy side catch it.</i>',
+  firstGlide: 'Fold is a kite now. Jump off the ridge and <b>hold Space</b> while you fall to glide.',
   kiteWind: 'The kite showed you the wind. <b>Q</b> shows it any time.',
   fenceHums: 'The fence hums in the wind. Snow settles behind it.',
   fenceQuiet: 'The fence stands quietly. Hardly any snow drifts here.',
