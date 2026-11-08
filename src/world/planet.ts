@@ -38,6 +38,8 @@ export class Planet {
   decks: Deck[] = [];
   /** Soft ground tints, one per named area. */
   tints: { dir: THREE.Vector3; r: number; color: THREE.Color; k: number }[] = [];
+  /** Ground colour per terrain vertex without snow (rgb), for the grass blades. Filled by recolor(). */
+  grassCol?: Float32Array;
   /** Grass density per terrain vertex (0..1), filled by recolor(). */
   grassW: Float32Array | null = null;
 
@@ -267,6 +269,8 @@ export class Planet {
     const { rd, pd, lo } = geo.userData.cache as { rd: Float32Array; pd: Float32Array; lo: Float32Array };
     if (!this.grassW) this.grassW = new Float32Array(pos.count);
     const gw = this.grassW;
+    if (!this.grassCol) this.grassCol = new Float32Array(pos.count * 3);
+    const gc = this.grassCol;
     const winter = this.colorParams.winter;
     for (let i = 0; i < pos.count; i++) {
       d.fromBufferAttribute(pos, i).normalize();
@@ -288,6 +292,7 @@ export class Planet {
       c.lerp(bank, bankK * 0.6);
       const pathK = smoothstep(1.0, 0.45, pd[i]);
       c.lerp(path, pathK * 0.85);
+      gc[i * 3] = c.r; gc[i * 3 + 1] = c.g; gc[i * 3 + 2] = c.b; // what the grass grows out of, before any snow
       let snowAmt = 0;
       if (peaks) {
         snowAmt = smoothstep(this.colorParams.snowline - 0.04, this.colorParams.snowline + 0.06, h + jitter * 2) * smoothstep(0.45, 0.75, flat);

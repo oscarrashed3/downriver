@@ -2,19 +2,19 @@
 // Rule of thumb: warm, sunlit tops; cool blue-violet shadows; saturated but never neon.
 
 export const PEAKS = {
-  meadowLow: '#8cc04e',     // sunlit valley grass
-  meadowMid: '#4f9a5c',     // shaded slopes
+  meadowLow: '#90b85c',     // sunlit valley grass
+  meadowMid: '#559262',     // shaded slopes
   heights: '#7d8a8a',       // high bare ground
   rock: '#8c8a9c',          // cliffs, tinted toward the sky
   bank: '#bfae84',          // river shingle
   moss: '#6f9a4a',          // moss on rock
-  dab: '#b8d860',           // painted dabs of brighter grass
+  dab: '#b4cc72',           // painted dabs of brighter grass
   path: '#c9a66b',          // worn footpaths
   snow: '#f7f9ff',
   ice: '#b4e2f7',
   water: '#86dcf2',
   waterDeep: '#2f86b8',
-  sunlight: '#fff1da',      // morning sun
+  sunlight: '#ffe8c4',      // morning sun
   skyAmbient: '#9cc4f0',    // the blue that fills shadows
   haze: '#bcdcf0',          // distance fog by day
   skyTop: '#1d5fc8',
@@ -22,14 +22,14 @@ export const PEAKS = {
 } as const;
 
 export const LIGHT = {
-  nightAmbient: '#2b3a78',
+  nightAmbient: '#24506a',
   duskAmbient: '#b07890',
-  groundBounce: '#5a3f6a',  // violet bounce light in shadow
+  groundBounce: '#3f5a8a',  // cool blue bounce light in shadow, never grey
   rimDay: '#ffe2b0',
   rimDusk: '#ffb07a',
   rimNight: '#9fb6ff',
   sunsetSun: '#ff9f62',
-  nightFog: '#1e2650',
+  nightFog: '#163a46',
   duskFog: '#f0b8a8',
   moon: '#9fb0ff',
   ink: '#2a2438',           // outline color

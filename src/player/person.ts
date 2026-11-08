@@ -155,6 +155,7 @@ export class Person {
     const HS = (look.head ?? 1) * 1.12;
     this.hipY = 0.88;
     this.root.add(this.body);
+    this.root.userData.person = true; // keeps the edge on its many small parts
     this.body.add(this.hips);
     this.hips.position.y = this.hipY;
     this.body.scale.setScalar(H);

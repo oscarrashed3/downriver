@@ -31,7 +31,7 @@ export const NOISE_GLSL = /* glsl */ `
 `;
 
 /** Patch a MeshToonMaterial with the painted look. Safe to call once per material. */
-export function paint(mat: THREE.MeshToonMaterial, opts: { variation?: number; rim?: number; noCloud?: boolean } = {}) {
+export function paint(mat: THREE.MeshToonMaterial, opts: { variation?: number; rim?: number; noCloud?: boolean; crown?: number } = {}) {
   if (mat.userData.painted) return mat;
   mat.userData.painted = true;
   const variation = opts.variation ?? 1;
@@ -41,6 +41,7 @@ export function paint(mat: THREE.MeshToonMaterial, opts: { variation?: number; r
     shader.uniforms.uMatVar = { value: variation };
     shader.uniforms.uMatRim = { value: rim };
     shader.uniforms.uMatCloud = { value: opts.noCloud ? 0 : 1 };
+    shader.uniforms.uMatCrown = { value: opts.crown ?? 0 };
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vPWorld; varying vec3 vPNormal;')
       .replace('#include <project_vertex>', `#include <project_vertex>
@@ -57,7 +58,7 @@ export function paint(mat: THREE.MeshToonMaterial, opts: { variation?: number; r
         varying vec3 vPWorld; varying vec3 vPNormal;
         uniform float uTime; uniform vec3 uSun; uniform vec3 uWind; uniform vec3 uCenter;
         uniform vec3 uAmbSky; uniform vec3 uAmbGround; uniform vec3 uRimCol; uniform float uRim;
-        uniform float uCloudShadow; uniform float uVariation; uniform float uMatVar; uniform float uMatRim; uniform float uMatCloud;
+        uniform float uCloudShadow; uniform float uVariation; uniform float uMatVar; uniform float uMatRim; uniform float uMatCloud; uniform float uMatCrown;
         ${NOISE_GLSL}`)
       .replace('#include <color_fragment>', `#include <color_fragment>
         float pv = pNoise(vPWorld * 0.21) * 0.6 + pNoise(vPWorld * 1.3) * 0.4;
@@ -72,9 +73,12 @@ export function paint(mat: THREE.MeshToonMaterial, opts: { variation?: number; r
         vec3 pV = normalize(cameraPosition - vPWorld);
         float rimK = pow(1.0 - clamp(dot(pN, pV), 0.0, 1.0), 3.0) * clamp(dot(pN, uSun) * 0.6 + 0.4, 0.0, 1.0);
         outgoingLight += uRimCol * rimK * uRim * uMatRim;
+        // lit crowns: the side of a tree clump that faces the sun turns into a lighter, warmer patch
+        float crownK = smoothstep(0.25, 0.75, dot(pN, uSun)) * uMatCrown;
+        outgoingLight = mix(outgoingLight, outgoingLight * vec3(1.22, 1.18, 0.98) + diffuseColor.rgb * vec3(0.10, 0.09, 0.03), crownK * 0.6);
         #include <opaque_fragment>`);
   };
-  mat.customProgramCacheKey = () => 'paint' + variation + '_' + rim + (opts.noCloud ? 'n' : '');
+  mat.customProgramCacheKey = () => 'paint' + variation + '_' + rim + (opts.noCloud ? 'n' : '') + (opts.crown ? 'c' + opts.crown : '');
   return mat;
 }
 
@@ -131,14 +135,28 @@ export function outlineMaterial(color = '#3b2a30', width = 0.022): THREE.ShaderM
   return m;
 }
 
-/** Give every mesh under `root` a thin inked edge (inverted hull). */
-export function addOutlines(root: THREE.Object3D, color = '#3b2a30', width = 0.022) {
+/**
+ * Give every mesh under `root` a thin edge (inverted hull). The edge takes the darker, cooler shade of
+ * the mesh's own colour rather than black ink, and is half as wide as the width asked for. Little
+ * things under a metre (flowers, mushrooms, tufts) get none: at that size a line only reads as noise.
+ */
+export function addOutlines(root: THREE.Object3D, _color = '#3b2a30', width = 0.022) {
   const meshes: THREE.Mesh[] = [];
   root.traverse(o => { if ((o as THREE.Mesh).isMesh && !o.userData.noOutline && !o.userData.isOutline) meshes.push(o as THREE.Mesh); });
+  root.updateWorldMatrix(true, true);
+  const ws = new THREE.Vector3();
   for (const m of meshes) {
-    const mat = m.material as THREE.Material;
-    if ((mat as THREE.MeshBasicMaterial).transparent) continue;
-    const o = new THREE.Mesh(m.geometry, outlineMaterial(color, width));
+    const mat = m.material as THREE.MeshToonMaterial;
+    if (Array.isArray(m.material) || mat.transparent) continue;
+    const g = m.geometry;
+    if (!g.boundingSphere) g.computeBoundingSphere();
+    m.getWorldScale(ws);
+    // only skip on the small loose props: characters are many small parts and keep their edge
+    if (!root.userData.person && g.boundingSphere!.radius * Math.max(ws.x, ws.y, ws.z) < 0.5) continue;
+    const base = mat.color ? mat.color.clone() : new THREE.Color('#6a6a7a');
+    const hsl = { h: 0, s: 0, l: 0 }; base.getHSL(hsl);
+    const edge = new THREE.Color().setHSL((hsl.h * 0.7 + 0.62 * 0.3), Math.min(1, hsl.s * 0.8 + 0.1), Math.max(0.06, hsl.l * 0.42));
+    const o = new THREE.Mesh(g, outlineMaterial('#' + edge.getHexString(), width * 0.5));
     o.userData.isOutline = true;
     o.userData.noOutline = true;
     m.add(o);

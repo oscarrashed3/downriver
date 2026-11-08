@@ -1,11 +1,11 @@
 export type QualityLevel = 'low' | 'medium' | 'high';
 
-export interface QualityPreset { grass: number; pixelRatio: number; bloom: boolean; shadows: boolean; shadowSize: number }
+export interface QualityPreset { grass: number; pixelRatio: number; bloom: boolean; shadows: boolean; shadowSize: number; brush: number }
 
 export const PRESETS: Record<QualityLevel, QualityPreset> = {
-  low: { grass: 0.3, pixelRatio: 1, bloom: false, shadows: false, shadowSize: 1024 },
-  medium: { grass: 0.65, pixelRatio: 1.25, bloom: true, shadows: true, shadowSize: 1024 },
-  high: { grass: 1, pixelRatio: 1.75, bloom: true, shadows: true, shadowSize: 2048 },
+  low: { grass: 0.3, pixelRatio: 1, bloom: false, shadows: false, shadowSize: 1024, brush: 0 },
+  medium: { grass: 0.65, pixelRatio: 1.25, bloom: true, shadows: true, shadowSize: 1024, brush: 1.5 },
+  high: { grass: 1, pixelRatio: 1.75, bloom: true, shadows: true, shadowSize: 2048, brush: 2 },
 };
 
 const KEY = 'downriver-quality';

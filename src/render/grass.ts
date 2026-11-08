@@ -78,6 +78,10 @@ export function makeGrassMaterial(flower: boolean) {
         varying float vHead;
       #endif
       attribute vec3 iPos; attribute vec3 iUp; attribute vec2 iRS; attribute float iVar;
+      #ifndef FLOWER
+        attribute vec3 iGround;
+      #endif
+      varying vec3 vGround;
       uniform float uTime; uniform vec3 uWind; uniform vec3 uPlayer; uniform float uSnow; uniform float uBloom;
       varying float vH; varying float vVar; varying vec3 vW; varying vec3 vUpN;
       void main(){
@@ -106,6 +110,11 @@ export function makeGrassMaterial(flower: boolean) {
         float push = smoothstep(1.4, 0.15, dp) * aH;
         wp += (toP / (dp + 1e-4)) * push * 0.55 - up * push * 0.3 * iRS.y;
         vH = aH; vVar = iVar; vW = wp; vUpN = up;
+        #ifndef FLOWER
+          vGround = iGround;
+        #else
+          vGround = vec3(0.45, 0.62, 0.3);
+        #endif
         #ifdef FLOWER
           vFlower = iColor; vHead = aHead;
         #endif
@@ -118,7 +127,7 @@ export function makeGrassMaterial(flower: boolean) {
       #include <fog_pars_fragment>
       uniform float uTime; uniform vec3 uSun; uniform vec3 uSunCol; uniform vec3 uAmbSky; uniform vec3 uWind;
       uniform float uLush; uniform float uSnow; uniform float uCloudShadow;
-      varying float vH; varying float vVar; varying vec3 vW; varying vec3 vUpN;
+      varying float vH; varying float vVar; varying vec3 vW; varying vec3 vUpN; varying vec3 vGround;
       #ifdef FLOWER
         varying vec3 vFlower; varying float vHead;
       #endif
@@ -129,6 +138,9 @@ export function makeGrassMaterial(flower: boolean) {
         vec3 baseD = vec3(0.30, 0.28, 0.14), tipD = vec3(0.80, 0.70, 0.42);
         vec3 base = mix(baseD, baseL, uLush), tip = mix(tipD, tipL, uLush);
         tip = mix(tip, tip * vec3(0.78, 0.95, 1.05), smoothstep(0.55, 0.9, vVar) * 0.6);
+        // blades grow out of the ground they stand on: its colour at the root, a lighter warmer tip
+        vec3 gBase = vGround * 0.62, gTip = mix(vGround * 1.22, vec3(0.86, 0.88, 0.55), 0.18);
+        base = mix(base, gBase, 0.7 * uLush); tip = mix(tip, gTip, 0.7 * uLush);
         vec3 col = mix(base, tip, smoothstep(0.0, 1.0, vH));
         #ifdef FLOWER
           col = mix(vec3(0.25, 0.45, 0.2), vFlower, vHead);
@@ -169,7 +181,7 @@ export class Grass {
     const pos = geo.attributes.position as THREE.BufferAttribute;
     const index = geo.index!;
     const center = planet.center;
-    const buckets = new Map<string, { pos: number[]; up: number[]; rs: number[]; v: number[]; col: number[]; flowers: boolean }>();
+    const buckets = new Map<string, { pos: number[]; up: number[]; rs: number[]; v: number[]; col: number[]; gr: number[]; flowers: boolean }>();
     let seed = 12345;
     const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), p = new THREE.Vector3(), n = new THREE.Vector3(), e1 = new THREE.Vector3(), e2 = new THREE.Vector3(), d = new THREE.Vector3();
@@ -182,12 +194,14 @@ export class Grass {
       const lo = Math.floor(((lon + 180) / 360) * cols);
       return `${fl ? 'f' : 'g'}${la}_${lo}`;
     };
+    const GC = planet.grassCol, gcol = new THREE.Color(0.45, 0.62, 0.3);
     const push = (fl: boolean, wp: THREE.Vector3, up: THREE.Vector3, scale: number) => {
       d.copy(wp).sub(center).normalize();
       const k = key(d, fl);
       let bk = buckets.get(k);
-      if (!bk) { bk = { pos: [], up: [], rs: [], v: [], col: [], flowers: fl }; buckets.set(k, bk); }
+      if (!bk) { bk = { pos: [], up: [], rs: [], v: [], col: [], gr: [], flowers: fl }; buckets.set(k, bk); }
       bk.pos.push(wp.x, wp.y, wp.z); bk.up.push(up.x, up.y, up.z); bk.rs.push(rnd() * Math.PI * 2, scale); bk.v.push(rnd());
+      if (!fl) bk.gr.push(gcol.r, gcol.g, gcol.b);
       if (fl) { const c0 = palette[Math.floor(rnd() * palette.length)]; bk.col.push(c0[0], c0[1], c0[2]); }
     };
     for (let t = 0; t < index.count; t += 3) {
@@ -208,6 +222,7 @@ export class Grass {
         p.copy(a).addScaledVector(e1, u).addScaledVector(e2, v);
         const up = p.clone().sub(center).normalize().lerp(n, 0.5).normalize();
         p.addScaledVector(up, -0.03);
+        if (GC) { const w0 = 1 - u - v, at = (q: number) => GC[i0 * 3 + q] * w0 + GC[i1 * 3 + q] * u + GC[i2 * 3 + q] * v; gcol.setRGB(at(0), at(1), at(2)); }
         push(false, p, up, (0.75 + rnd() * 0.55) * (0.7 + w * 0.5));
       }
       // Flowers
@@ -239,6 +254,7 @@ export class Grass {
       g.setAttribute('iUp', new THREE.InstancedBufferAttribute(re(bk.up, 3), 3));
       g.setAttribute('iRS', new THREE.InstancedBufferAttribute(re(bk.rs, 2), 2));
       g.setAttribute('iVar', new THREE.InstancedBufferAttribute(re(bk.v, 1), 1));
+      if (!bk.flowers) g.setAttribute('iGround', new THREE.InstancedBufferAttribute(re(bk.gr, 3), 3));
       if (bk.flowers) g.setAttribute('iColor', new THREE.InstancedBufferAttribute(re(bk.col, 3), 3));
       g.instanceCount = N;
       const mid = new THREE.Vector3();

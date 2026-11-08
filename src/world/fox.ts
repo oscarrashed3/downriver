@@ -37,6 +37,7 @@ export function makeFox(): FoxBody {
   const tail = new THREE.Group(); tail.position.set(0, 0.42, -0.28); body.add(tail);
   const brush = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.32, 4, 8), toon(orange)); brush.position.set(0, 0, -0.2); brush.rotation.x = -1.1; brush.castShadow = true; tail.add(brush);
   const tipT = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), toon(cream)); tipT.position.set(0, 0.16, -0.36); tail.add(tipT);
+  root.userData.person = true;
   addOutlines(root, '#2e2230', 0.012);
   return { root, body, head, tail, ears, legs };
 }

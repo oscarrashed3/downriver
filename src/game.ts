@@ -504,6 +504,7 @@ export class Game {
     this.composer.setSize(innerWidth, innerHeight);
     this.grass?.setQuality(pr.grass);
     this.bloom.enabled = pr.bloom;
+    this.finish.mat.uniforms.uBrush.value = pr.brush;
     this.sunLight.castShadow = pr.shadows;
     if (this.sunLight.shadow.mapSize.x !== pr.shadowSize) {
       this.sunLight.shadow.mapSize.set(pr.shadowSize, pr.shadowSize);
@@ -1395,7 +1396,7 @@ export class Game {
     if (this.mode !== 'play' && this.mode !== 'overlay') inp.lockLost = false;
     this.day.apply(WORLDS[this.cur].palette, this.sunLight, this.moonLight, this.scene.fog as THREE.FogExp2, p.center);
     const aw = this.mode === 'title' ? [] : this.areaWeights();
-    for (const { a, w } of aw) this.sunLight.color.lerp(new THREE.Color(a.light), w * 0.3);
+    for (const { a, w } of aw) this.sunLight.color.lerp(new THREE.Color(a.light), w * 0.6);
     if (aw.length) PAINT.uSunCol.value.copy(this.sunLight.color).multiplyScalar(this.sunLight.intensity / 2.6);
     this.sunLight.position.copy(this.player.pos).addScaledVector(this.day.sun, 120);
     this.sunLight.target.position.copy(this.player.pos);
@@ -1441,6 +1442,7 @@ export class Game {
     for (const pl of this.planets) if (pl.ocean) (pl.ocean.material as THREE.ShaderMaterial).uniforms.uTime.value = this.time;
     // Seen from far away (title, sky view, the home light shot) the cloud sea is always in plain daylight.
     const upForSky = far > 0.5 ? this.day.sun.clone().lerp(new THREE.Vector3(0, 1, 0), 0.25).normalize() : this.rig.override ? this.rig.override.up : this.rig.smoothUp;
+    this.sky.setCloudSky((this.scene.fog as THREE.FogExp2).color);
     this.sky.update(upForSky, this.camera.position, this.time, this.day.sun, Math.max(this.day.day, far), this.day.dusk * (1 - far));
     this.skyread.update(dt, p, this.time);
     this.hud.sky.classList.toggle('on', this.skyread.active && this.mode === 'play');
@@ -1509,6 +1511,8 @@ export class Game {
       const onScreen = 1 - smoothstep(1.1, 1.6, Math.max(Math.abs(sp.x), Math.abs(sp.y)));
       U.uSunVis.value = facing > 0.1 ? onScreen * smoothstep(0.1, 0.5, facing) * this.day.day * (1 - far) : 0;
       const e = this.day.sun.dot(this.player.up);
+      U.uHaze.value = 1 - far;
+      (U.uHazeCol.value as THREE.Color).copy(fog.color);
       U.uMist.value = (0.12 + 0.75 * smoothstep(-0.12, 0.04, e) * (1 - smoothstep(0.1, 0.38, e))) * (1 - far);
     }
     // Playtests can skip drawing some frames so the world runs at full speed in a slow test browser.
