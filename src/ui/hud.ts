@@ -42,7 +42,10 @@ export class Hud {
       <p class="dim">Press H to close</p>`;
   }
 
+  private promptNow: string | null = null;
   setPrompt(text: string | null) {
+    if (text === this.promptNow) return;
+    this.promptNow = text;
     this.prompt.innerHTML = text ?? '';
     this.prompt.classList.toggle('on', !!text);
   }

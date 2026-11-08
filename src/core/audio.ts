@@ -114,6 +114,9 @@ export class Sound {
     if (this.health > 0.6 && r(4) < 0.25) this.note(root + 12 + scale[Math.floor(r(5) * scale.length)], when + 0.12, this.voice, 0.25);
   }
 
+  /** Hush the music (for a held breath before a big moment), or bring it back. */
+  hush(on: boolean, secs = 0.8) { if (this.ctx) this.music.gain.setTargetAtTime(on ? 0.0 : 0.32, this.ctx.currentTime, secs / 3); }
+
   /** Play one note now (or after `delay` s); safe before the sound has started. */
   tone(m: number, delay = 0, voice: Voice = 'bells', vel = 0.5, len?: number) { if (this.ctx) this.note(m, this.ctx.currentTime + delay, voice, vel, len); }
 

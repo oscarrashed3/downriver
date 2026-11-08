@@ -17,6 +17,8 @@ export function makeWaterMaterial(color: string, deep: string, ocean = false): T
         uSpeed: { value: 1 },
         uOcean: { value: ocean ? 1 : 0 },
         uSun: { value: new THREE.Vector3(0.5, 0.35, 0.8).normalize() },
+        uSurge: { value: 1e6 },
+        uNarrow: { value: 1 },
       },
     ]),
     vertexShader: /* glsl */ `
@@ -39,7 +41,7 @@ export function makeWaterMaterial(color: string, deep: string, ocean = false): T
     fragmentShader: /* glsl */ `
       #include <fog_pars_fragment>
       uniform float uTime; uniform vec3 uColor; uniform vec3 uDeep; uniform float uHealth;
-      uniform float uSpeed; uniform float uOcean; uniform vec3 uSun;
+      uniform float uSpeed; uniform float uOcean; uniform vec3 uSun; uniform float uSurge; uniform float uNarrow;
       varying vec2 vUv; varying vec3 vN; varying vec3 vW; varying vec3 vView;
       float h(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
       float n2(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
@@ -57,6 +59,8 @@ export function makeWaterMaterial(color: string, deep: string, ocean = false): T
           col += vec3(1.0, 0.9, 0.7) * smoothstep(0.72, 0.95, w) * 0.25;
           a = 0.82 + fres * 0.15;
         } else {
+          // a surge running down from the spring: ahead of its front the river is still its old width
+          if (vUv.y > uSurge && abs(vUv.x) > uNarrow) discard;
           float flow = vUv.y * 0.35 - uTime * (1.2 + uSpeed);
           float stripes = n2(vec2(vUv.x * 3.0, flow)) * 0.6 + n2(vec2(vUv.x * 7.0, flow * 2.3)) * 0.4;
           float edge = smoothstep(0.62, 1.0, abs(vUv.x));
@@ -69,6 +73,9 @@ export function makeWaterMaterial(color: string, deep: string, ocean = false): T
           // foam along the banks, broken into dabs
           float foam = edge * smoothstep(0.35, 0.6, n2(vec2(vUv.x * 9.0, flow * 3.0)));
           col = mix(col, vec3(0.97, 0.98, 1.0), clamp(stroke * 0.75 + foam * 0.8, 0.0, 1.0));
+          // foam and spray riding the front of the surge
+          float front = smoothstep(5.0, 0.0, abs(vUv.y - uSurge)) * (0.6 + 0.4 * n2(vec2(vUv.x * 11.0, uTime * 6.0)));
+          col = mix(col, vec3(1.0), front * 0.85);
           a = mix(0.78, 0.95, edge);
         }
         float spec = pow(max(dot(reflect(-uSun, N), V), 0.0), 40.0);

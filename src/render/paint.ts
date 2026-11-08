@@ -19,6 +19,16 @@ export const PAINT = {
   uSunCol: { value: new THREE.Color('#fff0d8') },
 };
 
+/**
+ * The thaw wave when Hollo wakes: everything nearer than uThawR to uThawC turns from winter to spring.
+ * Off (uThawOn = 0) the world shows its normal colours. Shared by the terrain and the grass.
+ */
+export const THAW = {
+  uThawC: { value: new THREE.Vector3() },
+  uThawR: { value: 0 },
+  uThawOn: { value: 0 },
+};
+
 export const NOISE_GLSL = /* glsl */ `
   float pHash(vec3 p){ p = fract(p * 0.3183099 + vec3(0.71, 0.113, 0.419)); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
   float pNoise(vec3 x){
@@ -31,17 +41,24 @@ export const NOISE_GLSL = /* glsl */ `
 `;
 
 /** Patch a MeshToonMaterial with the painted look. Safe to call once per material. */
-export function paint(mat: THREE.MeshToonMaterial, opts: { variation?: number; rim?: number; noCloud?: boolean; crown?: number } = {}) {
+export function paint(mat: THREE.MeshToonMaterial, opts: { variation?: number; rim?: number; noCloud?: boolean; crown?: number; thaw?: boolean } = {}) {
   if (mat.userData.painted) return mat;
   mat.userData.painted = true;
   const variation = opts.variation ?? 1;
   const rim = opts.rim ?? 1;
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, PAINT);
+    if (opts.thaw) Object.assign(shader.uniforms, THAW);
     shader.uniforms.uMatVar = { value: variation };
     shader.uniforms.uMatRim = { value: rim };
     shader.uniforms.uMatCloud = { value: opts.noCloud ? 0 : 1 };
     shader.uniforms.uMatCrown = { value: opts.crown ?? 0 };
+    if (opts.thaw) shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec3 colorB; uniform vec3 uThawC; uniform float uThawR; uniform float uThawOn;')
+      .replace('#include <color_vertex>', `#include <color_vertex>
+        vec3 twp = (modelMatrix * vec4(position, 1.0)).xyz;
+        float tk = uThawOn * smoothstep(uThawR, uThawR - 9.0, distance(twp, uThawC));
+        vColor.rgb = mix(vColor.rgb, colorB, tk);`);
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vPWorld; varying vec3 vPNormal;')
       .replace('#include <project_vertex>', `#include <project_vertex>
@@ -78,7 +95,7 @@ export function paint(mat: THREE.MeshToonMaterial, opts: { variation?: number; r
         outgoingLight = mix(outgoingLight, outgoingLight * vec3(1.22, 1.18, 0.98) + diffuseColor.rgb * vec3(0.10, 0.09, 0.03), crownK * 0.6);
         #include <opaque_fragment>`);
   };
-  mat.customProgramCacheKey = () => 'paint' + variation + '_' + rim + (opts.noCloud ? 'n' : '') + (opts.crown ? 'c' + opts.crown : '');
+  mat.customProgramCacheKey = () => 'paint' + variation + '_' + rim + (opts.noCloud ? 'n' : '') + (opts.crown ? 'c' + opts.crown : '') + (opts.thaw ? 't' : '');
   return mat;
 }
 

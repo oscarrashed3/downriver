@@ -46,7 +46,7 @@ export function hut(color = '#b7a59a', roof = '#6f5f8a'): THREE.Group {
   return g;
 }
 
-export function campfire(): THREE.Group {
+export function campfire(stools = 4): THREE.Group {
   const g = new THREE.Group();
   for (let i = 0; i < 6; i++) {
     const a = (i / 6) * Math.PI * 2;
@@ -55,8 +55,8 @@ export function campfire(): THREE.Group {
   // log stools round the fire: upright rounds of wood, bark on the sides, a pale cut top; each faces the fire (+z)
   const seats: THREE.Object3D[] = [];
   const bark = toon('#6a4a32'), cut = toon('#d8b884');
-  for (let i = 0; i < 4; i++) {
-    const a = (i / 4) * Math.PI * 2 + 0.4;
+  for (let i = 0; i < stools; i++) {
+    const a = (i / stools) * Math.PI * 2 + 0.4;
     const st = new THREE.Group();
     st.position.set(Math.cos(a) * 2.1, 0, Math.sin(a) * 2.1);
     st.lookAt(0, 0, 0);

@@ -1515,6 +1515,7 @@ export class Game {
       (U.uHazeCol.value as THREE.Color).copy(fog.color);
       U.uMist.value = (0.12 + 0.75 * smoothstep(-0.12, 0.04, e) * (1 - smoothstep(0.1, 0.38, e))) * (1 - far);
     }
+    if (this.ch1.night.rawPrompt && this.mode === 'play') this.hud.setPrompt(this.ch1.night.rawPrompt);
     // Playtests can skip drawing some frames so the world runs at full speed in a slow test browser.
     if (++this.frameN % this.renderEvery === 0) this.composer.render();
     inp.endFrame();
@@ -1552,6 +1553,7 @@ export class Game {
     this.surveyT -= dt;
     if (this.surveyT <= 0) { this.surveyT = 0.5; const ll = latLonOf(pl.up); this.map.reveal(this.planet, ll.lat, wrapDeg(ll.lon - this.planet.lonAtLat(ll.lat)), 22); }
     this.nearest = this.interactPrompt();
+    { const np = this.ch1.night.prompt(); if (np) this.nearest = np.label ? np : null; }
     const n = this.nearest;
     if (n && n.hold) {
       if (this.holdKey !== n.key) { this.holdKey = n.key; this.holdT = 0; }

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { Planet } from '../world/planet';
-import { PAINT, NOISE_GLSL } from './paint';
+import { PAINT, NOISE_GLSL, THAW } from './paint';
 
 /**
  * Wind grass: tufts of blades scattered over the terrain triangles, grouped in chunks that are
@@ -83,6 +83,8 @@ export function makeGrassMaterial(flower: boolean) {
       #endif
       varying vec3 vGround;
       uniform float uTime; uniform vec3 uWind; uniform vec3 uPlayer; uniform float uSnow; uniform float uBloom;
+      uniform vec3 uThawC; uniform float uThawR; uniform float uThawOn;
+      varying float vSnow;
       varying float vH; varying float vVar; varying vec3 vW; varying vec3 vUpN;
       void main(){
         vec3 up = normalize(iUp);
@@ -91,10 +93,14 @@ export function makeGrassMaterial(flower: boolean) {
         float c = cos(iRS.x), s = sin(iRS.x);
         vec3 ax = t1 * c + t2 * s; vec3 az = -t1 * s + t2 * c;
         vec3 lp = position * iRS.y;
+        // behind the thaw wave: no snow, flowers open
+        float tk = uThawOn * smoothstep(uThawR, uThawR - 9.0, distance(iPos, uThawC));
+        float snowE = uSnow * (1.0 - tk);
+        vSnow = snowE;
         #ifdef FLOWER
-          lp *= mix(0.25, 1.0, uBloom);
+          lp *= mix(0.25, 1.0, max(uBloom, tk));
         #endif
-        lp.y *= (1.0 - uSnow * 0.7);
+        lp.y *= (1.0 - snowE * 0.7);
         // blades right in front of the camera bow out of the way, so they never fill the screen
         lp *= smoothstep(0.6, 2.6, distance(iPos, cameraPosition));
         vec3 wp = iPos + ax * lp.x + up * lp.y + az * lp.z;
@@ -127,6 +133,7 @@ export function makeGrassMaterial(flower: boolean) {
       #include <fog_pars_fragment>
       uniform float uTime; uniform vec3 uSun; uniform vec3 uSunCol; uniform vec3 uAmbSky; uniform vec3 uWind;
       uniform float uLush; uniform float uSnow; uniform float uCloudShadow;
+      varying float vSnow;
       varying float vH; varying float vVar; varying vec3 vW; varying vec3 vUpN; varying vec3 vGround;
       #ifdef FLOWER
         varying vec3 vFlower; varying float vHead;
@@ -145,7 +152,7 @@ export function makeGrassMaterial(flower: boolean) {
         #ifdef FLOWER
           col = mix(vec3(0.25, 0.45, 0.2), vFlower, vHead);
         #endif
-        col = mix(col, vec3(0.95, 0.97, 1.0), uSnow * smoothstep(0.2, 0.8, vH + 0.3));
+        col = mix(col, vec3(0.95, 0.97, 1.0), vSnow * smoothstep(0.2, 0.8, vH + 0.3));
         vec3 V = normalize(cameraPosition - vW);
         float lam = clamp(dot(vUpN, uSun) * 0.55 + 0.45, 0.0, 1.0);
         float back = pow(clamp(dot(-V, uSun), 0.0, 1.0), 4.0) * vH;
@@ -175,7 +182,7 @@ export class Grass {
    */
   constructor(private planet: Planet, weight: Float32Array, perM2: number, flowerW: (d: THREE.Vector3) => number) {
     for (const m of [this.mat, this.flowerMat]) Object.assign(m.uniforms, {
-      uTime: PAINT.uTime, uWind: PAINT.uWind, uSun: PAINT.uSun, uSunCol: PAINT.uSunCol, uAmbSky: PAINT.uAmbSky, uCloudShadow: PAINT.uCloudShadow,
+      ...THAW, uTime: PAINT.uTime, uWind: PAINT.uWind, uSun: PAINT.uSun, uSunCol: PAINT.uSunCol, uAmbSky: PAINT.uAmbSky, uCloudShadow: PAINT.uCloudShadow,
     });
     const geo = planet.terrain.geometry as THREE.BufferGeometry;
     const pos = geo.attributes.position as THREE.BufferAttribute;

@@ -190,9 +190,10 @@ export class Planet {
       pos.setXYZ(i, d.x * (this.R + h), d.y * (this.R + h), d.z * (this.R + h));
     }
     geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(pos.count * 3), 3));
+    geo.setAttribute('colorB', new THREE.BufferAttribute(new Float32Array(pos.count * 3), 3));
     geo.computeVertexNormals();
     geo.userData.heights = heights;
-    const mat = paint(new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: softRamp() }), { variation: 0.8, rim: 0.25 });
+    const mat = paint(new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: softRamp() }), { variation: 0.8, rim: 0.25, thaw: true });
     this.terrain = new THREE.Mesh(geo, mat);
     this.terrain.receiveShadow = false;
     this.group.add(this.terrain);
@@ -340,12 +341,49 @@ export class Planet {
       const a = i * across + j, b = a + 1, c = a + across, e = c + 1;
       idx.push(a, c, b, b, c, e);
     }
+    this.riverLength = along;
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
     g.setIndex(idx);
     g.computeVertexNormals();
     return g;
+  }
+
+  /**
+   * Get ready for the thaw wave: the current (winter) colours stay in 'color', and the colours after the thaw
+   * (snowline and winter as given) go into 'colorB'. The terrain shader blends between them behind the wave.
+   */
+  prepareThaw(snowline: number, glacier: number) {
+    const geo = this.terrain.geometry as THREE.BufferGeometry;
+    const col = geo.attributes.color as THREE.BufferAttribute, colB = geo.attributes.colorB as THREE.BufferAttribute;
+    const winter = (col.array as Float32Array).slice();
+    const keep = { ...this.colorParams };
+    this.setSnow(snowline, glacier, 0);
+    (colB.array as Float32Array).set(col.array as Float32Array); colB.needsUpdate = true;
+    (col.array as Float32Array).set(winter); col.needsUpdate = true;
+    Object.assign(this.colorParams, keep);
+  }
+
+  /** River length in metres along its path (the 'along' of the water's uv). */
+  riverLength = 0;
+  /** Distance along the river (metres) of the path point nearest `dir`. */
+  alongAt(dir: THREE.Vector3) {
+    let best = 0, bd = 9, along = 0;
+    for (let i = 0; i < this.path.length; i++) {
+      if (i > 0) along += this.path[i].distanceTo(this.path[i - 1]) * this.R;
+      const d = this.path[i].distanceTo(dir);
+      if (d < bd) { bd = d; best = along; }
+    }
+    return best;
+  }
+
+  /** The river swells to `widthMul` as a wave running down from the spring: call, then raise waterMat uSurge. */
+  surgeTo(widthMul: number) {
+    const old = this.flowWidth;
+    this.setFlow(widthMul, this.waterMat.uniforms.uHealth.value);
+    this.waterMat.uniforms.uNarrow.value = Math.min(1, old / widthMul);
+    this.waterMat.uniforms.uSurge.value = 0;
   }
 
   /** Change river width with the flow arriving here (the ripple made visible). */

@@ -36,6 +36,27 @@ export const CAMPFIRE: { who: string; text: string }[] = [
   { who: 'Odo', text: 'Tea. Nobody sleeps through tea. Not even a mountain.' },
 ];
 
+/** The long night, in play: prompts and notes. */
+export const NIGHT_WORDS = {
+  sit: 'Everyone is coming. Find a log by the fire and <b>sit</b>.',
+  sitPrompt: 'Sit on a log by the fire',
+  allHere: 'Everyone is here. Keep the fire going through the night.',
+  firstLow: 'The fire is sinking. Stand up (<b>E</b>), take a glowing log from the pile, and feed the fire.',
+  low: 'The fire is getting low again.',
+  takeLog: 'Take a log',
+  feed: 'Put the log on the fire',
+  sing: 'The singing stones hum across the snow. Play their tune with <b>1 2 3 4</b>, and everyone hums along.',
+  again: 'Softly. Start the tune again from the first note.',
+  singPrompt: (tune: number[], played: number) => `<b>${tune.map((n, i) => (i < played ? `<s>${n}</s>` : i === played ? `<u>${n}</u>` : n)).join(' ')}</b> play the stones' tune`,
+};
+
+/** Hollo wakes: the thaw, Hollo standing, the walk home. */
+export const WAKE_LINES = [
+  'The warmth runs out from the spring like a breath let go.',
+  'Hollo stands, shakes off the whole winter, and hums. Every stone answers.',
+  'He looks at you for a long moment. Then he walks home to the peaks, and the river finds its voice.',
+];
+
 export const WINTER_LINES = [
   'The snow comes. It piles behind the fences on every ridge, and this time it stays.',
   'The night is long. Nobody leaves. Hollo breathes a little faster.',

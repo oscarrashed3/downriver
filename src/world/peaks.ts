@@ -84,9 +84,10 @@ export function populatePeaks(p: Planet, scene: THREE.Scene, c: WorldContent,
   p.solids.push({ obj: hollo.root, shape: circle(1.75), h: 4, off: [0, 3.7], id: 'hollo-head', camPad: 1.0 });
   anim((dt, t) => hollo.update(dt, t));
   // the fire Ysolde will light beside it on the long night
-  const hf = put(P.campfire(), PK.holloFire[0], PK.holloFire[1], 0); R.holloFire = hf; hf.visible = false;
+  const hf = put(P.campfire(6), PK.holloFire[0], PK.holloFire[1], 0); R.holloFire = hf; hf.visible = false;
   solid(hf, circle(0.9), 0.6, 'hollofire');
-  anim((dt, t) => { if (!hf.visible) return; hf.userData.spirit.update(t, dt); hf.userData.light.intensity = 26 + Math.sin(t * 17) * 4 + Math.sin(t * 5.3) * 3; });
+  hf.userData.level = 1; // the long night: the fire sinks and flares
+  anim((dt, t) => { if (!hf.visible) return; const lv = hf.userData.level as number; hf.userData.spirit.update(t, dt); hf.userData.flame.scale.setScalar(0.4 + 0.6 * lv); hf.userData.light.intensity = (26 + Math.sin(t * 17) * 4 + Math.sin(t * 5.3) * 3) * (0.35 + 0.65 * lv); });
   const tree = put(Q.oldTree(), PK.tree[0], PK.tree[1], 0, undefined, 0.4);
   solid(tree, circle(2.0), 9, 'oldtree');
   const chimes = Q.treeChimes(); chimes.position.set(2.6, 7.6, 2.4); chimes.scale.setScalar(1.6); tree.add(chimes); R.chimes = chimes;
@@ -122,7 +123,8 @@ export function populatePeaks(p: Planet, scene: THREE.Scene, c: WorldContent,
   lm('Hearth village', 60, -17, 'hut');
   const mill = put(Q.windmill(), PK.windmill[0], PK.windmill[1], 0, faceTo(PK.windmill, [50, 0]), 0.2);
   solid(mill, circle(1.45), 7, 'windmill');
-  anim(dt => (mill.userData.hub.rotation.z += dt * 0.7));
+  R.mill = mill; mill.userData.fast = 1;
+  anim(dt => { mill.userData.fast = 1 + (mill.userData.fast - 1) * Math.exp(-dt * 0.4); mill.userData.hub.rotation.z += dt * 0.7 * mill.userData.fast; });
   put(Q.gardenPatch(), PK.garden[0], PK.garden[1], 0, faceTo(PK.garden, PK.fire));
   put(Q.woodpile(), PK.woodpile[0], PK.woodpile[1], 0, faceTo(PK.woodpile, PK.fire));
   put(Q.workbench(), PK.workbench[0], PK.workbench[1], 0, faceTo(PK.workbench, PK.tor));

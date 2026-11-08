@@ -2,6 +2,7 @@
 import { safeSpot } from '../world/spots';
 import { LanternTasks } from './lanterns';
 import { KiteGame } from './kiteGame';
+import { LongNight } from './longNight';
 import * as THREE from 'three';
 import type { Game } from '../game';
 import type { Beat } from './sequencer';
@@ -56,6 +57,9 @@ export class ChapterOne {
   hollo: Hollo;
   postman: Postman;
   bridgeLamps: THREE.Mesh[] = [];
+  /** The bridge lanterns flare when the river surge passes under them. */
+  bridgeFlare = 0;
+  night!: LongNight;
   vpMarkers: THREE.Object3D[] = [];
   beam: THREE.Mesh;
   frozenMat: THREE.Material;
@@ -80,6 +84,7 @@ export class ChapterOne {
     this.kiteString.frustumCulled = false; this.kiteString.visible = false;
     g.scene.add(this.kiteString);
     this.kiteGame = new KiteGame(g, this.R.torKite as THREE.Group, this.kiteString);
+    this.night = new LongNight(g, this);
     this.hollo = this.R.hollo as Hollo;
     // the spring is ice while Hollo sleeps on it
     const water = this.R.spring.userData.water as THREE.Mesh;
@@ -229,11 +234,11 @@ export class ChapterOne {
       // when everyone is gathered, Nilo walks to his seat by the fire before the long night begins
       walkTo: () => (this.has('gathered') && !this.has('peaks-healed') ? { spot: this.at([PK.holloFire[0] + Math.cos(0.3) * 2.2, PK.holloFire[1] + Math.sin(0.3) * 2.6]), face: pos(R.holloFire) } : null),
       label: () => {
-        if (!(R.holloFire as THREE.Object3D).visible || this.has('peaks-healed')) return null;
+        if (!(R.holloFire as THREE.Object3D).visible || this.has('peaks-healed') || this.night.active) return null;
         return this.has('gathered') ? PROMPT.sitFire : PROMPT.warm;
       },
       act: () => {
-        if (this.has('gathered') && !this.has('peaks-healed')) { g.cut(this.campfireNight()); return; }
+        if (this.has('gathered') && !this.has('peaks-healed')) { this.night.start(); return; }
         g.player.warmth = 1;
         g.hud.notify(NOTE.notGathered(invitedCount(g.questCtx())));
       },
@@ -482,6 +487,7 @@ export class ChapterOne {
     if (this.captionT > 0) { this.captionT -= dt; if (this.captionT <= 0 && g.mode === 'play') g.hud.showCaption(null, null); }
     if (this.rainT > 0) this.rainT -= dt;
     if (this.kitePending && g.mode === 'play') this.startKiteGame();
+    this.night.update(dt);
     if (this.kiteWatch) { const tor = this.npc('tor'); tor.lookAt = this.kiteGame.kitePos.clone(); tor.pose = this.kiteGame.caught ? { wave: Math.sin(g.time * 3) > 0.6 ? 1 : 0 } : {}; }
 
     // Night lanterns
@@ -630,7 +636,8 @@ export class ChapterOne {
   /** The bridge lanterns, and the golden beam over the next place to go. */
   updateGuides(dt: number) {
     const g = this.g, c = g.questCtx(), lit = lanternsLit(c);
-    this.bridgeLamps.forEach((l, i) => (l.material as THREE.MeshBasicMaterial).color.set(i < lit ? '#ffd27a' : '#4a4058'));
+    this.bridgeFlare = Math.max(0, this.bridgeFlare - dt);
+    this.bridgeLamps.forEach((l, i) => { (l.material as THREE.MeshBasicMaterial).color.set(i < lit ? '#ffd27a' : '#4a4058'); if (this.bridgeFlare > 0) (l.material as THREE.MeshBasicMaterial).color.multiplyScalar(1 + this.bridgeFlare * 0.6); l.scale.setScalar(1 + this.bridgeFlare * 0.35); });
     const target = this.guideTarget();
     const u = (this.beam.material as THREE.ShaderMaterial).uniforms;
     u.uT.value += dt;
