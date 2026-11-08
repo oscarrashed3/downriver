@@ -24,6 +24,10 @@ export class CameraRig {
 
   constructor(public camera: THREE.PerspectiveCamera) {}
 
+  /** Mouse wheel: ease the follow distance between 4 and 14 m. */
+  zoomBy(steps: number) { this.distGoal = clamp(this.distGoal * (1 + steps * 0.12), 4, 14); }
+  distGoal = 8.5;
+
   forward(up: THREE.Vector3): THREE.Vector3 {
     return this.ref.clone().applyAxisAngle(up, this.yaw).normalize();
   }
@@ -48,6 +52,7 @@ export class CameraRig {
     this.ref.normalize();
     this.yaw -= mdx * 0.0032 + keyYaw * dt * 2.2;
     this.pitch = clamp(this.pitch + mdy * 0.0026, -0.25, 1.25);
+    this.dist += (this.distGoal - this.dist) * (1 - Math.exp(-8 * dt));
     this.smoothUp.lerp(up, 1 - Math.exp(-6 * dt)).normalize();
     const f = this.forward(this.smoothUp);
     const goal = target.clone()

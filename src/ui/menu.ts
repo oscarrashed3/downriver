@@ -29,7 +29,7 @@ export const CONTROLS_HTML = `
   <p><b>Mouse</b> look (click to capture, or hold right button and drag) &nbsp; <b>Arrows</b> turn</p>
   <p><b>E</b> talk, use, sit, board Fold &nbsp; <b>Q</b> Skyreading (once learned) &nbsp; <b>F</b> whistle</p>
   <p><b>Esc</b> or the paper boat, top right: this menu &nbsp; <b>M</b> map &nbsp; <b>B</b> backpack &nbsp; <b>L</b> letters &nbsp; <b>K</b> sketchbook &nbsp; <b>J</b> journal</p>
-  <p><b>Tab</b> or <b>scroll out</b> see all the worlds &nbsp; <b>G</b> hide the goal line &nbsp; <b>P</b> picture quality &nbsp; <b>N</b> sound on/off</p>
+  <p><b>Scroll</b> camera nearer or further &nbsp; <b>G</b> hide the goal line &nbsp; <b>P</b> picture quality &nbsp; <b>N</b> sound on/off</p>
   <p>In conversation, <b>hold Space</b> while someone speaks. Letting go early is interrupting.<br/>When they fall silent, staying present is sometimes the kindest thing.</p>`;
 
 export class Menu {
@@ -103,7 +103,7 @@ export class Menu {
   /** Every world: where you are, where you can fly back to, and what is still ahead. */
   showWorlds(list: { name: string; n: string; state: 'here' | 'done' | 'visited' | 'ahead' }[]) {
     const tag = { here: 'You are here', done: '✓ Finished', visited: 'Visited', ahead: 'Not yet' };
-    this.open(`<div class="sheet menusheet worlds"><h2>Worlds</h2><p class="lead">Fly back to any world you have been to. Everything there stays as you left it. <i>Tab shows them in the sky, too.</i></p>
+    this.open(`<div class="sheet menusheet worlds"><h2>Worlds</h2><p class="lead">Fly back to any world you have been to. Everything there stays as you left it.</p>
       ${list.map((w, i) => `<div class="row wrow ${w.state}"><span><small>${esc(w.n)}</small> ${esc(w.name)}</span><em>${tag[w.state]}</em>${w.state === 'done' || w.state === 'visited' ? `<button data-a="go" data-i="${i}">Go back</button>` : ''}</div>`).join('')}</div>`);
   }
 

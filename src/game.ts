@@ -1542,7 +1542,8 @@ export class Game {
     this.fold.kiteMode = pl.gliding;
     if (inp.hit('KeyQ') && this.flags.has('power:skyreading')) { this.skyread.active = !this.skyread.active; this.sound.sfxPlay('soft'); }
     if (inp.hit('KeyF')) { this.sound.sfxPlay('whistle'); this.fold.hop(); pl.pose = {}; }
-    if (inp.hit('Tab') || inp.wheel > 0) { this.openSky(); return; }
+    // the wheel only brings the camera nearer or further; the whole journey is seen on the title screen
+    if (inp.wheel) this.rig.zoomBy(inp.wheel);
     this.surveyT -= dt;
     if (this.surveyT <= 0) { this.surveyT = 0.5; const ll = latLonOf(pl.up); this.map.reveal(this.planet, ll.lat, wrapDeg(ll.lon - this.planet.lonAtLat(ll.lat)), 22); }
     this.nearest = this.interactPrompt();
