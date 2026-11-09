@@ -2,231 +2,228 @@ import * as THREE from 'three';
 import { PAINT } from '../../render/paint';
 
 /**
- * Soft painted cloud puffs for the sky whales: camera-facing billboards with a lumpy, feathered edge,
- * shaded like the game's cumulus (warm sunlit tops, cool lavender bellies, a silver lining on the edge).
- * They are transparent and never write depth, so the finish pass draws no ink round them: they read as
- * soft cloud, never as outlined pancakes. Each billboard is pulled a little towards the camera, so where
- * one meets a whale it lies over the body instead of slicing through it with a hard line.
+ * Cloud for the sky whales, in the game's own cloud style (World 1's painted cumulus): solid, flat-bottomed
+ * puff spheres heaped into cauliflower clusters, shaded with warm sunlit tops, cool blue-grey bellies and a
+ * soft bright edge, and inked by the finish pass like everything else. Being solid, they hide what lies in
+ * them properly (no ink line of a hidden flipper shows through), and where a whale lies in them the cloud
+ * meets its skin in a soft crease, as if it pushed the cloud aside.
  *
- * Used for the cloud wake a whale leaves where it breaks the cloud tops (puffs and stretched wisps), and
- * for the stand-in cloud layer of the whale lab. One draw call per CloudWake or SoftCloudLayer.
+ * - CloudWake: the cloud a whale gathers and leaves where it lies in the cloud tops (heaps that billow up
+ *   round its lower flanks and move with it, puffs left behind as it swims on, wisps off the flipper and
+ *   fluke tips). One instanced draw per whale.
+ * - SoftCloudLayer: a stand-in cloud sea for the lab (the world brings its own). One instanced draw.
+ * The whales cast a soft shadow on these puffs (setCloudShadow).
  */
+
+/** How many whales can cast a soft shadow on the puffs at once. */
+const MAX_SHADOWS = 4;
+const shadowU = { value: Array.from({ length: MAX_SHADOWS * 2 }, () => new THREE.Vector4()) };
+let shadowNext = 0;
+/** Claim a shadow slot (or -1 when all are taken). */
+export function claimCloudShadow(): number { return shadowNext < MAX_SHADOWS ? shadowNext++ : -1; }
+/**
+ * Set a whale's shadow on the cloud puffs: an ellipse centred at (x, z), its long axis along (dx, dz) (unit),
+ * half length and half width in metres, `strength` 0..1 (0 = off), and only on cloud lower than `maxY` (world).
+ */
+export function setCloudShadow(slot: number, x: number, z: number, dx: number, dz: number, halfLen: number, halfWidth: number, strength: number, maxY: number) {
+  if (slot < 0) return;
+  shadowU.value[slot * 2].set(x, z, dx, dz);
+  shadowU.value[slot * 2 + 1].set(halfLen, halfWidth, strength, maxY);
+}
 
 const VERT = /* glsl */ `
   #include <common>
   #include <fog_pars_vertex>
-  attribute vec3 iPos;    // centre, world space
-  attribute vec4 iAxis;   // xyz: stretch direction * half length (world); w: 1 = stretched wisp, 0 = round puff
-  attribute vec4 iShape;  // x: half height (m), y: opacity, z: seed, w: width / height for round puffs
-  uniform vec3 uSun; uniform float uPull;
-  varying vec2 vUv; varying vec4 vShape; varying vec3 vSunV; varying vec3 vUpV; varying vec4 vAx; varying float vWisp;
+  varying vec3 vN; varying vec3 vW; varying float vSeed;
   void main(){
-    vec4 mvPosition = viewMatrix * vec4(iPos, 1.0);
-    float size = iShape.x;
-    vec2 ax;
-    if (iAxis.w > 0.5) {
-      vec2 a = (viewMatrix * vec4(iAxis.xyz, 0.0)).xy;
-      float l = length(a);
-      ax = l > 1e-3 ? a / l * max(l, size) : vec2(size, 0.0);
-    } else {
-      ax = vec2(size * iShape.w, 0.0);
-    }
-    vec2 axd = normalize(ax);
-    vec2 ayd = vec2(-axd.y, axd.x);
-    if (ayd.y < 0.0) { ayd = -ayd; }
-    mvPosition.xy += position.x * ax + position.y * ayd * size;
-    // lean towards the camera, so the flat card lies over what it touches instead of cutting it
-    mvPosition.z += size * uPull;
+    // a flat base, like the game's cumulus
+    vec3 lp = position; lp.y = max(lp.y, -0.38);
+    vec4 wp = modelMatrix * instanceMatrix * vec4(lp, 1.0);
+    vW = wp.xyz;
+    vec3 nn = position.y < -0.37 ? vec3(0.0, -1.0, 0.0) : normal;
+    vN = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * nn);
+    vSeed = fract(instanceMatrix[3].x * 0.013 + instanceMatrix[3].z * 0.007);
+    vec4 mvPosition = viewMatrix * wp;
     gl_Position = projectionMatrix * mvPosition;
-    vUv = position.xy; vShape = iShape; vAx = vec4(axd, ayd); vWisp = iAxis.w;
-    vSunV = normalize((viewMatrix * vec4(uSun, 0.0)).xyz);
-    vUpV = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
     #include <fog_vertex>
   }`;
 
 const FRAG = /* glsl */ `
   #include <common>
   #include <fog_pars_fragment>
-  uniform vec3 uTop, uBelly, uWarm, uSunCol;
-  varying vec2 vUv; varying vec4 vShape; varying vec3 vSunV; varying vec3 vUpV; varying vec4 vAx; varying float vWisp;
+  uniform vec3 uSun, uTop, uBelly, uSunCol;
+  uniform vec4 uShadow[${MAX_SHADOWS * 2}];
+  varying vec3 vN; varying vec3 vW; varying float vSeed;
   void main(){
-    vec2 uv = vUv;
-    float seed = vShape.z;
-    float ang = atan(uv.y, uv.x);
-    // cumulus: a flatter underside and a cauliflower edge of soft lobes (wisps get a ragged, thinner edge)
-    vec2 sq = vec2(uv.x, uv.y < 0.0 ? uv.y * mix(1.45, 1.0, vWisp) : uv.y);
-    float r = length(sq);
-    float lobes = 0.085 * sin(ang * 5.0 + seed * 6.28) + 0.055 * sin(ang * 9.0 + seed * 17.0) + 0.035 * sin(ang * 15.0 + seed * 29.0);
-    float edge = r + lobes * mix(smoothstep(-0.7, 0.2, uv.y), 1.6, vWisp);
-    float a = smoothstep(1.0, mix(0.8, 0.25, vWisp), edge) * vShape.y;
-    // never reach the card's own border, so no puff shows a straight cut edge
-    a *= smoothstep(1.0, 0.86, max(abs(uv.x), abs(uv.y)));
-    if (a < 0.01) discard;
-    // a fake rounded normal, in view space
-    float rr = min(dot(uv, uv), 1.0);
-    vec2 nb = uv * 0.85;
-    vec3 nv = normalize(vec3(nb.x * vAx.xy + nb.y * vAx.zw, sqrt(max(0.08, 1.0 - rr))));
-    float lit = dot(nv, vSunV) * 0.5 + 0.5;
-    float up = dot(nv, vUpV);
-    float k = smoothstep(-0.55, 0.7, up) * 0.55 + lit * 0.45;
-    k = smoothstep(0.3, 0.62, k) * 0.7 + k * 0.3;
-    vec3 col = mix(uBelly, uTop, k);
-    // warm light caught on the sunward side, and a silver lining round the edge
-    col = mix(col, col * uWarm * (0.6 + 0.45 * uSunCol), smoothstep(0.65, 1.0, lit) * 0.25);
-    col += vec3(1.0, 0.96, 0.88) * smoothstep(0.55, 0.95, edge) * lit * 0.07;
-    col *= 0.975 + fract(seed * 13.7) * 0.05;
-    gl_FragColor = vec4(col, a);
+    vec3 N = normalize(vN);
+    vec3 V = normalize(cameraPosition - vW);
+    float lit = clamp(dot(N, uSun) * 0.5 + 0.5, 0.0, 1.0);
+    float k = smoothstep(-0.35, 0.65, N.y) * 0.6 + lit * 0.4;
+    k = smoothstep(0.38, 0.5, k) * 0.7 + k * 0.3;
+    // the sun's colour on the lit tops (white at midday, gold at golden hour)
+    vec3 sunHue = uSunCol / max(max(uSunCol.r, uSunCol.g), 1e-3);
+    vec3 col = mix(uBelly * mix(vec3(1.0), sunHue, 0.1), uTop * mix(vec3(1.0), sunHue, sunHue.b < 0.5 ? 0.4 : 0.1), k);
+    float fres = pow(1.0 - abs(dot(N, V)), 2.5);
+    col += vec3(1.0, 0.95, 0.85) * sunHue * fres * 0.18 * lit;
+    col *= 0.96 + vSeed * 0.08;
+    // the soft shadows the whales cast on the cloud tops (only on cloud below the whale's belly)
+    float sh = 0.0;
+    for (int i = 0; i < ${MAX_SHADOWS}; i++) {
+      vec4 a0 = uShadow[i * 2], a1 = uShadow[i * 2 + 1];
+      if (a1.z <= 0.0) continue;
+      vec2 d = vW.xz - a0.xy;
+      vec2 e = vec2(dot(d, a0.zw), dot(d, vec2(-a0.w, a0.z))) / a1.xy;
+      sh = max(sh, a1.z * (1.0 - smoothstep(0.3, 1.0, dot(e, e))) * smoothstep(a1.w + 1.0, a1.w - 1.5, vW.y));
+    }
+    col = mix(col, uBelly * vec3(0.9, 0.93, 1.0), sh * smoothstep(-0.2, 0.5, N.y));
+    gl_FragColor = vec4(col, 1.0);
     #include <fog_fragment>
   }`;
 
-const spriteMats = new Map<number, THREE.ShaderMaterial>();
+let puffMat: THREE.ShaderMaterial | null = null;
 const puffSun = { value: new THREE.Vector3(0.45, 0.78, 0.43).normalize() };
-/**
- * The shared soft-puff material. `pull` (in puff sizes) is how far each card is drawn towards the camera:
- * high for wake puffs that must lie over the whale, low for a cloud layer the whale swims in front of.
- */
-export function puffMaterial(pull = 0.9): THREE.ShaderMaterial {
-  const hit = spriteMats.get(pull); if (hit) return hit;
-  const spriteMat = new THREE.ShaderMaterial({
+/** The shared cloud-puff material (instanced, opaque, fogged). */
+export function puffMaterial(): THREE.ShaderMaterial {
+  if (puffMat) return puffMat;
+  puffMat = new THREE.ShaderMaterial({
     fog: true,
-    transparent: true,
-    depthWrite: false,
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
-      uPull: { value: pull },
-      uTop: { value: new THREE.Color('#f8f8f8') },
-      uBelly: { value: new THREE.Color('#b7c0dc') },
-      uWarm: { value: new THREE.Color('#fff3e4') },
-      uSunCol: { value: new THREE.Color('#ffffff') },
+      uTop: { value: new THREE.Color('#fffbf4') },
+      uBelly: { value: new THREE.Color('#a3b4d4') },
     }]),
     vertexShader: VERT,
     fragmentShader: FRAG,
   });
   // share the game's sun colour, so the puffs turn gold at golden hour
-  spriteMat.uniforms.uSunCol = PAINT.uSunCol;
-  spriteMat.uniforms.uSun = puffSun;
-  spriteMats.set(pull, spriteMat);
-  return spriteMat;
+  puffMat.uniforms.uSunCol = PAINT.uSunCol;
+  puffMat.uniforms.uSun = puffSun;
+  puffMat.uniforms.uShadow = shadowU;
+  return puffMat;
 }
 
 /** Point the whale puffs' light at the sun (unit vector, world space). */
 export function setPuffSun(sunDir: THREE.Vector3) { puffSun.value.copy(sunDir); }
 
-/** A pool of billboards in one instanced draw. */
-class SpritePool {
-  readonly mesh: THREE.Mesh;
-  protected geo: THREE.InstancedBufferGeometry;
-  protected pos: THREE.InstancedBufferAttribute;
-  protected axis: THREE.InstancedBufferAttribute;
-  protected shape: THREE.InstancedBufferAttribute;
-  constructor(readonly max: number, pull: number) {
-    const base = new THREE.PlaneGeometry(2, 2);
-    this.geo = new THREE.InstancedBufferGeometry();
-    this.geo.index = base.index;
-    this.geo.setAttribute('position', base.attributes.position);
-    this.pos = new THREE.InstancedBufferAttribute(new Float32Array(max * 3), 3);
-    this.axis = new THREE.InstancedBufferAttribute(new Float32Array(max * 4), 4);
-    this.shape = new THREE.InstancedBufferAttribute(new Float32Array(max * 4), 4);
-    for (const a of [this.pos, this.axis, this.shape]) a.setUsage(THREE.DynamicDrawUsage);
-    this.geo.setAttribute('iPos', this.pos);
-    this.geo.setAttribute('iAxis', this.axis);
-    this.geo.setAttribute('iShape', this.shape);
-    this.geo.instanceCount = 0;
-    this.mesh = new THREE.Mesh(this.geo, puffMaterial(pull));
+const puffGeos = new Map<number, THREE.BufferGeometry>();
+function puffGeometry(detail: number) {
+  let g = puffGeos.get(detail);
+  if (!g) puffGeos.set(detail, (g = new THREE.IcosahedronGeometry(1, detail)));
+  return g;
+}
+
+const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _v = new THREE.Vector3();
+
+/** A pool of solid puffs in one instanced draw. */
+class PuffPool {
+  readonly mesh: THREE.InstancedMesh;
+  /** `detail`: the puff sphere's subdivision (2 = 320 triangles, smooth enough at whale scale). */
+  constructor(readonly max: number, detail = 2) {
+    this.mesh = new THREE.InstancedMesh(puffGeometry(detail), puffMaterial(), max);
+    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.mesh.count = 0;
     this.mesh.frustumCulled = false;
     this.mesh.userData.noOutline = true;
   }
+  /** Write puff `i`: centre, radius and flattening (y scale). */
+  protected put(i: number, p: THREE.Vector3, r: number, flat = 0.72) {
+    _m.compose(p, _q.identity(), _s.set(r, r * flat, r));
+    this.mesh.setMatrixAt(i, _m);
+  }
   protected flush(n: number) {
-    this.geo.instanceCount = n;
-    this.pos.needsUpdate = this.axis.needsUpdate = this.shape.needsUpdate = true;
+    this.mesh.count = n;
+    this.mesh.instanceMatrix.needsUpdate = true;
   }
 }
 
-interface Puff { pos: THREE.Vector3; vel: THREE.Vector3; axis: THREE.Vector3; age: number; life: number; size: number; alpha: number; seed: number; wisp: boolean }
+interface Puff { pos: THREE.Vector3; vel: THREE.Vector3; age: number; life: number; size: number }
+/** A heap of cloud that lives with the whale (set every frame): it billows round the body where it lies in the clouds. */
+export interface HugPuff { pos: THREE.Vector3; size: number; seed: number; along: THREE.Vector3 }
 
 /**
- * The soft cloud wake a whale leaves where it breaks the cloud tops: puffs that swell up where the body
- * cuts the cloud surface and wisps stretched off the flippers and fluke. They live in world space and are
- * left behind as the whale swims on, then thin out and melt. Add `mesh` to the scene. One draw call.
+ * The cloud a whale gathers and leaves where it lies in the cloud tops: heaps that billow up round its lower
+ * flanks and move with it (set by the whale each frame), puffs that swell up where the body cuts the cloud
+ * surface and are left behind as the whale swims on (swelling, then shrinking away), and little trails
+ * combed out behind the flipper and fluke tips. All in world space. Add `mesh` to the scene. One draw call.
  */
-export class CloudWake extends SpritePool {
+export class CloudWake extends PuffPool {
   private pool: Puff[] = [];
   private next = 0;
-  constructor(max = 160) {
-    super(max, 0.9);
-    this.mesh.renderOrder = 2;
-    for (let i = 0; i < max; i++) this.pool.push({ pos: new THREE.Vector3(), vel: new THREE.Vector3(), axis: new THREE.Vector3(), age: 1, life: 0, size: 0, alpha: 1, seed: 0, wisp: false });
+  private hugs: HugPuff[] = [];
+  constructor(max = 150) {
+    super(max);
+    for (let i = 0; i < max; i++) this.pool.push({ pos: new THREE.Vector3(), vel: new THREE.Vector3(), age: 1, life: 0, size: 0 });
   }
-  /**
-   * Start a puff at `pos` (world), drifting with `vel`, about `size` metres high at its fullest.
-   * With `axis` (world, half length) it is a wisp stretched along that direction.
-   */
-  spawn(pos: THREE.Vector3, vel: THREE.Vector3, size: number, life = 5, axis?: THREE.Vector3, alpha = 0.9) {
+  /** Start a puff at `pos` (world), drifting with `vel`, about `size` metres in radius at its fullest. */
+  spawn(pos: THREE.Vector3, vel: THREE.Vector3, size: number, life = 5) {
     const p = this.pool[this.next]; this.next = (this.next + 1) % this.pool.length;
     p.pos.copy(pos); p.vel.copy(vel); p.age = 0; p.life = life * (0.75 + Math.random() * 0.5);
-    p.size = size; p.alpha = alpha; p.seed = Math.random(); p.wisp = !!axis;
-    if (axis) p.axis.copy(axis); else p.axis.set(0, 0, 0);
+    p.size = size;
   }
+  /** The heaps that move with the whale this frame (each is drawn as three puffs; at most a third of the pool). */
+  setHugs(h: HugPuff[]) { this.hugs = h.slice(0, Math.floor(this.max / 9)); }
   update(dt: number) {
     let n = 0;
-    const P = this.pos.array as Float32Array, A = this.axis.array as Float32Array, S = this.shape.array as Float32Array;
+    // the heaps round the body: a big puff, a smaller crown on top and a low one trailing along the body
+    for (const h of this.hugs) {
+      const s = h.size, a = h.seed * 6.283;
+      this.put(n++, h.pos, s, 0.72);
+      _v.copy(h.pos).addScaledVector(h.along, s * 0.35 * Math.cos(a)); _v.y += s * 0.42;
+      this.put(n++, _v, s * (0.55 + 0.12 * Math.sin(a * 3)), 0.8);
+      _v.copy(h.pos).addScaledVector(h.along, -s * (0.75 + 0.2 * Math.sin(a))); _v.y -= s * 0.12;
+      this.put(n++, _v, s * 0.7, 0.68);
+    }
     for (const p of this.pool) {
-      if (p.age >= p.life) continue;
+      if (p.age >= p.life || n >= this.max) continue;
       p.age += dt;
       p.pos.addScaledVector(p.vel, dt);
       p.vel.multiplyScalar(Math.exp(-dt * 0.5));
       const k = Math.min(1, p.age / p.life);
-      // swell quickly, then thin out and melt
+      // swell quickly, then shrink away (they are solid: they melt by getting smaller)
       const grow = Math.min(1, p.age / 0.8);
-      const env = (1 - (1 - grow) * (1 - grow)) * (1 - k * k * k);
-      const size = p.size * (0.55 + 0.45 * grow + 0.35 * k);
-      P.set([p.pos.x, p.pos.y, p.pos.z], n * 3);
-      const st = p.wisp ? 1 + k * 0.8 : 1;
-      A.set([p.axis.x * st, p.axis.y * st, p.axis.z * st, p.wisp ? 1 : 0], n * 4);
-      S.set([size * (p.wisp ? 1 - 0.3 * k : 1), env * p.alpha, p.seed, 1.5], n * 4);
-      n++;
+      const env = (1 - (1 - grow) * (1 - grow)) * (1 - k * k);
+      const r = p.size * env * (0.8 + 0.3 * k);
+      if (r < 0.05) continue;
+      this.put(n++, p.pos, r, 0.72);
     }
     this.flush(n);
   }
 }
 
 /**
- * A stand-in cloud layer for the lab: soft puffs whose tops sit about `top`, spread over a disc, in one
- * draw. The real world has its own clouds; this only gives the whale something soft to swim through.
- * Call sort(camera position) when the camera moves, so the puffs blend back to front.
+ * A stand-in cloud sea for the lab: heaps of puffs whose tops sit about `top`, spread over a disc, in one
+ * draw. The real world has its own clouds; this only gives the whale something to swim through.
+ * `corridor` keeps a lane clear (a whale swims along it, gathering its own cloud round it).
  */
-export class SoftCloudLayer extends SpritePool {
-  private items: { p: THREE.Vector3; size: number; seed: number; stretch: number; alpha: number }[] = [];
-  constructor(opts: { center?: THREE.Vector3; radius?: number; top?: number; count?: number; seed?: number; size?: number; avoid?: { at: THREE.Vector3; r: number } } = {}) {
-    const count = opts.count ?? 700;
-    super(count, 0.3);
+export class SoftCloudLayer extends PuffPool {
+  constructor(opts: { center?: THREE.Vector3; radius?: number; top?: number; count?: number; seed?: number; size?: number; corridor?: { a: THREE.Vector3; b: THREE.Vector3; r: number } } = {}) {
+    const count = opts.count ?? 900;
+    super(count);
     const c = opts.center ?? new THREE.Vector3(), R = opts.radius ?? 500, top = opts.top ?? 0, S = opts.size ?? 1;
     let s = (opts.seed ?? 5) * 7919 + 13;
     const r = () => ((s = (s * 16807) % 2147483647) / 2147483647);
-    for (let i = 0; i < count; i++) {
+    const p = new THREE.Vector3();
+    let n = 0, guard = 0;
+    while (n < count && guard++ < count * 4) {
       const a = r() * Math.PI * 2, d = Math.sqrt(r()) * R;
       const x = c.x + Math.cos(a) * d, z = c.z + Math.sin(a) * d;
-      if (opts.avoid && Math.hypot(x - opts.avoid.at.x, z - opts.avoid.at.z) < opts.avoid.r * (0.6 + r() * 0.4)) continue;
-      const size = S * (8 + r() * r() * 20);
-      // each card's top edge sits about `top` (a few billows a little higher), the rest of it below, so the
-      // layer covers whatever is behind it up to the cloud tops and nothing above them
-      this.items.push({ p: new THREE.Vector3(x, top - size * 0.9 + (r() - 0.3) * 2.5, z), size, seed: r(), stretch: 1.4 + r() * 1.0, alpha: 0.9 + r() * 0.1 });
+      // a heap: a few puffs, big ones low and wide, smaller ones climbing on top (the crowns reach `top`)
+      const size = S * (9 + r() * r() * 22);
+      if (opts.corridor) {
+        const { a: ca, b: cb } = opts.corridor, dx = cb.x - ca.x, dz = cb.z - ca.z;
+        const h = THREE.MathUtils.clamp(((x - ca.x) * dx + (z - ca.z) * dz) / (dx * dx + dz * dz), 0, 1);
+        if (Math.hypot(x - ca.x - dx * h, z - ca.z - dz * h) < opts.corridor.r + size * 0.9) continue;
+      }
+      const m = 3 + Math.floor(r() * 4);
+      for (let j = 0; j < m && n < count; j++) {
+        const lift = j / Math.max(1, m - 1);
+        const sc = size * (0.95 - 0.4 * lift) * (0.8 + r() * 0.4);
+        p.set(x + (r() - 0.5) * size * 2.4 * (1 - 0.5 * lift), 0, z + (r() - 0.5) * size * 1.8 * (1 - 0.5 * lift));
+        // (the top of a puff is 0.72 of its radius above its centre)
+        p.y = top - sc * 0.72 - size * 0.35 * (1 - lift) + (r() - 0.4) * size * 0.15;
+        this.put(n++, p, sc, 0.72);
+      }
     }
-    this.mesh.renderOrder = 1;
-    this.sort(new THREE.Vector3(0, 1000, 0));
-    // re-sort whenever the camera has moved
-    const last = new THREE.Vector3(1e9, 0, 0);
-    this.mesh.onBeforeRender = (_r, _s, cam) => { if (cam.position.distanceToSquared(last) > 4) { last.copy(cam.position); this.sort(cam.position); } };
-  }
-  /** Order the puffs far to near from `eye`. */
-  sort(eye: THREE.Vector3) {
-    this.items.sort((a, b) => b.p.distanceToSquared(eye) - a.p.distanceToSquared(eye));
-    const P = this.pos.array as Float32Array, A = this.axis.array as Float32Array, S = this.shape.array as Float32Array;
-    this.items.forEach((it, i) => {
-      P.set([it.p.x, it.p.y, it.p.z], i * 3);
-      A.set([0, 0, 0, 0], i * 4);
-      S.set([it.size, it.alpha, it.seed, it.stretch], i * 4);
-    });
-    this.flush(this.items.length);
+    this.flush(n);
   }
 }
 
