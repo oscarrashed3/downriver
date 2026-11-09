@@ -27,9 +27,9 @@ export class Npc {
   private t = Math.random() * 10;
   smileT = 0;
 
-  constructor(public id: string, public look: NpcLook, mood: Mood) {
+  constructor(public id: string, public look: NpcLook, mood: Mood, person?: Person) {
     this.mood = { ...mood }; this.shown = { ...mood };
-    this.person = new Person(look);
+    this.person = person ?? new Person(look);
     this.idle = look.idle ?? 'none';
     this.voice = look.voice ?? 1;
     this.root.add(this.person.root);

@@ -41,7 +41,7 @@ export type FoldMood = 'calm' | 'happy' | 'curious' | 'sleepy' | 'scared' | 'col
 export const FOLD_FORMS = [
   { id: 'boat', name: 'Boat', world: 'The Spring Peaks', flag: 'read-letter', text: 'Carries you down the river.' },
   { id: 'kite', name: 'Kite', world: 'The Spring Peaks', flag: 'power:kite', text: 'Opens while you fall, so you glide.' },
-  { id: 'crane', name: 'Crane', world: 'The Sky Isles', flag: 'form:crane', text: 'Rides the wind ahead and shows the way between the islands.' },
+  { id: 'glider', name: 'Glider', world: 'The Sky Isles', flag: 'form:glider', text: 'A paper wing: hold Space in the air to glide between the islands.' },
   { id: 'seed', name: 'Seed', world: 'The Overgrown Garden', flag: 'form:seed', text: 'Spins down slowly from the tallest flowers.' },
   { id: 'sail', name: 'Sail', world: 'The Endless Sea', flag: 'form:sail', text: 'Catches the wind across open water.' },
   { id: 'fan', name: 'Fan', world: 'The Painted Desert', flag: 'form:fan', text: 'Cools you, and sweeps the sand off old signs.' },

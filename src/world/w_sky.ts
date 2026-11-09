@@ -33,5 +33,6 @@ export function populateSky(k: Kit) {
   lm('The Chime Garden', ...at(SPOTS.workshop), 'stone');
   lm("Whale's Rest", ...at(SPOTS.whalesRest), 'cloud');
 
-  npc('tamsin', ...at(SPOTS.sailSquare));
+  // the windfolk (Lark, Zephy, Gran Wren, the sail-mender and the chime-maker) are placed by story/skyChapter.ts
+  void npc;
 }

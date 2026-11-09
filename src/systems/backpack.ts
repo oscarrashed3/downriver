@@ -2,6 +2,7 @@
 // Pure data and rules up top (testable); the overlay that draws it lives in BackpackView below.
 import { esc } from '../ui/hud';
 import { FOLD_FORMS } from '../player/fold';
+import { SKY_LETTER, SKY_TRADES } from '../data/skyStory';
 
 export const SLOTS = 8;
 
@@ -17,6 +18,10 @@ export const ITEMS: Record<string, ItemDef> = {
   'item:bell': { id: 'item:bell', name: 'Goat bell', text: "Bram's spare. So you can be found in fog, he says.", icon: 'bell' },
   'item:ribbon': { id: 'item:ribbon', name: 'Kite ribbon', text: "A red ribbon from Tor's kite tail. It still smells of wind.", icon: 'ribbon' },
   'item:cloudcard': { id: 'item:cloudcard', name: "Nima's cloud card", text: 'Forty cloud names in very small writing. Big Marguerite is underlined twice.', icon: 'card' },
+  'item:pastry': { id: 'item:pastry', name: 'Honey pastry', text: 'Still warm. For luck, the baker said. Someone up here would love it.', icon: 'pastry' },
+  'item:feather': { id: 'item:feather', name: 'Gull feather', text: "Old Fenn's best quill. Long and white and very soft.", icon: 'feather' },
+  'item:chime': { id: 'item:chime', name: 'Little chime', text: "One of Pell's. It rings when you walk, very quietly.", icon: 'chime' },
+  'item:streamer': { id: 'item:streamer', name: 'Festival streamer', text: "Gran Wren's, from the year she won. Faded, and still bright.", icon: 'streamer' },
   'item:frost': { id: 'item:frost', name: "Hollo's frost", text: 'A snowflake that does not melt. It fell from Hollo\'s cloud onto your hood. Kept from the Spring Peaks.', icon: 'frost' },
 };
 
@@ -27,6 +32,7 @@ export const TRADES: Trade[] = [
   { npc: 'tor', want: 'item:bell', give: 'item:ribbon', line: 'A bell for the kite! Now I can hear it in the clouds. Have a ribbon, it is lucky.' },
   { npc: 'nima', want: 'item:ribbon', give: 'item:cloudcard', line: "Red ribbon! The clouds will see me now. Here, my cloud card. Don't lose it." },
   { npc: 'odo', want: 'item:cloudcard', give: 'item:flower', line: "Nima's card! I have wanted one for years. Have a flower from my window box." },
+  ...SKY_TRADES,
 ];
 
 /** What you keep from each world: one object, one skill, one friend. */
@@ -37,12 +43,18 @@ export const KEPT: { world: string; flag: string; object: string; skill: string;
 export interface SkillDef { flag: string; name: string; key: string; text: string }
 export const SKILLS: SkillDef[] = [
   { flag: 'power:skyreading', name: 'Skyreading', key: 'Q', text: 'See where the wind goes, and where it drops its snow.' },
+  { flag: 'power:glide', name: 'Gliding', key: 'Hold Space', text: 'Off an edge, Fold opens into a paper wing. Hold C to dive, let go to land.' },
   { flag: 'power:kite', name: 'Fold the kite', key: 'Hold Space', text: 'While falling, Fold opens into a kite and you glide.' },
   { flag: 'read-letter', name: 'Whistle', key: 'F', text: 'Animals look up. Fold hops.' },
 ];
 
 /** The keeper's letters, and the replies Nilo can send back with the postman. */
-export interface LetterDef { id: string; from: string; lines: string[]; replies: string[] }
+export interface LetterDef {
+  id: string; from: string; lines: string[]; replies: string[];
+  /** The first line answers what Nilo wrote back to an earlier letter (by reply; '' = no reply). */
+  answers?: { to: string; by: Record<string, string> };
+  sign?: string;
+}
 export const LETTERS: LetterDef[] = [
   { id: 'letter:0', from: 'Found in your bag after the storm', lines: ['Nilo. Follow the water. It always finds its way home. But someone up here needs you first.'], replies: [] },
   {
@@ -50,7 +62,16 @@ export const LETTERS: LetterDef[] = [
     lines: ['You woke him. I knew you would.', 'The water goes down now, and so do you. The islands below are windy. Someone there is waiting.', 'I am always one valley ahead. Do not try to catch me. Just follow the water.'],
     replies: ['Who are you?', 'Hollo says hello.', 'I will follow the water.'],
   },
+  { id: SKY_LETTER.id, from: SKY_LETTER.from, lines: SKY_LETTER.lines, answers: SKY_LETTER.answers, sign: SKY_LETTER.sign,
+    replies: ["I'm building a kite.", 'Who needs a friend?', 'I will fly anyway.'] },
 ];
+
+/** A letter's lines as Nilo reads them: the answer to his reply first, when it has one. */
+export function letterLines(l: LetterDef, sent: Record<string, string>): string[] {
+  if (!l.answers) return l.lines;
+  const by = l.answers.by;
+  return [by[sent[l.answers.to] ?? ''] ?? by[''], ...l.lines];
+}
 
 /** Add to the first empty slot. Returns false when the bag is full. */
 export function bagAdd(bag: string[], id: string): boolean {
@@ -99,6 +120,10 @@ const ICONS: Record<string, string> = {
   bell: '<path d="M14 34 Q14 14 24 12 Q34 14 34 34 Z" fill="#d8a84a" stroke="#2e2230" stroke-width="2"/><circle cx="24" cy="37" r="3" fill="#2e2230"/>',
   ribbon: '<path d="M10 14 Q22 20 18 30 Q14 40 30 38 Q40 36 38 44" fill="none" stroke="#c8443a" stroke-width="5" stroke-linecap="round"/>',
   card: '<rect x="10" y="12" width="28" height="24" rx="2" fill="#f4ead2" stroke="#2e2230" stroke-width="2"/><path d="M14 19 H32 M14 24 H30 M14 29 H26" stroke="#7a7aa8" stroke-width="2"/>',
+  pastry: '<path d="M8 32 Q12 16 24 14 Q36 16 40 32 Z" fill="#e8b45a" stroke="#2e2230" stroke-width="2"/><path d="M14 28 Q18 20 22 26 M24 26 Q28 18 32 26" fill="none" stroke="#b8783a" stroke-width="2"/><path d="M8 32 H40" stroke="#2e2230" stroke-width="2"/>',
+  feather: '<path d="M12 40 Q14 18 36 8 Q34 30 12 40 Z" fill="#f4f2ec" stroke="#2e2230" stroke-width="2"/><path d="M12 40 L32 14" stroke="#9a948a" stroke-width="2"/>',
+  chime: '<path d="M24 6 V12" stroke="#2e2230" stroke-width="2"/><rect x="18" y="12" width="12" height="4" rx="1" fill="#c8a050" stroke="#2e2230" stroke-width="2"/><path d="M20 16 V36 M24 16 V40 M28 16 V34" stroke="#d8b860" stroke-width="3" stroke-linecap="round"/>',
+  streamer: '<path d="M10 10 V42" stroke="#7a5a34" stroke-width="3" stroke-linecap="round"/><path d="M11 12 Q24 8 26 16 Q28 24 40 20" fill="none" stroke="#f2c24a" stroke-width="4" stroke-linecap="round"/><path d="M11 20 Q22 18 24 26 Q26 34 38 32" fill="none" stroke="#4a7cc8" stroke-width="4" stroke-linecap="round"/>',
   frost: '<g stroke="#7ac8f0" stroke-width="3" stroke-linecap="round"><path d="M24 8 V40 M10 16 L38 32 M10 32 L38 16"/></g><circle cx="24" cy="24" r="4" fill="#e8f8ff" stroke="#7ac8f0" stroke-width="2"/>',
 };
 const icon = (k: string) => `<svg viewBox="0 0 48 48" width="48" height="48">${ICONS[k] ?? ''}</svg>`;
@@ -149,7 +174,7 @@ export class BackpackView {
         const sent = c.sent[l.id];
         const reply = l.replies.length ? (sent ? `<div class="reply">You wrote back: <i>${esc(sent)}</i> <span class="dim">The postman will carry it.</span></div>`
           : `<div class="reply">Write back:${l.replies.map(r => `<button class="card" data-reply="${l.id}|${esc(r)}">${esc(r)}</button>`).join('')}</div>`) : '';
-        return `<div class="letterc"><div class="lf">${esc(l.from)}</div>${l.lines.map(x => `<p>${esc(x)}</p>`).join('')}${l.id !== 'letter:0' ? '<p class="sig">the one who keeps the light</p>' : ''}${reply}</div>`;
+        return `<div class="letterc"><div class="lf">${esc(l.from)}</div>${letterLines(l, c.sent).map(x => `<p>${esc(x)}</p>`).join('')}${l.id !== 'letter:0' ? `<p class="sig">${esc(l.sign ?? 'the one who keeps the light')}</p>` : ''}${reply}</div>`;
       }).join('') : '<p class="dim">No letters yet.</p>';
     } else {
       body = c.sketches.length ? `<div class="sketches">${c.sketches.map(s => `<figure><img src="${s.img}" alt=""/><figcaption>${esc(s.label)}</figcaption></figure>`).join('')}</div>`

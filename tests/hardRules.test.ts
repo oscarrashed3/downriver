@@ -8,6 +8,8 @@ import { laterArrivalDir, dockDir } from '../src/world/arrival';
 import { dirLatLon } from '../src/world/sphere';
 import { HOME_LIGHT } from '../src/world/w_lantern';
 import { FOX_SPOT } from '../src/world/w_sky';
+import { SKY_HOMES } from '../src/story/skyQuests';
+import { safeSpot } from '../src/world/spots';
 import { skyWalkable, isleAt, onIsle, skySpotProblem } from '../src/world/skyIsles/terrain';
 
 // Oscar's hard rules, checked on the real terrain so overnight work cannot quietly break them.
@@ -150,10 +152,11 @@ describe('Hard rules', () => {
     const i = WORLDS.findIndex(w => w.id === 'sky'), p = planets[i];
     p.build();
     const c = populate(p, new THREE.Scene(), i);
-    expect(c.npcs.length).toBeGreaterThan(0);
-    for (const n of c.npcs) {
-      const d = n.root.position.clone().sub(p.center).normalize();
-      expect(skySpotProblem(p, d), `npc ${n.id}`).toBe(null);
+    // the windfolk are placed by story/skyChapter.ts, from SKY_HOMES, through safeSpot
+    for (const [id, h] of Object.entries(SKY_HOMES)) {
+      const lon = h.at[1] / (p.R * Math.PI / 180 * Math.max(0.05, Math.sin(h.at[0] * Math.PI / 180)));
+      const d = safeSpot(p, p.dirRiver(h.at[0], lon), c.avoid, 6);
+      expect(skySpotProblem(p, d), `npc ${id}`).toBe(null);
     }
     const edge = (c.refs.edge as THREE.Object3D).position.clone().sub(p.center).normalize();
     expect(onIsle(p, edge, 1.5), 'the edge arch').toBe(true);

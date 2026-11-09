@@ -49,7 +49,9 @@ export function knownAs(c: QuestCtx, id: string): string {
 }
 
 /** Someone else says their name first: Ysolde names Tor and Odo's bridge, Tor names Bram after the kite. */
-const HEARD_AFTER: Record<string, string> = { tor: 'quest:hollo', odo: 'quest:hollo', bram: 'kite-flown' };
+const HEARD_AFTER: Record<string, string> = { tor: 'quest:hollo', odo: 'quest:hollo', bram: 'kite-flown',
+  // the Sky Isles: Lark says her own name as she runs off; then she names the others
+  lark: 'sky:arrived', granwren: 'sky:quest-kite', mender: 'sky:quest-kite', chimer: 'sky:quest-kite', zephy: 'sky:kite-built' };
 
 /** The one goal line for right now: what to do, who with, and which way. */
 export function stepDetail(c: QuestCtx): string | null {

@@ -68,3 +68,22 @@ describe('Odo introduces Fold', () => {
     expect(flags.has(EMBER.quest)).toBe(false);
   });
 });
+
+describe('Sky Isles people', () => {
+  const SKY = ['lark', 'zephy', 'granwren', 'mender', 'chimer'];
+  it('each have 15 to 25 short, different return lines and a script', () => {
+    for (const id of SKY) {
+      expect(SCRIPTS[id], id).toBeTruthy();
+      expect(SCRIPTS[id].stranger, id).toBeTruthy();
+      const lines = all(id);
+      expect(lines.length, id).toBeGreaterThanOrEqual(15);
+      expect(lines.length, id).toBeLessThanOrEqual(25);
+      expect(new Set(lines).size, id).toBe(lines.length);
+      lines.forEach(l => expect(l.length, `${id}: ${l}`).toBeLessThanOrEqual(80));
+    }
+  });
+  it('has lines that fit every part of the sky story', () => {
+    const states = [[], ['sky:kite-built'], ['sky:kite-built', 'sky:ribbon'], ['sky:ribbon', 'sky:won'], ['sky:won', 'chapter2-complete']];
+    for (const id of SKY) for (const st of states) expect(pickReturnLine(id, new Set(st)), `${id} ${st}`).toBeTruthy();
+  });
+});

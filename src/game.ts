@@ -58,6 +58,8 @@ import { SkyMove } from './world/skyIsles/skyMove';
 import { SKY_MOVE } from './data/skyWords';
 import { CHAPTERS, MAIN_QUEST, NOT_YET, OPENING, WORLD_TASKS } from './data/story';
 import { ChapterOne } from './story/chapterOne';
+import { SkyChapter } from './story/skyChapter';
+import { skyPerson, SKY_WHERE } from './story/skyQuests';
 import * as Opening from './story/opening';
 
 export type Mode = 'title' | 'cut' | 'play' | 'talk' | 'ride' | 'raft' | 'overlay' | 'sky' | 'letter' | 'inside' | 'approach';
@@ -125,6 +127,8 @@ export class Game {
 
   seq: Sequencer;
   ch1: ChapterOne;
+  /** World 2's story (null if the Sky Isles are not built). */
+  ch2: SkyChapter | null = null;
   mode: Mode = 'title';
   flags = new Set<string>();
   moods: Record<string, Mood> = {};
@@ -375,6 +379,7 @@ export class Game {
       },
     } as any);
     if (this.skyWorld) this.skyMove = new SkyMove(this, this.skyWorld, FOX_WORLD);
+    if (this.skyWorld) this.ch2 = new SkyChapter(this, FOX_WORLD);
     this.registerTravel();
     this.applyRiver();
     this.enterWorld(0, false);
@@ -575,7 +580,7 @@ export class Game {
 
   save() {
     if (this.saveOff) return;
-    const d = this.player.up;
+    const d = this.skyMove?.active && !this.player.grounded && this.skyMove.lastSafe ? this.skyMove.lastSafe : this.player.up;
     const data: SaveData = {
       v: 5, flags: [...this.flags], moods: this.moods, river: this.river, snow: this.snow, world: this.cur,
       dir: [d.x, d.y, d.z], poles: [...this.polesRead], journal: this.journal, pins: this.map.pins,
@@ -593,6 +598,7 @@ export class Game {
     this.player.hasDrop = true;
     this.player.canGlide = this.flags.has('power:kite');
     this.ch1.restore();
+    this.ch2?.restore();
     this.applyRiver();
     // A world index the layout no longer has falls back to the start; a redrawn world starts at its arrival point.
     const w = d.world >= 0 && d.world < this.planets.length ? d.world : 0;
@@ -681,7 +687,8 @@ export class Game {
     const first = !this.flags.has('visited:' + i);
     this.flags.add('visited:' + i);
     if (banner) {
-      if (first) this.hud.showChapter(CHAPTERS[i].n, CHAPTERS[i].title, i > 0 ? 'a sketch of what is still to come' : '', 5);
+      // the Sky Isles show their card at the end of the arrival scene
+      if (first && !(this.isSky(i) && this.ch2)) this.hud.showChapter(CHAPTERS[i].n, CHAPTERS[i].title, i > 0 && !this.worldReady(i) ? 'a sketch of what is still to come' : '', 5);
       else this.hud.showBanner(WORLDS[i].name, CHAPTERS[i].n + '. ' + CHAPTERS[i].title);
     }
   }
@@ -695,7 +702,10 @@ export class Game {
   mayLeave(i: number) { return WORLDS[i].id !== 'sky'; }
 
   /** Worlds whose story is written. The rest are a quiet bank to rest on, with the way home. */
-  worldReady(i: number) { return i === 0; }
+  worldReady(i: number) { return i === 0 || (this.isSky(i) && !!this.ch2); }
+  isSky(i = this.cur) { return WORLDS[i]?.id === 'sky'; }
+  /** The Sky Isles' story is running here (after the arrival scene). */
+  skyStory() { return this.isSky() && !!this.ch2 && this.flags.has('sky:arrived'); }
 
   /** A safe place to arrive in each world: on the bank beside the dock, out of the water. */
   arrivalDir(i: number) {
@@ -753,6 +763,7 @@ export class Game {
         this.mode = 'play';
         if (!this.flags.has('told-goback:' + from)) { this.flags.add('told-goback:' + from); this.hud.notify(NOTE.goBack(WORLDS[from].name)); }
         if (!this.worldReady(to)) this.hud.notify(NOTE.unbuilt(WORLDS[to].name));
+        if (this.isSky(to) && this.ch2 && !this.flags.has('sky:arrived')) this.ch2.arrive();
       },
     };
     this.sound.sfxPlay('whoosh');
@@ -972,6 +983,7 @@ export class Game {
     const hint = SCRIPTS[npc.id].hint;
     if (this.flags.has('closed:' + npc.id) && hint) setTimeout(() => this.hud.notify(`<i>${esc(hint)}</i>`), 2500);
     this.ch1.afterTalk(npc.id);
+    if (this.isSky()) this.ch2?.afterTalk(npc.id);
     this.conv = null; this.convNpc = null;
     this.save();
   }
@@ -1060,6 +1072,12 @@ export class Game {
           const t = this.ch1.guideTarget();
           const label = this.flags.has('read-letter') ? stepDetail(c) : null;
           this.map.task = t ? { dir: t, label: (label ?? 'Next').replace(/\s*\(\d+ of \d+\)\s*$/, '') } : null;
+        } else if (this.skyStory()) {
+          // the Sky Isles: the people you have talked to, and the task pin
+          this.map.people = this.contents[this.cur].npcs.filter(n => this.flags.has('talked:' + n.id)).map(n => ({ name: SCRIPTS[n.id].name, ...toLL(n.root.position), invited: false }));
+          this.map.areas = null;
+          const t = this.ch2!.guideTarget(), label = this.ch2!.goal();
+          this.map.task = t ? { dir: t, label: (label ?? 'Next').replace(/\s*\(\d+ of \d+\)\s*$/, '') } : null;
         } else { this.map.people = []; this.map.areas = null; this.map.task = null; }
         this.map.draw(this.planet, this.flags, { dir: this.player.up.clone(), facing: this.player.facing.clone() });
         this.map.show(true); break;
@@ -1083,23 +1101,26 @@ export class Game {
   }
   goalInfo(): GoalInfo {
     const c = this.questCtx();
-    const who = nextPerson(c);
+    const who = this.isSky() && this.ch2 ? skyPerson(this.flags) : nextPerson(c);
     const raw = who ? knownAs(c, who) : '';
     return {
       quest: MAIN_QUEST,
       step: this.worldTask() ?? (this.flags.has('read-letter') ? stepDetail(c) : null),
       lanterns: this.cur === 0 && this.flags.has('quest:hollo') && !this.flags.has('chapter1-complete') ? lanternsLit(c) : null,
-      next: who ? { name: raw.charAt(0).toUpperCase() + raw.slice(1), where: WHERE[who] ?? '' } : null,
+      next: who ? { name: raw.charAt(0).toUpperCase() + raw.slice(1), where: WHERE[who] ?? SKY_WHERE[who] ?? '' } : null,
       side: activeSideQuests(c),
     };
   }
   /** The one thing to do in a world after the first (a sketch until each world's story is written). */
-  worldTask(): string | null { return this.cur > 0 ? WORLD_TASKS[WORLDS[this.cur].id] ?? null : null; }
+  worldTask(): string | null {
+    if (this.isSky() && this.ch2) return this.ch2.goal();
+    return this.cur > 0 ? WORLD_TASKS[WORLDS[this.cur].id] ?? null : null;
+  }
   worldList() {
     return WORLDS.map((w, i) => ({ name: w.name, n: CHAPTERS[i].n,
       state: (i === this.cur ? 'here' : this.worldDone(i) ? 'done' : this.flags.has('visited:' + i) ? 'visited' : 'ahead') as 'here' | 'done' | 'visited' | 'ahead' }));
   }
-  worldDone(i: number) { return i === 0 ? this.flags.has('chapter1-complete') : false; }
+  worldDone(i: number) { return i === 0 ? this.flags.has('chapter1-complete') : this.isSky(i) ? this.flags.has('chapter2-complete') : false; }
   /** Fly back to a world from the menu: close it, open the sky, and travel. */
   goBack(i: number) {
     if (i === this.cur || !this.flags.has('visited:' + i)) return;
@@ -1172,8 +1193,8 @@ export class Game {
       if (m.t > 1.8) { this.meet = null; this.cutCam = null; this.rig.override = null; }
       return;
     }
-    if (this.cur !== 0 || !this.flags.has('read-letter')) return;
-    for (const n of this.contents[0].npcs) {
+    if (this.cur === 0 ? !this.flags.has('read-letter') : !this.skyStory()) return;
+    for (const n of this.contents[this.cur].npcs) {
       if (this.flags.has('met:' + n.id) || this.flags.has('talked:' + n.id)) continue;
       if (n.root.position.distanceTo(this.player.pos) > 9) continue;
       this.flags.add('met:' + n.id);
@@ -1189,8 +1210,8 @@ export class Game {
 
   /** Names over people's heads when you are close: "Tor, who builds kites", or how you'd describe them. */
   updateNameTags() {
-    const show = this.mode === 'play' && this.cur === 0;
-    const npcs = show ? this.contents[0].npcs.filter(n => n.root.position.distanceTo(this.player.pos) < 9) : [];
+    const show = this.mode === 'play' && (this.cur === 0 || this.skyStory());
+    const npcs = show ? this.contents[this.cur].npcs.filter(n => n.root.position.distanceTo(this.player.pos) < 9) : [];
     const els = this.nameTags.children;
     while (els.length < npcs.length) this.nameTags.append(document.createElement('div'));
     const c = this.questCtx();
@@ -1437,7 +1458,7 @@ export class Game {
     let best: { label: string; act: () => void; hold?: number; key: string; d: number } | null = null;
     for (const n of this.contents[this.cur].npcs) {
       const d = n.root.position.distanceTo(pl.pos);
-      if (d < 3.6 && (!best || d < best.d)) best = { label: PROMPT.talk(this.cur === 0 ? knownAs(this.questCtx(), n.id) : SCRIPTS[n.id].name), act: () => this.startTalk(n), d, key: 'npc:' + n.id };
+      if (d < 3.6 && (!best || d < best.d)) best = { label: PROMPT.talk(this.cur === 0 || this.isSky() ? knownAs(this.questCtx(), n.id) : SCRIPTS[n.id].name), act: () => this.startTalk(n), d, key: 'npc:' + n.id };
     }
     // People and things compete by distance; a person counts as a little closer, so talking wins ties.
     if (best) best.d -= 0.8;
@@ -1845,6 +1866,8 @@ export class Game {
     const whistled = this.mode === 'play' && inp.hit('KeyF');
     this.life.update(dt, this.time, this.day.day, this.player.pos, whistled, onPeaks);
     if (onPeaks) this.ch1.update(dt, whistled);
+    this.ch2?.setActive(this.isSky() && this.mode !== 'title');
+    if (this.isSky() && this.mode !== 'title') this.ch2?.update(dt);
     // the home light blinks, slow and steady
     const blink = 0.55 + 0.45 * Math.pow(Math.max(0, Math.sin(this.time * 1.7)), 3);
     (this.beacon.material as THREE.SpriteMaterial).opacity = blink;
@@ -1879,9 +1902,9 @@ export class Game {
     const step = currentStep(qc);
     const goal = this.worldTask() ?? (step && this.flags.has('read-letter') ? stepDetail(qc) : null);
     const ember = this.cur === 0 ? this.ch1.lanterns.meter() : '';
-    const lit = ember ? ember : this.cur === 0 && this.flags.has('quest:hollo') && !this.flags.has('chapter1-complete') ? `Lanterns  ${'●'.repeat(lanternsLit(qc))}${'○'.repeat(3 - lanternsLit(qc))}` : '';
+    const lit = this.isSky() && this.ch2 ? this.ch2.meter() : ember ? ember : this.cur === 0 && this.flags.has('quest:hollo') && !this.flags.has('chapter1-complete') ? `Lanterns  ${'●'.repeat(lanternsLit(qc))}${'○'.repeat(3 - lanternsLit(qc))}` : '';
     this.hud.setGoal(showGoal && goal ? goal : null, lit);
-    this.hud.compass.update(dt, { show: (this.mode === 'play' || this.mode === 'raft') && !this.hud.goalHidden && this.flags.has('read-letter'), center: this.planet.center, radius: this.planet.R, worldId: this.planet.cfg.id, pos: this.player.pos, camera: this.camera, task: this.cur === 0 && goal ? this.ch1.guideTarget() : null, taskLabel: goal ? goal.replace(/\s*\(\d+ of \d+\)\s*$/, '') : null, pins: this.map });
+    this.hud.compass.update(dt, { show: (this.mode === 'play' || this.mode === 'raft') && !this.hud.goalHidden && this.flags.has('read-letter') && (!this.isSky() || !this.ch2 || this.flags.has('sky:arrived')), center: this.planet.center, radius: this.planet.R, worldId: this.planet.cfg.id, pos: this.player.pos, camera: this.camera, task: goal ? (this.cur === 0 ? this.ch1.guideTarget() : this.skyStory() ? this.ch2!.guideTarget() : null) : null, taskLabel: goal ? goal.replace(/\s*\(\d+ of \d+\)\s*$/, '') : null, pins: this.map });
     // A new task: a toast with the same words as the goal line, once the conversation or scene is over.
     if (goal && (this.mode === 'play' || this.mode === 'raft')) {
       const key = goal.replace(/\(\d+ of \d+\)\s*$/, '').trim();

@@ -1,4 +1,5 @@
 import type { Node, Script } from '../systems/connection';
+import { SKY_SCRIPTS, SKY_RETURN_LINES } from './skyScripts';
 
 // All player-facing words live in data, so they can be translated later.
 // Keep every line to two short lines on screen.
@@ -600,6 +601,10 @@ function lineKey(who: string, text: string): string {
   for (let i = 0; i < text.length; i++) h = ((h * 33) ^ text.charCodeAt(i)) >>> 0;
   return `said:${who}:${h.toString(36)}`;
 }
+
+// World 2's people join the same tables (their ids never clash with World 1's).
+Object.assign(SCRIPTS, SKY_SCRIPTS);
+Object.assign(RETURN_LINES, SKY_RETURN_LINES);
 
 /**
  * The line a person says when you come back. Fresh lines from the latest matching set come first,

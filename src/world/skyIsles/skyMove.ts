@@ -119,7 +119,7 @@ interface Rescue {
 export class SkyMove {
   readonly wingVis: NiloWing;
   private drafts: { dir: THREE.Vector3; r0: number; r1: number; rad: number }[] = [];
-  private lastSafe: THREE.Vector3 | null = null;
+  lastSafe: THREE.Vector3 | null = null;
   private safeT = 0;
   rescue: Rescue | null = null;
   private raft: CloudPad | null = null;
