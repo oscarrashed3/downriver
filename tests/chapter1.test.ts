@@ -111,12 +111,56 @@ describe('The kite', () => {
 
 describe('Save migration', () => {
   const v3 = () => ({ v: 3, flags: ['read-letter'], moods: {}, river: createRiverState(), snow: createSnowpack(), world: 0, dir: [0, 1, 0], poles: [], journal: [], pins: {}, day: 0.4, flowers: 1, sigs: {}, bag: ['item:spar'], sketches: [], sent: {}, seen: {} });
-  it('is on version 3', () => expect(SAVE_VERSION).toBe(3));
-  it('keeps a version 3 save as it is', () => {
+  const v4 = () => ({ ...v3(), v: 4 });
+  it('is on version 4', () => expect(SAVE_VERSION).toBe(4));
+  it('keeps a version 4 save as it is', () => {
+    const r = migrateSave(JSON.parse(JSON.stringify({ ...v4(), world: 2, flags: ['read-letter', 'visited:2'] })));
+    expect(r.notice).toBeNull();
+    expect(r.data?.v).toBe(4);
+    expect(r.data?.world).toBe(2);
+    expect(r.data?.flags).toEqual(['read-letter', 'visited:2']);
+    expect(r.data?.arrive).toBeUndefined();
+  });
+  it('keeps all World 1 progress from a version 3 save', () => {
     const r = migrateSave(JSON.parse(JSON.stringify(v3())));
     expect(r.notice).toBeNull();
     expect(r.data?.flags).toEqual(['read-letter']);
     expect(r.data?.bag).toEqual(['item:spar']);
+  });
+  it('moves a version 3 save from the six-world layout onto the four worlds', () => {
+    // old: 0 peaks, 1 pines, 2 deep, 3 desert, 4 aquila, 5 sea. new: 0 peaks, 1 pines, 2 sea, 3 desert.
+    const expected: Record<number, [number, boolean]> = { 0: [0, false], 1: [1, false], 2: [1, true], 3: [2, true], 4: [2, true], 5: [2, false] };
+    for (const [old, [now, arrive]] of Object.entries(expected)) {
+      const r = migrateSave({ ...v3(), world: +old, dir: [1, 0, 0] });
+      expect(r.data?.v, `old world ${old}`).toBe(4);
+      expect(r.data?.world, `old world ${old}`).toBe(now);
+      expect(!!r.data?.arrive, `old world ${old}`).toBe(arrive);
+      expect(r.data!.world).toBeLessThan(4);
+    }
+  });
+  it('remaps visited and go-back flags and drops pieces of worlds that are gone', () => {
+    const r = migrateSave({ ...v3(), world: 5, flags: ['read-letter', 'chapter1-complete', 'visited:0', 'visited:1', 'visited:2', 'visited:3', 'visited:4', 'visited:5', 'told-goback:2', 'map:deep', 'map:aquila', 'met:cassian', 'met:oro', 'map:sea'],
+      seen: { peaks: '01', pines: '1', deep: '1', aquila: '1', sea: '1' }, pins: { peaks: [{ x: 1, y: 2 }], aquila: [{ x: 0, y: 0 }] } });
+    const f = new Set(r.data!.flags);
+    expect([...f].filter(x => x.startsWith('visited:')).sort()).toEqual(['visited:0', 'visited:1', 'visited:2']);
+    expect(f.has('told-goback:1')).toBe(true);
+    for (const gone of ['map:deep', 'map:aquila', 'met:cassian', 'told-goback:2']) expect(f.has(gone), gone).toBe(false);
+    for (const kept of ['read-letter', 'chapter1-complete', 'met:oro', 'map:sea']) expect(f.has(kept), kept).toBe(true);
+    expect(Object.keys(r.data!.seen).sort()).toEqual(['peaks', 'pines', 'sea']);
+    expect(r.data!.pins).toEqual({ peaks: [{ x: 1, y: 2 }] });
+  });
+  it('moves an old desert save to the sea, so the sea is not skipped and the desert stays ahead', () => {
+    const r = migrateSave({ ...v3(), world: 3, dir: [1, 0, 0], flags: ['read-letter', 'visited:0', 'visited:1', 'visited:2', 'visited:3', 'told-goback:3'] });
+    expect(r.data?.world).toBe(2);
+    expect(r.data?.arrive).toBe(true);
+    const f = new Set(r.data!.flags);
+    expect([...f].filter(x => x.startsWith('visited:')).sort()).toEqual(['visited:0', 'visited:1', 'visited:2']);
+    expect(f.has('visited:3')).toBe(false);
+    expect(f.has('told-goback:2')).toBe(true);
+  });
+  it('only marks the sea visited when the old save had been to the desert, Aquila or the sea', () => {
+    const r = migrateSave({ ...v3(), world: 1, flags: ['visited:0', 'visited:1', 'visited:2'] });
+    expect(r.data!.flags.sort()).toEqual(['visited:0', 'visited:1']);
   });
   it('fills in fields an early version 3 save did not have', () => {
     const old: any = v3(); delete old.sigs; delete old.bag; delete old.seen;

@@ -1,7 +1,7 @@
 import { Game } from './game';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
-// Let the loading screen paint before building six worlds.
+// Let the loading screen paint before building four worlds.
 setTimeout(() => { try {
   const game = new Game(canvas);
   document.getElementById('loading')?.remove();

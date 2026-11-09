@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { SLOTS, ITEMS, TRADES, LETTERS, bagAdd, bagTake, tradeFor, doTrade } from '../src/systems/backpack';
 import { foldMood, FOLD_FORMS } from '../src/player/fold';
+import { WORLDS } from '../src/world/worlds';
 
 describe('Backpack', () => {
   it('holds eight things, then says no', () => {
@@ -42,9 +43,11 @@ describe('Fold', () => {
     expect(foldMood({ ...base, cold: 0.8 })).toBe('cold');
     expect(foldMood({ ...base, justHappy: true, falling: true })).toBe('happy');
   });
-  it('has one shape per world before the sea, starting with the boat and the kite', () => {
+  it('has one shape per world after the first, starting with the boat and the kite', () => {
     expect(FOLD_FORMS[0].id).toBe('boat');
     expect(FOLD_FORMS[1].id).toBe('kite');
     expect(new Set(FOLD_FORMS.map(f => f.id)).size).toBe(FOLD_FORMS.length);
+    // after the kite, the shapes follow the worlds in order, one each, ending in the last world
+    expect(FOLD_FORMS.slice(2).map(f => f.world)).toEqual(WORLDS.slice(1).map(w => w.name));
   });
 });

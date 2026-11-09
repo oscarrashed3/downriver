@@ -104,21 +104,12 @@ export class Planet {
       }
       case 'pines':
         return A * (n.fbm(x * 2.5, y * 2.5, z * 2.5, 4) * 0.5 + 0.5);
-      case 'jungle': {
-        const h = n.fbm(x * 2.2, y * 2.2, z * 2.2, 4) * 0.5 + 0.5;
-        const steps = 7;
-        const q = Math.floor(h * steps) / steps;
-        const f = h * steps - Math.floor(h * steps);
-        return A * (q + smoothstep(0.82, 1, f) / steps);
-      }
       case 'desert': {
         const warp = n.fbm(x * 1.5, y * 1.5, z * 1.5, 2) * 2;
         const dune = Math.abs(Math.sin((x * 9 + z * 5 + warp * 3)));
         const big = n.fbm(x * 1.2 + 3, y * 1.2, z * 1.2, 3) * 0.5 + 0.5;
         return A * (dune * 0.35 * big + big * 0.7);
       }
-      case 'city':
-        return A * (n.fbm(x * 2, y * 2, z * 2, 3) * 0.5 + 0.5);
       case 'sea': {
         const h = n.fbm(x * 2.6, y * 2.6, z * 2.6, 4);
         return A * (h * 0.9); // mostly under the ocean (ocean sits at ~1.5)
@@ -135,7 +126,7 @@ export class Planet {
     }
     const { dist, t } = this.riverNearest(d);
     if (this.cfg.shape === 'sea') {
-      // A long marsh island carries the river across the ocean to the lighthouse.
+      // A long marsh island carries the river across the ocean, all the way to the edge where it falls on.
       const isle = smoothstep(this.cfg.riverWidth + 12, this.cfg.riverWidth + 4, dist);
       h = Math.max(h, lerp(h, 2.6 + this.noise.n3(d.x * 12, d.y * 12, d.z * 12) * 0.5, isle));
     }

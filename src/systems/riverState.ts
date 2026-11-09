@@ -4,7 +4,7 @@
 export interface RiverState {
   /** 0..1 how much water the spring sends down. Driven by the Spring Peaks snowpack. */
   flow: number;
-  /** 0..1 mud in the water (Green Deep erosion, later). */
+  /** 0..1 mud in the water (erosion in the Ember Pines, later). */
   sediment: number;
   /** 0..1 water temperature stress. */
   warmth: number;
@@ -34,5 +34,6 @@ export function riverWidthFor(flow: number): number {
 /** River "health" drives color, sound and the drop's glow. */
 export function riverHealth(state: RiverState, worldIndex: number): number {
   const f = flowArrivingAt(state, worldIndex);
+  // Mud washes out of the forest (world 1) and shows in every world below it.
   return Math.min(1, Math.max(0, 0.15 + 0.85 * f - 0.2 * state.sediment * (worldIndex >= 2 ? 1 : 0)));
 }

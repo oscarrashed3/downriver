@@ -2,7 +2,7 @@
 
 ## 2026-11-05 · Chapter One: Where the Water Begins
 
-**The story frame.** Rill is far from home and making his way back. Each world is a chapter of his life; the tone is gentle and hopeful, closer to a fable than an adventure. One main quest ("Go home, to the light below the clouds") is shown as a single next step in the corner, never a list. The home light is the lighthouse on the Endless Sea, a real light you can see from the opening and from the sky view.
+**The story frame.** Rill is far from home and making his way back. Each world is a chapter of his life; the tone is gentle and hopeful, closer to a fable than an adventure. One main quest ("Go home, to the light below the clouds") is shown as a single next step in the corner, never a list. The home light is the lighthouse on the dunes of the Glass Desert, where the river ends, a real light you can see from the opening and from the sky view.
 
 **The first three minutes are scripted, then hands-off.** Title over the cloud sea, five quiet seconds of waking, the letter, "Look down", the chapter card, one beat of the journal. Everything after that is walking. All words live in `src/data/story.ts` and `src/data/scripts.ts`.
 
@@ -29,7 +29,7 @@
 6. Echo stones are discovered only by wandering; they need a faint sound you can follow.
 7. Footstep and ambient sounds are synthesized and thin; place themes are generative, not composed.
 8. Scene cameras are hand-placed orbits and can still clip a roof or a tree in odd spots.
-9. The other five worlds are Milestone 1 sketches, now visibly rougher than the Peaks.
+9. The other three worlds are Milestone 1 sketches, now visibly rougher than the Peaks.
 10. No touch or gamepad controls, and no settings screen beyond quality and mute.
 
 ## 2026-11-05 · Milestone 1
@@ -46,14 +46,14 @@
 
 **Two solutions to the Spring Peaks puzzle.** Snow fences only work on windward ridges, so Skyreading is how you know where to build (two decoy sites in sheltered hollows barely help). Ice towers work near the spring without Skyreading but borrow Bram's winter water. Mixing works too. Tested in `tests/systems.test.ts`.
 
-**Visible ripple.** Snowpack sets the spring's flow; flow sets river width and color in all six worlds and the thickness of every falling stream. The glacier color, snowline and a new carved stone show the change in the Peaks itself.
+**Visible ripple.** Snowpack sets the spring's flow; flow sets river width and color in all four worlds and the thickness of every falling stream. The glacier color, snowline and a new carved stone show the change in the Peaks itself.
 
 **Originality check.** No names, characters, creatures, items or layouts from existing games. Tiny walkable planets are a general idea; we avoided anything distinctive from other games (no stars, no hats, no stamina wheel, no triangle relics).
 
 ### Ten weakest things right now (next pass)
 1. Terrain is smooth but plain; ridges need painted rock bands and more silhouette variety.
 2. Characters are simple cones; they need idle animations and gestures for body language.
-3. The other five worlds are sketches: Keeper lines only, no puzzles yet.
+3. The other three worlds are sketches: Keeper lines only, no puzzles yet.
 4. No touch controls yet.
 5. Rain and snow particles are simple dots.
 6. The cloud sea is puffs plus sky gradient; a real volumetric layer would sell the scale.

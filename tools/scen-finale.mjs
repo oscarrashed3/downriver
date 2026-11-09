@@ -1,7 +1,7 @@
 export default async ({ page, shot, ev, key }) => {
   await page.click('button[data-a="new"]');
   for (let i = 0; i < 20 && (await ev('__game.mode')) !== 'play'; i++) { await key('Space', 120); await page.waitForTimeout(400); }
-  await ev(`(() => { const g = __game; g.player.hasDrop = true; g.flags.add('has-drop'); g.enterWorld(5, false); const p = g.planets[5]; g.player.placeAt(p, p.dirRiver(168, 1)); g.rig.faceDir(g.player.up, p.surfacePoint(p.dirRiver(175, 3)).sub(g.player.pos)); g.rig.snap(); })()`);
+  await ev(`(() => { const g = __game; g.player.hasDrop = true; g.flags.add('has-drop'); const L = g.planets.length - 1; g.enterWorld(L, false); const p = g.planets[L]; g.player.placeAt(p, p.dirRiver(162, 24)); g.rig.faceDir(g.player.up, p.surfacePoint(p.dirRiver(166, 40)).sub(g.player.pos)); g.rig.snap(); })()`);
   await page.waitForTimeout(2500); await shot('lighthouse');
   console.log(await ev(`document.querySelector('.prompt').innerText`));
   await key('KeyE'); await page.waitForTimeout(600);

@@ -5,10 +5,14 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { FinishPass } from './render/finish';
 import { WORLDS } from './world/worlds';
+
+/** The forest, where the fox waits. */
+const FOX_WORLD = WORLDS.findIndex(w => w.id === 'pines');
 import { Planet } from './world/planet';
 import { Sky } from './world/sky';
-import { prepare, populate, type WorldContent, type Interactable } from './world/content';
+import { prepare, populate, FOX_SPOT, HOME_LIGHT, type WorldContent, type Interactable } from './world/content';
 import * as Q from './world/props2';
+import { randState, setRandState, skipRand } from './world/props';
 import { talkSpot, overShoulder, segmentClear, chooseShot } from './systems/stage';
 import { resolveSolids } from './world/collide';
 import { fireView } from './world/fire';
@@ -55,6 +59,8 @@ export type Mode = 'title' | 'cut' | 'play' | 'talk' | 'ride' | 'raft' | 'overla
 interface Ride { to: number; curve: THREE.Curve<THREE.Vector3>; s: number; dur: number; kite: boolean; arrive: () => void }
 
 const FOG_BASE = 0.0026;
+/** How many numbers the five later worlds of the six-world journey took from the shared prop generator. */
+const SIX_WORLD_LATER_RAND = 4441;
 
 export class Game {
   renderer: THREE.WebGLRenderer;
@@ -156,7 +162,7 @@ export class Game {
   sent: Record<string, string> = {};
   bagView!: BackpackView;
   fox!: Fox;
-  foxWorld = 2;
+  foxWorld = FOX_WORLD;
   surveyT = 0;
   journalEl: HTMLElement;
   titleEl: HTMLElement | null = null;
@@ -199,6 +205,7 @@ export class Game {
 
     const sunDir0 = new THREE.Vector3(0.5, 0.35, 0.8).normalize();
     const riverLon = Math.atan2(sunDir0.z, sunDir0.x) * 180 / Math.PI;
+    let afterPeaks = 0;
     WORLDS.forEach((w, i) => {
       const p = new Planet(w, i, riverLon);
       prepare(p);
@@ -207,7 +214,13 @@ export class Game {
       this.scene.add(p.group);
       this.planets.push(p);
       this.contents.push(populate(p, this.scene, i));
+      if (i === 0) afterPeaks = randState();
     });
+    // World 1 objects built after this point (Life, the echo stones, Chapter One's props) draw from the
+    // shared generator. Put it exactly where the six-world journey left it, so the Spring Peaks look the
+    // same however much the later worlds use.
+    setRandState(afterPeaks);
+    skipRand(SIX_WORLD_LATER_RAND);
     this.day = new DayCycle(riverLon);
     this.sky = new Sky(this.scene, this.day.sun, this.planets[0].center);
 
@@ -267,9 +280,9 @@ export class Game {
     for (const el of [this.map.el, this.bagView.el, this.journalEl]) el.addEventListener('click', e => { if (e.target === el) this.closeOverlay(); });
     this.skyView = new SkyView(this.scene, this.planets, this.hud.labels);
 
-    // The home light: the lighthouse at the end of the river, blinking far below the clouds.
-    const sea = this.planets[5];
-    sea.surfacePoint(sea.dirRiver(172, 3), 16.5, this.beaconPos);
+    // The home light: the lighthouse on the dunes where the river ends, blinking far below the clouds.
+    const home = this.planets[this.planets.length - 1];
+    home.surfacePoint(home.dirRiver(HOME_LIGHT.lat, HOME_LIGHT.lon), 16.5, this.beaconPos);
     const bc = document.createElement('canvas'); bc.width = bc.height = 64;
     const bx = bc.getContext('2d')!;
     const bg = bx.createRadialGradient(32, 32, 0, 32, 32, 32);
@@ -301,13 +314,13 @@ export class Game {
 
     this.ch1 = new ChapterOne(this);
     const game = this;
-    // The fox waits in the Green Deep until you are worth walking with.
+    // The fox waits in the Ember Pines (the forest) until you are worth walking with.
     this.fox = new Fox();
     this.scene.add(this.fox.f.root);
-    const deep = this.planets[2];
-    this.fox.place(deep, deep.dirRiver(78, 9));
-    this.contents[2].interactables.push({
-      id: 'fox', world: 2, get pos() { return game.fox.f.root.position; }, radius: 3.5, hold: 3,
+    const forest = this.planets[FOX_WORLD];
+    this.fox.place(forest, forest.dirRiver(FOX_SPOT.lat, FOX_SPOT.lon));
+    this.contents[FOX_WORLD].interactables.push({
+      id: 'fox', world: FOX_WORLD, get pos() { return game.fox.f.root.position; }, radius: 3.5, hold: 3,
       label: () => (game.flags.has('fox-joined') ? null : 'Kneel, and hold out your hand to the fox'),
       act: () => {
         game.give('fox-joined'); game.sound.sfxPlay('chime');
@@ -391,8 +404,7 @@ export class Game {
   buildTravelProps() {
     for (let i = 1; i < this.planets.length; i++) {
       const p = this.planets[i];
-      const off = (p.cfg.riverWidth + 1.4) / (p.R * Math.PI / 180);
-      const d = p.dirRiver(18, off);
+      const d = this.besideRiver(p, 18, p.cfg.riverWidth + 1.4);
       const dock = Q.dock();
       p.surfacePoint(d, -0.15, dock.position);
       orientTo(dock, d, p.surfacePoint(p.dirRiver(18, 0)).sub(dock.position));
@@ -430,12 +442,13 @@ export class Game {
         act: () => { if (this.flags.has('power:kite')) this.startUpdraft(i); },
       });
     }
-    const sea = this.contents[5], sp = this.planets[5];
-    sea.interactables.push({
-      id: 'lighthouse', world: 5, pos: sp.surfacePoint(sp.dirRiver(172, 3)), radius: 10,
+    // The last world: the river rests in the sand, and the lighthouse stands beside it.
+    const L = this.planets.length - 1, last = this.contents[L], lp = this.planets[L];
+    last.interactables.push({
+      id: 'lighthouse', world: L, pos: lp.surfacePoint(lp.dirRiver(HOME_LIGHT.lat, HOME_LIGHT.lon)), radius: 10,
       label: () => 'Knock on the lighthouse door',
       act: () => this.cut([
-        { line: { text: 'The door is warm, as if someone just left it. A kettle ticks on the stove.' } },
+        { line: { text: 'The door is warm, as if someone just left it. Sand has blown in under it. A kettle ticks.' } },
         { line: { text: 'This is the light you saw from the top of the world.' } },
         { line: { text: 'The rest of the way home is still being written. Thank you for walking this far.' } },
       ], () => { this.give('loop-complete'); this.river.loopComplete = true; this.save(); }),
@@ -516,7 +529,7 @@ export class Game {
     if (this.saveOff) return;
     const d = this.player.up;
     const data: SaveData = {
-      v: 3, flags: [...this.flags], moods: this.moods, river: this.river, snow: this.snow, world: this.cur,
+      v: 4, flags: [...this.flags], moods: this.moods, river: this.river, snow: this.snow, world: this.cur,
       dir: [d.x, d.y, d.z], poles: [...this.polesRead], journal: this.journal, pins: this.map.pins,
       day: this.day.t, flowers: this.flowers, sigs: this.sigs,
       bag: this.bag, sketches: this.sketches, sent: this.sent, seen: this.map.exportSeen(),
@@ -533,8 +546,11 @@ export class Game {
     this.player.canGlide = this.flags.has('power:kite');
     this.ch1.restore();
     this.applyRiver();
-    this.enterWorld(d.world, false);
-    this.player.placeAt(this.planets[d.world], new THREE.Vector3(...d.dir).normalize());
+    // A world index the layout no longer has falls back to the start; a redrawn world starts at its arrival point.
+    const w = d.world >= 0 && d.world < this.planets.length ? d.world : 0;
+    this.enterWorld(w, false);
+    const dir = w !== d.world || d.arrive ? this.arrivalDir(w) : new THREE.Vector3(...d.dir).normalize();
+    this.player.placeAt(this.planets[w], dir);
     this.rig.snap();
   }
 
@@ -586,10 +602,10 @@ export class Game {
     this.sound.health = riverHealth(this.river, i);
     this.player.dropGlow = riverHealth(this.river, i);
     const style: Record<string, [string, number, number]> = {
-      peaks: ['#fff6e0', 0.1, 0.45], pines: ['#ffb070', 0.14, 0.7], deep: ['#d8ffd8', 0.1, 0.6],
-      desert: ['#f4d8b0', 0.08, 0.5], aquila: ['#ffe0f0', 0.14, 0.6], sea: ['#ffffff', 0.08, 0.4],
+      peaks: ['#fff6e0', 0.1, 0.45], pines: ['#ffb070', 0.14, 0.7],
+      sea: ['#ffffff', 0.08, 0.4], desert: ['#f4d8b0', 0.08, 0.5],
     };
-    const st = style[WORLDS[i].id];
+    const st = style[WORLDS[i].id] ?? style.peaks;
     this.motes.setStyle(st[0], st[1], st[2]);
     const first = !this.flags.has('visited:' + i);
     this.flags.add('visited:' + i);
@@ -608,8 +624,22 @@ export class Game {
   arrivalDir(i: number) {
     const p = this.planets[i];
     if (i === 0) return p.dirRiver(PK.benches[3][0] + 1.5, PK.benches[3][1] + 2);
-    const off = (p.cfg.riverWidth + 3.2) / (p.R * Math.PI / 180);
-    return p.dirRiver(20, off);
+    // Far enough from the channel to stand on dry bank, not in the water.
+    const w = p.cfg.riverWidth * 1.15 + 0.6;
+    return this.besideRiver(p, 20, Math.max(p.cfg.riverWidth + 3.2, w + 1.6));
+  }
+
+  /**
+   * A point at the given latitude about `metres` from the river's centre line.
+   * A longitude offset shrinks by sin(lat), so convert with that, then step outward
+   * until the real distance to the (meandering) river is at least `metres`.
+   */
+  besideRiver(p: Planet, lat: number, metres: number): THREE.Vector3 {
+    const degPerM = 1 / (p.R * Math.PI / 180 * Math.max(0.05, Math.sin(lat * Math.PI / 180)));
+    let off = metres * degPerM;
+    const d = p.dirRiver(lat, off);
+    for (let i = 0; i < 40 && p.riverNearest(d).dist < metres; i++) { off += 0.25 * degPerM; p.dirRiver(lat, off, d); }
+    return d;
   }
 
   /** Compile every material in view-independent order so a new world's first frame doesn't stall. */
@@ -778,7 +808,7 @@ export class Game {
         if (this.input.hit('KeyR')) { pl.pose = {}; this.startRide(this.cur, this.cur + 1); }
       }
     }
-    if (this.cur === 5 && pl.raftT > 0.95) pl.raftT = 0.95;
+    if (this.cur === this.planets.length - 1 && pl.raftT > 0.95) pl.raftT = 0.95;
   }
 
   // ------------------------------------------------------------------ conversation
@@ -996,7 +1026,7 @@ export class Game {
   }
   updateFox(dt: number) {
     const fx = this.fox, joined = this.flags.has('fox-joined');
-    fx.f.root.visible = joined ? this.mode !== 'raft' && this.mode !== 'ride' : this.cur === 2;
+    fx.f.root.visible = joined ? this.mode !== 'raft' && this.mode !== 'ride' : this.cur === FOX_WORLD;
     if (!fx.f.root.visible) return;
     const p = this.planet;
     if (joined && this.foxWorld !== this.cur) { this.foxWorld = this.cur; fx.place(p, this.player.up.clone()); }

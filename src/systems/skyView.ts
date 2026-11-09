@@ -46,7 +46,7 @@ export class SkyView {
 
   skyPose(): CamPose {
     const a = 0.75 + this.orbit;
-    const off = new THREE.Vector3(Math.cos(a), 0.32, Math.sin(a)).normalize().multiplyScalar(2050);
+    const off = new THREE.Vector3(Math.cos(a), 0.32, Math.sin(a)).normalize().multiplyScalar(1450); // frames the four worlds (y 0 to -1020)
     return { pos: this.center.clone().add(off), look: this.center.clone().add(new THREE.Vector3(0, -60, 0)), up: new THREE.Vector3(0, 1, 0) };
   }
 
