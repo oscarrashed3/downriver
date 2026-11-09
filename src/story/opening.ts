@@ -12,7 +12,7 @@ import { stormPanel } from './paintedPanels';
 export const LETTER_TEXT = LETTER;
 
 /**
- * The title: standing in the open sky high above the first world, looking out level. All four worlds hang round
+ * The title: standing in the open sky high above the first world, looking out level. All six worlds hang round
  * the words like moons: the first near and large on the left, the others smaller and paler, the last one low by
  * the cloud floor with the home light blinking on it. The sun is just off the right of the frame.
  */

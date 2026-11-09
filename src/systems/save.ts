@@ -2,10 +2,10 @@ import type { Mood } from './connection';
 import type { RiverState } from './riverState';
 import type { SnowpackState } from './snowpack';
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 export interface SaveData {
-  v: 4;
+  v: 5;
   flags: string[];
   moods: Record<string, Mood>;
   river: RiverState;
@@ -32,8 +32,8 @@ export interface SaveData {
   arrive?: boolean;
 }
 
-const KEY = 'nilo-save-v4';
-const OLD_KEYS = ['nilo-save-v3', 'downriver-save-v2', 'downriver-save-v1'];
+const KEY = 'nilo-save-v5';
+const OLD_KEYS = ['nilo-save-v4', 'nilo-save-v3', 'downriver-save-v2', 'downriver-save-v1'];
 
 export const RESET_NOTICE = 'The story has grown since your last visit, so this journey starts fresh. Thank you for coming back.';
 
@@ -50,7 +50,10 @@ const V3_SAME_GROUND = new Set([0, 1, 5]);
 const V3_GONE_FLAGS = new Set(['map:deep', 'map:aquila', 'met:cassian']);
 const V3_GONE_WORLDS = new Set(['deep', 'aquila']);
 
-function fromV3(r: Omit<Partial<SaveData>, 'v'>): SaveData {
+/** A save in the four-world layout (version 4), before it is carried on to six worlds. */
+type V4 = Omit<SaveData, 'v'> & { v: 4 };
+
+function fromV3(r: Omit<Partial<SaveData>, 'v'>): V4 {
   const oldWorld = typeof r.world === 'number' ? r.world : 0;
   const world = V3_WORLD_MAP[oldWorld] ?? 0;
   const flags = new Set<string>();
@@ -61,12 +64,40 @@ function fromV3(r: Omit<Partial<SaveData>, 'v'>): SaveData {
     flags.add(f);
   }
   const keep = <T>(o: Record<string, T> | undefined) => Object.fromEntries(Object.entries(o ?? {}).filter(([k]) => !V3_GONE_WORLDS.has(k)));
-  const data = withDefaults({ ...(r as SaveData), v: 4, world, flags: [...flags], pins: keep(r.pins), seen: keep(r.seen) });
+  const data = withDefaults({ ...(r as SaveData), world, flags: [...flags], pins: keep(r.pins), seen: keep(r.seen) });
   if (!V3_SAME_GROUND.has(oldWorld)) data.arrive = true;
+  return { ...data, v: 4 };
+}
+
+/**
+ * Version 5 has six worlds: peaks, sky, garden, sea, desert, lantern. Version 4 had four: peaks, pines, sea, desert.
+ * The forest is gone and the Sky Isles take its place in the journey; the sea and the desert move down two places.
+ * The sea is the same ground, so a saved spot there still holds; the Sky Isles and the repainted desert start at
+ * their arrival point.
+ */
+export const V4_WORLD_MAP: Record<number, number> = { 0: 0, 1: 1, 2: 3, 3: 4 };
+const V4_SAME_GROUND = new Set([0, 2]);
+/** Pieces of the four-world journey that no longer exist: the forest's map, and the forest people (Tamsin and Oro now live elsewhere and have not met you). */
+const V4_GONE_FLAGS = new Set(['map:pines', 'met:tamsin', 'met:oro', 'talked:tamsin', 'talked:oro']);
+const V4_GONE_WORLDS = new Set(['pines']);
+
+function fromV4(r: Omit<Partial<SaveData>, 'v'> & { arrive?: boolean }): SaveData {
+  const oldWorld = typeof r.world === 'number' ? r.world : 0;
+  const world = V4_WORLD_MAP[oldWorld] ?? 0;
+  const flags = new Set<string>();
+  for (const f of r.flags ?? []) {
+    if (V4_GONE_FLAGS.has(f)) continue;
+    const m = /^(visited|told-goback):(\d+)$/.exec(f);
+    if (m) { const n = V4_WORLD_MAP[+m[2]]; if (n !== undefined) flags.add(`${m[1]}:${n}`); continue; }
+    flags.add(f);
+  }
+  const keep = <T>(o: Record<string, T> | undefined) => Object.fromEntries(Object.entries(o ?? {}).filter(([k]) => !V4_GONE_WORLDS.has(k)));
+  const data = withDefaults({ ...(r as SaveData), v: 5 as const, world, flags: [...flags], pins: keep(r.pins), seen: keep(r.seen) });
+  if (!V4_SAME_GROUND.has(oldWorld)) data.arrive = true;
   return data;
 }
 
-function withDefaults(r: SaveData): SaveData {
+function withDefaults<T extends Omit<SaveData, 'v'>>(r: T): T {
   return {
     ...r,
     day: typeof r.day === 'number' ? r.day : 0.1,
@@ -85,15 +116,17 @@ function withDefaults(r: SaveData): SaveData {
 
 /**
  * Read any stored save and bring it up to the current version.
- * Version 3 saves (six worlds) are carried over to the four-world layout; World 1 progress is untouched.
+ * Version 4 saves (four worlds) are carried over to the six-world layout, and version 3 saves (the first six-world
+ * layout) through version 4 first; World 1 progress is untouched.
  * Saves from earlier versions (v1, v2) belong to a different story, so they are gently reset with a notice.
  */
 export function migrateSave(raw: unknown): { data: SaveData | null; notice: string | null } {
   if (!raw || typeof raw !== 'object') return { data: null, notice: null };
   const r = raw as Omit<Partial<SaveData>, "v"> & { v?: number };
   const whole = Array.isArray(r.flags) && r.snow && r.river;
-  if (r.v === 4 && whole) return { data: withDefaults(r as SaveData), notice: null };
-  if (r.v === 3 && whole) return { data: fromV3(r), notice: null };
+  if (r.v === 5 && whole) return { data: withDefaults(r as SaveData), notice: null };
+  if (r.v === 4 && whole) return { data: fromV4(r), notice: null };
+  if (r.v === 3 && whole) return { data: fromV4(fromV3(r)), notice: null };
   if (r.v === 1 || r.v === 2) return { data: null, notice: RESET_NOTICE };
   return { data: null, notice: null };
 }

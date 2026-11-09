@@ -49,9 +49,24 @@ export class DayCycle {
     this.t = best; this.computeSun();
   }
 
+  /**
+   * A world that keeps one hour (all but the first): the sun's height above the traveller's own horizon, held
+   * wherever he walks, so a sunset world is sunset everywhere and a night world is night everywhere. null = the clock.
+   */
+  pin: number | null = null;
+  private pinDir = new THREE.Vector3();
+
   update(dt: number, up: THREE.Vector3) {
     if (!this.frozen) this.t = (this.t + dt / this.length) % 1;
-    this.computeSun();
+    if (this.pin !== null) {
+      // keep the sun's bearing from frame to frame (carried along as he walks), and set its height
+      const h = this.pinDir.copy(this.sun).addScaledVector(up, -this.sun.dot(up));
+      if (h.lengthSq() < 1e-6) h.copy(this.L).addScaledVector(up, -this.L.dot(up));
+      if (h.lengthSq() < 1e-6) h.set(1, 0, 0).addScaledVector(up, -up.x);
+      h.normalize();
+      const e = this.pin;
+      this.sun.copy(up).multiplyScalar(e).addScaledVector(h, Math.sqrt(Math.max(0, 1 - e * e))).normalize();
+    } else this.computeSun();
     this.elevation = this.sun.dot(up);
     this.day = smoothstep(-0.22, 0.22, this.elevation);
     this.dusk = smoothstep(0.42, 0.04, Math.abs(this.elevation - 0.06));

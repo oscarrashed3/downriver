@@ -231,18 +231,22 @@ interface Moon {
 /** Where a world hangs: which world, elevation and azimuth (degrees, azimuth from fwd toward right), angular size, distance, haze. */
 export interface Spot { world: number; el: number; az: number; size: number; dist: number; haze: number }
 
-/** "Look up.": the three later worlds as one receding chain, the nearest lowest and largest. */
+/** "Look up.": the five later worlds as one receding chain, the nearest lowest and largest, the home light's world last. */
 export const LOOKUP_LAYOUT: Spot[] = [
-  { world: 1, el: 38, az: -15, size: 15.5, dist: 2400, haze: 0.2 },
-  { world: 2, el: 50, az: 12, size: 9.5, dist: 3000, haze: 0.35 },
-  { world: 3, el: 59, az: -3, size: 6, dist: 3700, haze: 0.55 },
+  { world: 1, el: 35, az: -17, size: 14.5, dist: 2400, haze: 0.18 },
+  { world: 2, el: 45, az: 7, size: 10, dist: 2900, haze: 0.3 },
+  { world: 3, el: 53, az: 23, size: 7.5, dist: 3400, haze: 0.42 },
+  { world: 4, el: 59, az: 5, size: 5.5, dist: 3900, haze: 0.52 },
+  { world: 5, el: 64, az: -9, size: 4.4, dist: 4400, haze: 0.6 },
 ];
-/** The title: all four worlds round the words, the first one near and large, the home light far and low by the clouds. */
+/** The title: all six worlds round the words, the first one near and large, the home light far and low by the clouds. */
 export const TITLE_LAYOUT: Spot[] = [
   { world: 0, el: 9, az: -31, size: 17, dist: 2000, haze: 0.06 },
-  { world: 1, el: 17, az: 29, size: 9.5, dist: 2600, haze: 0.22 },
-  { world: 2, el: 3, az: 33, size: 6.5, dist: 3200, haze: 0.38 },
-  { world: 3, el: -4, az: 26, size: 5, dist: 3900, haze: 0.38 },
+  { world: 1, el: 20, az: 25, size: 9, dist: 2600, haze: 0.2 },
+  { world: 2, el: 12, az: 37, size: 7, dist: 3000, haze: 0.26 },
+  { world: 3, el: 7, az: 31, size: 5.8, dist: 3400, haze: 0.26 },
+  { world: 4, el: 4, az: 41, size: 4.8, dist: 3800, haze: 0.2 },
+  { world: 5, el: 1.5, az: 31, size: 4.4, dist: 4200, haze: 0.22 },
 ];
 
 const islandVert = /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;

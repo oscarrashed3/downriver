@@ -6,8 +6,8 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { FinishPass } from './render/finish';
 import { WORLDS } from './world/worlds';
 
-/** The forest, where the fox waits. */
-const FOX_WORLD = WORLDS.findIndex(w => w.id === 'pines');
+/** The Sky Isles, where the fox waits. */
+const FOX_WORLD = WORLDS.findIndex(w => w.id === 'sky');
 import { Planet } from './world/planet';
 import { Sky } from './world/sky';
 import { SkyIslands, CloudSea, beaconTexture, LOOK_CAM } from './world/skyIslands';
@@ -51,7 +51,7 @@ import { NOTE, PROMPT, NEW_GOAL, WHERE } from './data/words';
 import { BackpackView, ITEMS, bagAdd, doTrade } from './systems/backpack';
 import { foldMood } from './player/fold';
 import { Fox } from './world/fox';
-import { CHAPTERS, MAIN_QUEST, NOT_YET, OPENING } from './data/story';
+import { CHAPTERS, MAIN_QUEST, NOT_YET, OPENING, WORLD_TASKS } from './data/story';
 import { ChapterOne } from './story/chapterOne';
 import * as Opening from './story/opening';
 
@@ -306,7 +306,7 @@ export class Game {
     for (const el of [this.map.el, this.bagView.el, this.journalEl]) el.addEventListener('click', e => { if (e.target === el) this.closeOverlay(); });
     this.skyView = new SkyView(this.scene, this.planets, this.hud.labels);
 
-    // The home light: the lighthouse on the dunes where the river ends, blinking far below the clouds.
+    // The home light: the lighthouse at Lantern Town's harbour, where the river ends, blinking far below the clouds.
     const home = this.planets[this.planets.length - 1];
     home.surfacePoint(home.dirRiver(HOME_LIGHT.lat, HOME_LIGHT.lon), 16.5, this.beaconPos);
     this.beacon = new THREE.Sprite(new THREE.SpriteMaterial({ map: beaconTexture(), sizeAttenuation: false, transparent: true, fog: false, depthWrite: false, blending: THREE.AdditiveBlending }));
@@ -337,11 +337,11 @@ export class Game {
 
     this.ch1 = new ChapterOne(this);
     const game = this;
-    // The fox waits in the Ember Pines (the forest) until you are worth walking with.
+    // The fox waits in the Sky Isles until you are worth walking with.
     this.fox = new Fox();
     this.scene.add(this.fox.f.root);
-    const forest = this.planets[FOX_WORLD];
-    this.fox.place(forest, forest.dirRiver(FOX_SPOT.lat, FOX_SPOT.lon));
+    const isles = this.planets[FOX_WORLD];
+    this.fox.place(isles, isles.dirRiver(FOX_SPOT.lat, FOX_SPOT.lon));
     this.contents[FOX_WORLD].interactables.push({
       id: 'fox', world: FOX_WORLD, get pos() { return game.fox.f.root.position; }, radius: 3.5, hold: 3,
       label: () => (game.flags.has('fox-joined') ? null : 'Kneel, and hold out your hand to the fox'),
@@ -465,13 +465,13 @@ export class Game {
         act: () => { if (this.flags.has('power:kite')) this.startUpdraft(i); },
       });
     }
-    // The last world: the river rests in the sand, and the lighthouse stands beside it.
+    // The last world: the river comes home to the harbour, and the lighthouse stands at its mouth.
     const L = this.planets.length - 1, last = this.contents[L], lp = this.planets[L];
     last.interactables.push({
       id: 'lighthouse', world: L, pos: lp.surfacePoint(lp.dirRiver(HOME_LIGHT.lat, HOME_LIGHT.lon)), radius: 10,
       label: () => 'Knock on the lighthouse door',
       act: () => this.cut([
-        { line: { text: 'The door is warm, as if someone just left it. Sand has blown in under it. A kettle ticks.' } },
+        { line: { text: 'The door is warm, as if someone just left it. Lantern light spills under it. A kettle ticks.' } },
         { line: { text: 'This is the light you saw from the top of the world.' } },
         { line: { text: 'The rest of the way home is still being written. Thank you for walking this far.' } },
       ], () => { this.give('loop-complete'); this.river.loopComplete = true; this.save(); }),
@@ -552,7 +552,7 @@ export class Game {
     if (this.saveOff) return;
     const d = this.player.up;
     const data: SaveData = {
-      v: 4, flags: [...this.flags], moods: this.moods, river: this.river, snow: this.snow, world: this.cur,
+      v: 5, flags: [...this.flags], moods: this.moods, river: this.river, snow: this.snow, world: this.cur,
       dir: [d.x, d.y, d.z], poles: [...this.polesRead], journal: this.journal, pins: this.map.pins,
       day: this.day.t, flowers: this.flowers, sigs: this.sigs,
       bag: this.bag, sketches: this.sketches, sent: this.sent, seen: this.map.exportSeen(),
@@ -644,9 +644,11 @@ export class Game {
     this.sound.health = riverHealth(this.river, i);
     this.player.dropGlow = riverHealth(this.river, i);
     const style: Record<string, [string, number, number]> = {
-      peaks: ['#fff6e0', 0.1, 0.45], pines: ['#ffb070', 0.14, 0.7],
-      sea: ['#ffffff', 0.08, 0.4], desert: ['#f4d8b0', 0.08, 0.5],
+      peaks: ['#fff6e0', 0.1, 0.45], sky: ['#ffffff', 0.1, 0.6], garden: ['#fff0b0', 0.12, 0.5],
+      sea: ['#ffffff', 0.08, 0.4], desert: ['#ffd0b0', 0.08, 0.5], lantern: ['#ffc070', 0.1, 0.55],
     };
+    // every world after the first keeps its own hour of the one long day (morning, midday, ... night)
+    this.day.pin = WORLDS[i].hour?.elev ?? null;
     const st = style[WORLDS[i].id] ?? style.peaks;
     this.motes.setStyle(st[0], st[1], st[2]);
     const first = !this.flags.has('visited:' + i);
@@ -695,7 +697,15 @@ export class Game {
 
   surfaceSound(): 'step' | 'stepSnow' | 'stepGrass' | 'stepWood' | 'stepStone' {
     const p = this.planet, d = this.player.up;
-    if (this.cur !== 0) return WORLDS[this.cur].id === 'desert' ? 'stepSnow' : 'step';
+    if (this.cur !== 0) {
+      switch (WORLDS[this.cur].id) {
+        case 'sky': return p.height(d) < 1.6 ? 'stepSnow' : 'stepGrass'; // soft cloud underfoot, or island meadow
+        case 'garden': return 'stepGrass';
+        case 'desert': return 'stepSnow';
+        case 'lantern': return 'stepStone';
+        default: return 'step';
+      }
+    }
     const h = p.height(d) / p.cfg.amplitude;
     if (this.winter > 0.5 || h > this.snowline(this.snow.snowpack) + 0.02) return 'stepSnow';
     if ((this.contents[0].refs.bridge as THREE.Object3D).position.distanceTo(this.player.pos) < 5.5) return 'stepWood';
@@ -1051,12 +1061,14 @@ export class Game {
     const raw = who ? knownAs(c, who) : '';
     return {
       quest: MAIN_QUEST,
-      step: this.flags.has('read-letter') ? stepDetail(c) : null,
+      step: this.worldTask() ?? (this.flags.has('read-letter') ? stepDetail(c) : null),
       lanterns: this.cur === 0 && this.flags.has('quest:hollo') && !this.flags.has('chapter1-complete') ? lanternsLit(c) : null,
       next: who ? { name: raw.charAt(0).toUpperCase() + raw.slice(1), where: WHERE[who] ?? '' } : null,
       side: activeSideQuests(c),
     };
   }
+  /** The one thing to do in a world after the first (a sketch until each world's story is written). */
+  worldTask(): string | null { return this.cur > 0 ? WORLD_TASKS[WORLDS[this.cur].id] ?? null : null; }
   worldList() {
     return WORLDS.map((w, i) => ({ name: w.name, n: CHAPTERS[i].n,
       state: (i === this.cur ? 'here' : this.worldDone(i) ? 'done' : this.flags.has('visited:' + i) ? 'visited' : 'ahead') as 'here' | 'done' | 'visited' | 'ahead' }));
@@ -1195,7 +1207,8 @@ export class Game {
     const c = this.questCtx();
     const step = currentStep(c);
     const side = activeSideQuests(c);
-    const main = `<div class="quest"><div class="qk">The way home</div><div class="qm">${esc(MAIN_QUEST)}</div>${step ? `<div class="qs">${esc(stepDetail(c) ?? step.text)}</div>` : ''}</div>`;
+    const here = this.worldTask() ?? (step ? stepDetail(c) ?? step.text : null);
+    const main = `<div class="quest"><div class="qk">The way home</div><div class="qm">${esc(MAIN_QUEST)}</div>${here ? `<div class="qs">${esc(here)}</div>` : ''}</div>`;
     const sideHtml = side.length ? `<div class="sub">Along the way:</div><ul>${side.map(q => `<li><b>${esc(q.title)}.</b> ${esc(q.text)}</li>`).join('')}</ul>` : '';
     const entries = this.journal.map(id => JOURNAL[id]).filter(Boolean);
     this.journalEl.innerHTML = `<div class="sheet journal"><h2>Journal</h2>${main}${sideHtml}${entries.length ? '' : '<p class="dim">Things I learn will be drawn here.</p>'}<div class="entries"></div></div>`;
@@ -1826,7 +1839,7 @@ export class Game {
     const showGoal = this.mode === 'play' || this.mode === 'raft';
     const qc = this.questCtx();
     const step = currentStep(qc);
-    const goal = step && this.flags.has('read-letter') ? stepDetail(qc) : null;
+    const goal = this.worldTask() ?? (step && this.flags.has('read-letter') ? stepDetail(qc) : null);
     const ember = this.cur === 0 ? this.ch1.lanterns.meter() : '';
     const lit = ember ? ember : this.cur === 0 && this.flags.has('quest:hollo') && !this.flags.has('chapter1-complete') ? `Lanterns  ${'●'.repeat(lanternsLit(qc))}${'○'.repeat(3 - lanternsLit(qc))}` : '';
     this.hud.setGoal(showGoal && goal ? goal : null, lit);

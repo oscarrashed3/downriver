@@ -3,16 +3,22 @@ import * as THREE from 'three';
 import type { Planet } from './planet';
 import * as P from './props';
 import { preparePeaks, populatePeaks } from './peaks';
-import { orientTo, angleBetween } from './sphere';
+import { orientTo } from './sphere';
+import { prepareSky, populateSky } from './w_sky';
+import { prepareGarden, populateGarden } from './w_garden';
+import { prepareDesert, populateDesert } from './w_desert';
+import { prepareLantern, populateLantern } from './w_lantern';
 import { Npc, LOOKS } from '../systems/npc';
 import { SCRIPTS } from '../data/scripts';
 import type { Landmark } from '../systems/mapView';
 import { WORLDS } from './worlds';
 
-/** Where the fox waits in the forest (river lat, lon offset). Trees keep clear of it. */
-export const FOX_SPOT = { lat: 78, lon: 9 } as const;
-/** The home light: a lighthouse on the dunes beside the river's end, in the last world. */
-export const HOME_LIGHT = { lat: 166, lon: 40 } as const;
+/** Where the fox waits (the Sky Isles), and the home light (the lighthouse in Lantern Town, the last world). */
+export { FOX_SPOT } from './w_sky';
+export { HOME_LIGHT } from './w_lantern';
+
+/** Where each later world's prop numbers start (the sea: as measured on the four-world build). */
+const RAND_START: Record<string, number> = { sea: 776293943 };
 
 export interface Interactable {
   id: string;
@@ -38,18 +44,37 @@ export interface WorldContent {
   refs: Record<string, any>;
 }
 
+/** Flatten a round pad of ground before the terrain is built: (lat, lon offset from the river, radius m, height m, blend m). */
+export type Flat = (lat: number, lon: number, radius: number, height: number, blend?: number) => void;
+
 /** Shape the land before the terrain mesh is built (village plateaus, a tall peak, and so on). */
 export function prepare(p: Planet) {
-  const f = (lat: number, lon: number, radius: number, height: number, blend = 8) =>
+  const f: Flat = (lat, lon, radius, height, blend = 8) =>
     p.flattens.push({ dir: p.dirRiver(lat, lon), radius, height, blend });
   switch (p.cfg.id) {
     case 'peaks': preparePeaks(p); break;
-    case 'pines': f(70, 22, 6, 3, 6); f(86, 16, 7, 3, 6); f(92, -18, 10, 2.5, 8); f(176, 0, 9, 1.5, 6); break;
-    // The river ends here: no edge, only a quiet pad on the dunes for the lighthouse.
-    case 'desert': f(86, -26, 14, 1.6, 8); f(HOME_LIGHT.lat, HOME_LIGHT.lon, 7, 1.6, 6); break;
+    case 'sky': prepareSky(p, f); break;
+    case 'garden': prepareGarden(p, f); break;
     // The edge pad stands above the ocean (1.6), so the lip where the river falls on stays dry.
     case 'sea': f(176, 0, 9, 3.0, 6); break;
+    case 'desert': prepareDesert(p, f); break;
+    case 'lantern': prepareLantern(p, f); break;
   }
+}
+
+/** What a world's builder gets to dress its world with. */
+export interface Kit {
+  p: Planet;
+  scene: THREE.Scene;
+  c: WorldContent;
+  /** Stand an object on the ground at (lat, lon offset from the river), facing downriver, the river or a direction. */
+  put: (obj: THREE.Object3D, lat: number, lon: number, offset?: number, face?: 'river' | THREE.Vector3, sink?: number) => THREE.Object3D;
+  /** A person, on the nearest good dry spot to (lat, lon). */
+  npc: (id: string, lat: number, lon: number) => Npc;
+  /** A named place on the map. */
+  lm: (name: string, lat: number, lon: number, icon: Landmark['icon']) => void;
+  /** Scatter n objects between two latitudes, at least avoidRiver m from the water, where extra(lat, lon) allows. */
+  scatter: (n: number, make: () => THREE.Object3D, latR: [number, number], avoidRiver?: number, extra?: (lat: number, lon: number) => boolean) => void;
 }
 
 export function populate(p: Planet, scene: THREE.Scene, index: number): WorldContent {
@@ -96,38 +121,20 @@ export function populate(p: Planet, scene: THREE.Scene, index: number): WorldCon
     }
   };
 
+  const kit: Kit = { p, scene, c, put, npc, lm, scatter };
+  // Each later world draws its own run of prop numbers, so work on one world never reshuffles another.
+  // The sea starts exactly where it did in the four-world build, so it looks just as it did.
+  if (index > 0) P.setRandState(RAND_START[p.cfg.id] ?? p.cfg.seed * 7919 + 13);
+
   // Every world but the last: the edge where the river pours on to the next world.
   if (index < WORLDS.length - 1) { const a = put(P.edgeArch(p.cfg.palette.rock), 176.5, 0, 0, 'river'); c.refs.edge = a; lm('The edge', 176, 0, 'arch'); }
 
   switch (p.cfg.id) {
     case 'peaks': populatePeaks(p, scene, c, put, npc, lm); break;
-    case 'pines': {
-      // A young forest: pines and sprouts, a few old giants and their fungus, a fire tower, a keeper of the roots.
-      const fox = new THREE.Vector3(); p.dirRiver(FOX_SPOT.lat, FOX_SPOT.lon, fox);
-      const clear = (la: number, lo: number) => angleBetween(p.dirRiver(la, lo), fox) * p.R > 6;
-      scatter(160, () => P.pine(6 + P.rand() * 6, P.rand() < 0.25), [8, 170], 8, clear);
-      scatter(60, () => P.sprout(), [20, 160], 6, clear);
-      scatter(12, () => P.giantTree(), [10, 170], 14, clear);
-      scatter(30, () => P.fungus(), [10, 170], 6, clear);
-      put(P.tower(), 70, 22, 0); lm('Fire tower', 70, 22, 'tower');
-      put(P.hut('#8a6a50', '#a8503a'), 92, -22, 0, 'river'); put(P.hut('#9a7a60', '#8a4030'), 95, -14, 0, 'river');
-      put(P.hut('#a88a60', '#3a7a50'), 88, 20, 0, 'river');
-      npc('tamsin', 73, 18);
-      npc('oro', 86, 15);
-      break;
-    }
-    case 'desert': {
-      const town = put(P.windTown(), 86, -27, 0, 'river'); c.refs.town = town;
-      c.animate.push((dt) => (town.userData.blades as THREE.Group[]).forEach(b => (b.rotation.z += dt * 1.2)));
-      scatter(14, () => P.arch(), [20, 160], 14);
-      npc('sefa', 84, -14);
-      lm('Sahra, the wandering town', 86, -27, 'hut');
-      // The river's end: it slows, spreads and rests in the sand. A lighthouse keeps watch beside it.
-      put(P.lighthouse(), HOME_LIGHT.lat, HOME_LIGHT.lon, 0); c.refs.lighthouse = true;
-      lm('The lighthouse', HOME_LIGHT.lat, HOME_LIGHT.lon, 'tower');
-      lm('Where the river rests', 178, 0, 'spring');
-      break;
-    }
+    case 'sky': populateSky(kit); break;
+    case 'garden': populateGarden(kit); break;
+    case 'desert': populateDesert(kit); break;
+    case 'lantern': populateLantern(kit); break;
     case 'sea': {
       for (let i = 0; i < 10; i++) put(P.stiltHouse(), 70 + i * 6, (i % 2 ? 1 : -1) * (7 + P.rand() * 3), -0.5, 'river');
       scatter(50, () => P.mangrove(), [30, 165], 5, () => true);

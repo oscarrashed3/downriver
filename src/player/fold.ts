@@ -41,9 +41,11 @@ export type FoldMood = 'calm' | 'happy' | 'curious' | 'sleepy' | 'scared' | 'col
 export const FOLD_FORMS = [
   { id: 'boat', name: 'Boat', world: 'The Spring Peaks', flag: 'read-letter', text: 'Carries you down the river.' },
   { id: 'kite', name: 'Kite', world: 'The Spring Peaks', flag: 'power:kite', text: 'Opens while you fall, so you glide.' },
-  { id: 'crane', name: 'Crane', world: 'The Ember Pines', flag: 'form:crane', text: 'Flies ahead and shows the way through smoke.' },
+  { id: 'crane', name: 'Crane', world: 'The Sky Isles', flag: 'form:crane', text: 'Rides the wind ahead and shows the way between the islands.' },
+  { id: 'seed', name: 'Seed', world: 'The Overgrown Garden', flag: 'form:seed', text: 'Spins down slowly from the tallest flowers.' },
   { id: 'sail', name: 'Sail', world: 'The Endless Sea', flag: 'form:sail', text: 'Catches the wind across open water.' },
-  { id: 'lantern', name: 'Lantern', world: 'The Glass Desert', flag: 'form:lantern', text: 'A small light over the dunes at night.' },
+  { id: 'fan', name: 'Fan', world: 'The Painted Desert', flag: 'form:fan', text: 'Cools you, and sweeps the sand off old signs.' },
+  { id: 'lantern', name: 'Lantern', world: 'Lantern Town', flag: 'form:lantern', text: 'A small light of your own among all the others.' },
 ] as const;
 
 /** How Fold feels, from what is happening around you. Pure, so it can be tested. */

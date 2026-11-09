@@ -320,28 +320,27 @@ export const SCRIPTS: Record<string, Script> = {
 
   // ---- Journey sketch keepers ----
   tamsin: {
-    id: 'tamsin', name: 'Tamsin', title: 'the Fire Watcher',
-    start: { trust: 0.4, worry: 0.7, openness: 0.4 },
+    id: 'tamsin', name: 'Tamsin', title: 'the Wind Keeper',
+    start: { trust: 0.4, worry: 0.5, openness: 0.6 },
     nodes: [
-      { type: 'branch', ifFlag: 'peaks-healed', then: [{ type: 'say', text: 'The river came down stronger this year. The pines can drink. Was that you?' }],
-        else: [{ type: 'say', text: 'The river is thin this year. The pines are thirsty, and thirsty pines burn.' }] },
-      { type: 'say', text: 'Fire took my house three summers ago. So now I watch.' },
-      { type: 'say', text: 'The village wants every spark gone. But some pinecones only open in fire.' },
-      { type: 'give', items: ['map:pines', 'met:tamsin'] },
+      { type: 'branch', ifFlag: 'peaks-healed', then: [{ type: 'say', text: 'The river came down strong this year. It jumps the gaps like a goat. Was that you?' }],
+        else: [{ type: 'say', text: 'The river is thin this year. It barely makes the jump from island to island.' }] },
+      { type: 'say', text: 'I keep the chimes. When they all ring at once, the wind is turning.' },
+      { type: 'say', text: 'You came down with a kite? Then you already know: here, falling is just slow flying.' },
+      { type: 'give', items: ['map:sky', 'met:tamsin'] },
     ],
-    after: ['Walk on, little lantern. The forest will still be here when you come back to learn it.'],
+    after: ['Mind the edges. Or don\'t. The clouds are soft.'],
   },
   oro: {
-    id: 'oro', name: 'Oro', title: 'the Root Weaver',
-    start: { trust: 0.5, worry: 0.6, openness: 0.5 },
+    id: 'oro', name: 'Oro', title: 'the Gardener',
+    start: { trust: 0.5, worry: 0.4, openness: 0.6 },
     nodes: [
-      { type: 'say', text: 'These slopes were all old trees once. Then we cut them, all at once.' },
-      { type: 'say', text: 'Now the young ones are growing back. Slowly. Too slowly for the rain.' },
-      { type: 'say', text: 'Every storm washes a little hill away. See the river? Brown as tea.' },
-      { type: 'silence', seconds: 2, reward: 'Roots are hands holding the hill. We let go.' },
-      { type: 'give', items: ['met:oro'] },
+      { type: 'say', text: 'Careful where you step. That pebble is older than both of us.' },
+      { type: 'say', text: 'Somebody planted this garden long ago, and then forgot it. So it kept growing.' },
+      { type: 'say', text: 'The can fell over one summer. It has been watering the river ever since.' },
+      { type: 'give', items: ['map:garden', 'met:oro'] },
     ],
-    after: ['Come back with patient hands. Hills are slow to forgive.'],
+    after: ['Everything here was small once. Remember that, when you feel small.'],
   },
   sefa: {
     id: 'sefa', name: 'Sefa', title: 'the Sand Cartographer',
@@ -364,7 +363,18 @@ export const SCRIPTS: Record<string, Script> = {
       { type: 'say', text: 'The river does not end here. It crosses the sea, and goes on down to the sand.' },
       { type: 'give', items: ['map:sea', 'met:maren'] },
     ],
-    after: ['Go on. The river rests where the sand begins. There is a light there.'],
+    after: ['Go on. Past the painted sand, the river comes home. There is a light there.'],
+  },
+  wren: {
+    id: 'wren', name: 'Wren', title: 'the Lamplighter',
+    start: { trust: 0.6, worry: 0.3, openness: 0.7 },
+    nodes: [
+      { type: 'say', text: 'There you are. We hung a lantern for every traveller still on the river.' },
+      { type: 'say', text: 'Yours has been lit for a long time.' },
+      { type: 'say', text: 'Follow the canals down to the harbour. The lighthouse is at the mouth.' },
+      { type: 'give', items: ['map:lantern', 'met:wren'] },
+    ],
+    after: ['Every lantern here was carried down the river by somebody.'],
   },
 };
 
@@ -576,9 +586,11 @@ export const RETURN_LINES: Record<string, ReturnSet[]> = {
       'Write back, if you like. I carry replies. No charge. No hurry.',
       'Lovely handwriting, your writer. Slanted, like they never stop walking.',
     ] },
-    { when: ['visited:1'], lines: ['The pines down there smell of smoke. Mind your paper friend.', 'Forest mud. Lovely. I lost a boot there last spring.'] },
-    { when: ['visited:2'], lines: ['The sea. Every letter gets wet there. Nobody minds.'] },
-    { when: ['visited:3'], lines: ['Desert mail is the worst. The sand reads everything first.', 'The dunes. The end of my route. Or the start. I forget which.'] },
+    { when: ['visited:1'], lines: ['The Sky Isles. My umbrella loves it there. I mostly hold on.', 'Island mail. You throw it, and hope.'] },
+    { when: ['visited:2'], lines: ['That garden. A bee sat on my hat for an hour. A very polite bee.'] },
+    { when: ['visited:3'], lines: ['The sea. Every letter gets wet there. Nobody minds.'] },
+    { when: ['visited:4'], lines: ['Desert mail is the worst. The sand reads everything first.', 'All those colours. I go the long way round, on purpose.'] },
+    { when: ['visited:5'], lines: ['Lantern Town. The end of my route. Or the start. I forget which.'] },
   ],
 };
 

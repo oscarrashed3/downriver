@@ -4,11 +4,15 @@ export default async ({ page, shot, ev }) => {
   for (let i = 0; i < 200 && (await ev('__game.mode')) !== 'play'; i++) { await page.waitForTimeout(150); await ev(`(() => { const g = __game; g.input.pressed.add(g.mode === 'letter' ? 'KeyE' : 'Space'); })()`); }
   await ev(`(() => { const g = __game; g.give('read-letter'); g.meet = null; for (const n of g.contents[0].npcs) g.flags.add('met:' + n.id); })()`);
   for (let i = 0; i < 100 && (await ev('__game.mode')) !== 'play'; i++) { await page.waitForTimeout(200); await ev(`__game.input.pressed.add('Space')`); }
-  for (const w of [1, 2, 3]) {
+  for (const w of [1, 2, 3, 4, 5]) {
     await ev(`(() => { const g = __game, p = g.planets[${w}]; g.enterWorld(${w}, false); g.player.placeAt(p, g.arrivalDir(${w})); g.meet = null; g.cutCam = null; g.rig.override = null; g.mode = "play"; g.player.facing.copy(p.surfacePoint(p.dirRiver(20, 0)).sub(g.player.pos).projectOnPlane(g.player.up).normalize()); g.rig.faceDir(g.player.up, g.player.facing); g.rig.snap(); })()`);
-    await page.waitForTimeout(3500);
-    const info = await ev(`(() => { const g = __game, p = g.planets[${w}]; const d = g.player.pos.clone().sub(p.center).normalize(); return { dist: +p.riverNearest(d).dist.toFixed(2), aboveWater: +(p.height(d) - p.cfg.riverBed - p.cfg.waterDepth).toFixed(2) }; })()`);
+    await page.waitForTimeout(4500);
+    const info = await ev(`(() => { const g = __game, p = g.planets[${w}]; const d = g.player.pos.clone().sub(p.center).normalize(); const rn = p.riverNearest(d); return { id: p.cfg.id, dist: +rn.dist.toFixed(2), aboveWater: +(p.height(d) - p.bedAt(rn.t) - p.cfg.waterDepth).toFixed(2), sun: +g.day.elevation.toFixed(2) }; })()`);
     console.log('world', w, JSON.stringify(info));
     await shot('world' + w);
+    // and the view downriver, toward the rest of the world
+    await ev(`(() => { const g = __game, p = g.planets[${w}]; g.player.facing.copy(p.surfacePoint(p.dirRiver(48, 0)).sub(g.player.pos).projectOnPlane(g.player.up).normalize()); g.rig.faceDir(g.player.up, g.player.facing); g.rig.snap(); })()`);
+    await page.waitForTimeout(2500);
+    await shot('world' + w + '-down');
   }
 };

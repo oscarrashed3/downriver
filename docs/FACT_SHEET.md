@@ -12,7 +12,7 @@ Each claim appears in the game's dialogue, journal or systems. Flag anything tha
 | 6 | Long-term measurements show trends that single readings cannot. | Tor, journal "What the poles say" | Basic scientific method. The pole numbers are invented for the game. |
 | 7 | The water cycle: sea evaporates into clouds, clouds fall as snow and rain, rivers return water to the sea. | Cloud quest, finale | Standard. |
 | 8 | Some pinecones open only after fire; small controlled burns reduce the risk of big fires. | Tamsin (sketch) | Serotinous cones; prescribed burning. |
-| 9 | Roots hold soil; clearing forest for a single crop increases erosion and muddy rivers. | Oro (sketch) | Standard soil science. |
+| 9 | Roots hold soil; clearing forest for a single crop increases erosion and muddy rivers. | (was Oro in the Ember Pines; that world is gone) | Standard soil science. |
 | 10 | Wetlands absorb floodwater; walls alone do not solve flooding. | Cassian (sketch) | Nature-based flood management. |
 | 11 | Rising seas push salt water into wells and fields. | Maren (sketch) | Saltwater intrusion. |
 | 12 | Around one in six people on Earth depend on water that began as snow or glacier ice. | Journal "The mountain's water jar" | Barnett, Adam & Lettenmaier (2005), *Nature* 438: more than one-sixth of the world's population relies on glaciers and seasonal snowpack for water supply. |
