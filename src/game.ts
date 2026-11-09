@@ -638,6 +638,8 @@ export class Game {
 
   // ------------------------------------------------------------------ worlds
   enterWorld(i: number, banner = true) {
+    // a camera turn toward someone in the world you are leaving would keep the camera there
+    if (i !== this.cur) this.meet = null;
     this.cur = i;
     const w = WORLDS[i].palette;
     this.sky.setPalette(w.skyTop, w.skyHorizon);
@@ -1108,7 +1110,8 @@ export class Game {
       this.areaSeen[a.id] = this.time;
     }
     const b = this.areaBanner;
-    if (b && this.time - b.t > 12) this.areaBanner = null;
+    // a name still waiting its turn when you leave its world is dropped (no World 1 names in the Sky Isles)
+    if (b && (this.time - b.t > 12 || b.a.world !== this.cur)) this.areaBanner = null;
     else if (b && !this.meet && !this.hud.banner.classList.contains('on') && !this.hud.chapter.classList.contains('on')) {
       this.areaBanner = null;
       this.hud.showBanner(b.a.name, b.a.sub); this.sound.sfxPlay('chime');
