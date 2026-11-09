@@ -1,20 +1,24 @@
 import * as THREE from 'three';
 import { paint, softRamp, outlineMaterial } from '../../render/paint';
 
-// The long scarves of the windfolk: cloth ribbons that always stream and ripple in the wind.
+// The long scarves of the windfolk: cloth ribbons that hang in soft S-curves and stream out in the gusts.
 //
-// Each scarf tail is a chain of points simulated in world space (Verlet): gravity pulls it down, and
-// the air drags every point towards the wind's own velocity, so a still person's scarf flies out
-// downwind, a running or gliding one's trails behind, and a gust lifts it. On top of the simulation a
-// travelling ripple and a slow twist are added when the ribbon is drawn, so the cloth never looks stiff.
-// The ribbon has a real (thin) thickness, so the shared ink outline and the toon ramp work on it.
-// Cost: one small dynamic mesh (+ its outline) per tail, about 16 segments, 130 triangles.
+// Each tail is a chain of points simulated in world space (Verlet): gravity pulls it down and the air drags
+// every point towards the wind's own velocity, so a still person's scarf hangs and lifts downwind, a running
+// or gliding one's trails behind. The wind breathes in slow gusts, so the tails swing between a soft droop
+// and a long stream. When the ribbon is drawn it is shaped like cloth, not a plank:
+//   - it narrows from the knot to the tip (to about 60%),
+//   - it cups and curls across its width (the cross-section bends, the bend travels down the tail),
+//   - the edges flutter with fast, small ripples, and a slow twist runs along it,
+//   - the end is cut: a fringe of notches, or Zephy's torn swallow-tail with ragged strips.
+// The top is the scarf's own colour, the underside a shade darker; no fading at the tip.
+// Cost: one small dynamic mesh (+ its ink) per tail, 18 segments x 5 across, about 400 triangles.
 
 /** The Sky Isles wind (world space, metres per second). Scarves use it unless told otherwise. */
 export const SKY_WIND = new THREE.Vector3(5.2, 0.35, 1.8);
 
 export interface ScarfSpec {
-  /** Length and width in metres. */
+  /** Length and width in metres (width at the knot). */
   length: number;
   width: number;
   /** Main colour, then the colour of the stripes and the end band. */
@@ -23,12 +27,14 @@ export interface ScarfSpec {
   /** Stripes across the ribbon, as [start, end] fractions of the length (0 = neck). */
   stripes?: [number, number][];
   segs?: number;
-  /** How much gravity wins over the wind (0.2 flies flat, 0.6 droops). */
+  /** How heavy the cloth is: 1 = normal (hangs at about 40 degrees in the usual wind), 1.5 droops, 0.6 flies. */
   droop?: number;
   /** Ripple strength (1 = normal). */
   flutter?: number;
-  /** Tattered, swallow-tailed end (Zephy's old red scarf). */
+  /** Tattered, swallow-tailed, torn end (Zephy's old red scarf). */
   tatter?: boolean;
+  /** A fringed end (notches across the tip). Default true unless tattered. */
+  fringe?: boolean;
   seed?: number;
 }
 
@@ -38,15 +44,15 @@ export interface ScarfCollider { o: THREE.Object3D; r: number }
 let ribbonMat: THREE.MeshToonMaterial | null = null;
 /** One shared toon material for every ribbon: colours come from the vertices. */
 function scarfMaterial() {
-  if (!ribbonMat) {
-    ribbonMat = paint(new THREE.MeshToonMaterial({ color: '#ffffff', vertexColors: true, gradientMap: softRamp(), side: THREE.DoubleSide }), { variation: 0.6 });
-  }
+  if (!ribbonMat) ribbonMat = paint(new THREE.MeshToonMaterial({ color: '#ffffff', vertexColors: true, gradientMap: softRamp(), side: THREE.DoubleSide }), { variation: 0.5 });
   return ribbonMat;
 }
 
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _d = new THREE.Vector3(), _s = new THREE.Vector3(), _n = new THREE.Vector3();
 const _up = new THREE.Vector3(0, 1, 0), _right = new THREE.Vector3(), _inv = new THREE.Matrix4(), _q = new THREE.Quaternion();
-const _ws = new THREE.Vector3();
+const _ws = new THREE.Vector3(), _c = new THREE.Vector3();
+
+const M = 5; // vertices across the width
 
 export class WindScarf {
   mesh: THREE.Mesh;
@@ -60,40 +66,67 @@ export class WindScarf {
   private pos: THREE.BufferAttribute;
   private nor: THREE.BufferAttribute;
   private seed: number;
+  /** Per vertex across each ring: how far it is cut back (in segments), for the fringe or the tatters. */
+  private cut: number[][] = [];
+  private cs: { c: THREE.Vector3; r: number }[] = [];
 
   /**
    * @param anchor where the tail leaves the knot at the neck (a joint of the body)
    * @param space  the object the mesh lives in (the person's root); the ribbon is drawn in its frame
    */
   constructor(public anchor: THREE.Object3D, public space: THREE.Object3D, public spec: ScarfSpec, public colliders: ScarfCollider[] = []) {
-    this.n = (spec.segs ?? 16) + 1;
+    this.n = (spec.segs ?? 18) + 1;
     this.seg = spec.length / (this.n - 1);
     this.seed = spec.seed ?? Math.random() * 10;
     for (let i = 0; i < this.n; i++) { this.x.push(new THREE.Vector3()); this.p.push(new THREE.Vector3()); this.sides.push(new THREE.Vector3()); }
-    // 8 vertices a ring: top face, bottom face, and the two thin edges, each with its own normal
-    const R = this.n * 8;
+    for (let i = 0; i < colliders.length; i++) this.cs.push({ c: new THREE.Vector3(), r: 0 });
+    // the cut end: a fringe of notches, or a torn swallow-tail with ragged strips
+    let r = Math.floor(this.seed * 1000) % 233280;
+    const rnd = () => ((r = (r * 9301 + 49297) % 233280) / 233280);
+    for (let i = 0; i < this.n; i++) {
+      const row: number[] = [];
+      const fromEnd = this.n - 1 - i;
+      for (let j = 0; j < M; j++) {
+        let c = 0;
+        if (spec.tatter) {
+          // the middle torn back deep, the strips either side ragged
+          if (fromEnd === 0) c = j === 2 ? 2.6 : j === 1 || j === 3 ? 0.9 + rnd() * 1.2 : rnd() * 0.5;
+          if (fromEnd === 1 && j === 2) c = 1.4;
+          if (fromEnd === 2 && j === 2) c = 0.4;
+        } else if (spec.fringe !== false && fromEnd === 0) c = j % 2 ? 0.55 : 0;
+        row.push(c);
+      }
+      this.cut.push(row);
+    }
+    // per ring: M on the top face, M on the underside, then 2 x 2 for the edges (their own normals)
+    const R = M * 2 + 4, V = this.n * R;
     const g = new THREE.BufferGeometry();
-    this.pos = new THREE.BufferAttribute(new Float32Array(R * 3), 3);
-    this.nor = new THREE.BufferAttribute(new Float32Array(R * 3), 3);
+    this.pos = new THREE.BufferAttribute(new Float32Array(V * 3), 3);
+    this.nor = new THREE.BufferAttribute(new Float32Array(V * 3), 3);
     this.pos.setUsage(THREE.DynamicDrawUsage); this.nor.setUsage(THREE.DynamicDrawUsage);
-    const col = new Float32Array(R * 3);
+    const col = new Float32Array(V * 3);
     const main = new THREE.Color(spec.color), str = new THREE.Color(spec.stripe ?? spec.color), c = new THREE.Color();
     for (let i = 0; i < this.n; i++) {
       const u = i / (this.n - 1);
       const inStripe = (spec.stripes ?? []).some(([a, b]) => u >= a - 1e-4 && u <= b + 1e-4);
-      c.copy(inStripe ? str : main);
-      // a faint shading towards the tip so the long ribbon reads as cloth catching light
-      c.multiplyScalar(1 - u * 0.08);
-      for (let j = 0; j < 8; j++) c.toArray(col, (i * 8 + j) * 3);
+      for (let k = 0; k < R; k++) {
+        c.copy(inStripe ? str : main);
+        if (k >= M && k < 2 * M) c.multiplyScalar(0.74); // the underside, a shade darker
+        if (k >= 2 * M) c.multiplyScalar(0.82);            // the thin edges
+        c.toArray(col, (i * R + k) * 3);
+      }
     }
     const idx: number[] = [];
     const quad = (a: number, b: number, c2: number, d: number) => idx.push(a, b, c2, b, d, c2);
     for (let i = 0; i < this.n - 1; i++) {
-      const r0 = i * 8, r1 = r0 + 8;
-      quad(r0 + 1, r0 + 0, r1 + 1, r1 + 0); // top (wound outwards, so the BackSide ink hull works)
-      quad(r0 + 3, r0 + 2, r1 + 3, r1 + 2); // bottom
-      quad(r0 + 4, r0 + 5, r1 + 4, r1 + 5); // left edge
-      quad(r0 + 6, r0 + 7, r1 + 6, r1 + 7); // right edge
+      const r0 = i * R, r1 = r0 + R;
+      for (let j = 0; j < M - 1; j++) {
+        quad(r0 + j + 1, r0 + j, r1 + j + 1, r1 + j);                 // top (wound outwards)
+        quad(r0 + M + j, r0 + M + j + 1, r1 + M + j, r1 + M + j + 1); // underside
+      }
+      const e = 2 * M;
+      quad(r0 + e, r0 + e + 1, r1 + e, r1 + e + 1);         // left edge
+      quad(r0 + e + 3, r0 + e + 2, r1 + e + 3, r1 + e + 2); // right edge
     }
     g.setIndex(idx);
     g.setAttribute('position', this.pos); g.setAttribute('normal', this.nor); g.setAttribute('color', new THREE.BufferAttribute(col, 3));
@@ -101,16 +134,16 @@ export class WindScarf {
     this.mesh.castShadow = true;
     this.mesh.frustumCulled = false; // it moves every frame; the person is culled as a whole anyway
     this.mesh.userData.noOutline = true;
-    const ink = new THREE.Mesh(g, outlineMaterial('#3a2a2e', 0.006));
+    const ink = new THREE.Mesh(g, outlineMaterial('#3a2a2e', 0.0075));
     ink.frustumCulled = false; ink.userData.isOutline = true; ink.userData.noOutline = true;
     this.mesh.add(ink);
     space.add(this.mesh);
   }
 
-  /** Lay the scarf out straight downwind (on the first frame or after a teleport). */
+  /** Lay the scarf out hanging downwind (on the first frame or after a teleport). */
   reset(air: THREE.Vector3) {
     this.anchor.getWorldPosition(_a);
-    _d.copy(air).setY(air.y - 2).normalize();
+    _d.copy(air).multiplyScalar(0.15).setY(-1).normalize();
     for (let i = 0; i < this.n; i++) { this.x[i].copy(_a).addScaledVector(_d, i * this.seg); this.p[i].copy(this.x[i]); }
     this.has = true;
   }
@@ -124,30 +157,32 @@ export class WindScarf {
     dt = Math.min(dt, 0.05);
     const H = 1 / 120;
     this.acc += dt;
-    const drop = 9.8 * (this.spec.droop ?? 0.35) * 1.4;
-    const cs = this.colliders.map(c => ({ c: c.o.getWorldPosition(new THREE.Vector3()), r: c.r * c.o.getWorldScale(_ws).x }));
+    const grav = 9.8 * 0.8 * (this.spec.droop ?? 1);
+    const drag = 2.3;
+    this.colliders.forEach((c, i) => { c.o.getWorldPosition(this.cs[i].c); this.cs[i].r = c.r * c.o.getWorldScale(_ws).x; });
     this.anchor.getWorldPosition(_a);
     const airLen = air.length();
     let steps = 0;
     while (this.acc >= H && steps < 8) {
       this.acc -= H; steps++;
       const tt = t - this.acc;
+      // gusts: slow and strong (the tails swing between a droop and a stream), with a quicker flutter on top
+      const gust = Math.max(0.25, 1 + 0.5 * Math.sin(tt * 0.62 + this.seed) + 0.22 * Math.sin(tt * 1.7 + this.seed * 2.1));
       this.x[0].copy(_a); this.p[0].copy(_a);
       for (let i = 1; i < this.n; i++) {
         const x = this.x[i], p = this.p[i];
         const u = i / (this.n - 1);
-        // gusts: the wind's strength breathes, and swirls a little across and up/down along the ribbon
-        const g = 1 + 0.32 * Math.sin(tt * 1.3 + this.seed) + 0.16 * Math.sin(tt * 3.7 - u * 3 + this.seed * 2);
-        _b.copy(air).multiplyScalar(g);
-        _b.y += airLen * 0.55 * Math.sin(tt * 5.1 - u * 6 + this.seed) * u;
-        _b.x += airLen * 0.25 * Math.sin(tt * 4.3 - u * 5 + this.seed * 3) * u;
-        _b.z += airLen * 0.35 * Math.cos(tt * 3.9 - u * 5 + this.seed) * u;
+        _b.copy(air).multiplyScalar(gust);
+        // swirls travelling down the ribbon make the S-curves
+        _b.y += airLen * 0.42 * Math.sin(tt * 3.1 - u * 5.5 + this.seed) * u;
+        _b.x += airLen * 0.2 * Math.sin(tt * 2.7 - u * 4.5 + this.seed * 3) * u;
+        _b.z += airLen * 0.28 * Math.cos(tt * 2.3 - u * 4.8 + this.seed) * u;
         // Verlet with air drag: velocity relaxes towards the air's own velocity
-        _d.subVectors(x, p).divideScalar(H); // velocity
-        _s.subVectors(_b, _d).multiplyScalar(5); // drag
-        _s.y -= drop;
+        _d.subVectors(x, p).divideScalar(H);
+        _s.subVectors(_b, _d).multiplyScalar(drag);
+        _s.y -= grav;
         p.copy(x);
-        x.addScaledVector(_d, H * 0.995).addScaledVector(_s, H * H);
+        x.addScaledVector(_d, H * 0.996).addScaledVector(_s, H * H);
       }
       // keep the links their length (the neck end is pinned), and out of the body
       for (let k = 0; k < 3; k++) {
@@ -157,7 +192,7 @@ export class WindScarf {
           if (i === 1) b.copy(a).addScaledVector(_d, this.seg / L);
           else { const e = (L - this.seg) / L * 0.5; a.addScaledVector(_d, e); b.addScaledVector(_d, -e); }
         }
-        for (let i = 1; i < this.n; i++) for (const c of cs) {
+        for (let i = 1; i < this.n; i++) for (const c of this.cs) {
           _d.subVectors(this.x[i], c.c); const L = _d.length();
           if (L < c.r) this.x[i].addScaledVector(_d, (c.r - L) / Math.max(L, 1e-4));
         }
@@ -166,54 +201,64 @@ export class WindScarf {
     this.draw(t);
   }
 
-  /** Build the ribbon around the chain: a frame carried down its length, a twist and a travelling ripple. */
+  /** Build the ribbon around the chain: a carried frame, a twist, a cupped cross-section, edge flutter. */
   private draw(t: number) {
-    const sp = this.spec, n = this.n;
+    const sp = this.spec, n = this.n, R = M * 2 + 4;
     this.space.updateWorldMatrix(true, false);
     _inv.copy(this.space.matrixWorld).invert();
     this.anchor.getWorldQuaternion(_q);
     _right.set(1, 0, 0).applyQuaternion(_q);
-    const fl = sp.flutter ?? 1;
+    const fl = sp.flutter ?? 1, th = 0.0045, sd = this.seed;
+    const across = new Float32Array(M), lift = new Float32Array(M);
     for (let i = 0; i < n; i++) {
       const u = i / (n - 1);
       const a = this.x[Math.max(0, i - 1)], b = this.x[Math.min(n - 1, i + 1)];
       _d.subVectors(b, a).normalize();
-      // side vector: at the knot it follows the body; down the tail it is carried along (parallel transport),
-      // pulled a little towards upright so a streaming scarf shows its broad face, like a flag
+      // side vector: at the knot it follows the body; down the tail it is carried along (parallel transport)
       const s = this.sides[i];
       if (i === 0) {
         const vert = Math.abs(_d.dot(_up));
         s.copy(_up).multiplyScalar(1 - vert).addScaledVector(_right, vert * 1.2);
-      } else s.copy(this.sides[i - 1]).lerp(_up, 0.06);
+      } else s.copy(this.sides[i - 1]).lerp(_up, 0.03);
       s.addScaledVector(_d, -s.dot(_d)).normalize();
       // a slow twist that travels down the ribbon
-      const tw = Math.sin(u * 4.2 - t * 2.3 + this.seed) * 0.8 * u * fl;
+      const tw = Math.sin(u * 4.0 - t * 1.9 + sd) * 0.75 * u * fl + Math.sin(u * 9 - t * 3.3 + sd * 2) * 0.18 * u;
       _s.copy(s).applyAxisAngle(_d, tw);
       _n.crossVectors(_d, _s).normalize();
-      // the ripple: a wave running from the neck to the tip, growing towards the free end
-      const rip = (Math.sin(u * 8 - t * 10 + this.seed) * 0.65 + Math.sin(u * 15 - t * 17 + this.seed * 2) * 0.35) * 0.07 * fl * Math.min(1, u * 1.6);
-      const c = _a.copy(this.x[i]).addScaledVector(_n, rip);
-      // width: slightly wider just after the knot, gathered at the very end
-      let w = sp.width * (u < 0.08 ? 0.6 + u * 5 : 1 - 0.12 * u);
-      const th = 0.007;
-      // swallow-tail: the end splits, the middle torn back
-      if (sp.tatter && u > 0.86) w *= 1 + (u - 0.86) * 2;
-      const ring = i * 8;
-      // one vertex: across the width (sx = -1 / 1), through the thickness (ny = -1 / 1), and its normal
-      const put = (k: number, sx: number, ny: number, nrm: THREE.Vector3, sign: number) => {
-        _b.copy(c).addScaledVector(_s, sx * w * 0.5).addScaledVector(_n, ny * th).applyMatrix4(_inv);
+      // a ripple running from the knot to the tip, growing towards the free end
+      const rip = (Math.sin(u * 8 - t * 8 + sd) * 0.6 + Math.sin(u * 15 - t * 13 + sd * 2) * 0.4) * 0.06 * fl * Math.min(1, u * 1.8);
+      const c = _c.copy(this.x[i]).addScaledVector(_n, rip);
+      // width: gathered at the knot, then narrowing to about 60% at the tip
+      const w = sp.width * (u < 0.07 ? 0.62 + u * 5.4 : 1 - 0.4 * ((u - 0.07) / 0.93));
+      // the cross-section cups and curls; the bend changes sign as it travels, so the cloth rolls
+      const cup = (0.3 + 0.7 * Math.sin(u * 3.4 - t * 1.4 + sd * 1.3)) * Math.min(1, u * 3 + 0.25) * fl;
+      for (let j = 0; j < M; j++) {
+        const xj = (j / (M - 1)) * 2 - 1; // -1 .. 1 across
+        across[j] = xj * w * 0.5;
+        let l = cup * xj * xj * w * 0.55;
+        // the edges flutter: quick, small, out of phase on the two sides
+        if (j === 0 || j === M - 1) l += (Math.sin(u * 37 - t * 27 + sd + xj * 2) * 0.6 + Math.sin(u * 61 - t * 39 + sd * 3 - xj) * 0.4) * 0.016 * fl * Math.min(1, u * 2.5);
+        lift[j] = l;
+      }
+      const ring = i * R;
+      const cutRow = this.cut[i];
+      const put = (k: number, j: number, ny: number, nrm: THREE.Vector3, sign: number) => {
+        const back = cutRow[j] * this.seg;
+        _b.copy(c).addScaledVector(_s, across[j]).addScaledVector(_n, lift[j] + ny * th).addScaledVector(_d, -back).applyMatrix4(_inv);
         this.pos.setXYZ(ring + k, _b.x, _b.y, _b.z);
         _b.copy(nrm).multiplyScalar(sign).transformDirection(_inv);
         this.nor.setXYZ(ring + k, _b.x, _b.y, _b.z);
       };
-      put(0, -1, 1, _n, 1); put(1, 1, 1, _n, 1);     // top face
-      put(2, 1, -1, _n, -1); put(3, -1, -1, _n, -1); // bottom face
-      put(4, -1, 1, _s, -1); put(5, -1, -1, _s, -1); // left edge
-      put(6, 1, -1, _s, 1); put(7, 1, 1, _s, 1);     // right edge
-      if (sp.tatter && i === n - 1) {
-        // a torn, slanted end: pull one corner of the last ring back along the ribbon
-        for (const k of [0, 3, 4, 5]) { _b.copy(c).addScaledVector(_d, -this.seg * 1.6).applyMatrix4(_inv); this.pos.setXYZ(ring + k, _b.x, _b.y, _b.z); }
+      // normals across the cup tilt with the bend's slope
+      for (let j = 0; j < M; j++) {
+        const xj = (j / (M - 1)) * 2 - 1;
+        const slope = 2 * cup * xj * 0.55;
+        _a.copy(_n).addScaledVector(_s, -slope).normalize();
+        put(j, j, 1, _a, 1);
+        put(M + j, j, -1, _a, -1);
       }
+      put(2 * M, 0, 1, _s, -1); put(2 * M + 1, 0, -1, _s, -1);
+      put(2 * M + 2, M - 1, 1, _s, 1); put(2 * M + 3, M - 1, -1, _s, 1);
     }
     this.pos.needsUpdate = true; this.nor.needsUpdate = true;
   }
