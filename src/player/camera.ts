@@ -33,7 +33,13 @@ export class CameraRig {
   /** Mouse wheel: ease the follow distance between 4 and 14 m. Remembered between visits. */
   zoomBy(steps: number) { this.setDistance(this.distGoal * (1 + steps * 0.12)); }
   distGoal = this.dist;
-  setDistance(d: number) { this.distGoal = clamp(d, 4, 14); savePref('downriver-camdist', this.distGoal); }
+  private distSave = 0;
+  /** Remembered between visits; written a moment after the last change, so a smooth wheel scroll is one write, not dozens. */
+  setDistance(d: number) {
+    this.distGoal = clamp(d, 4, 14);
+    clearTimeout(this.distSave);
+    this.distSave = setTimeout(() => savePref('downriver-camdist', this.distGoal), 400) as unknown as number;
+  }
   /** Mouse-look speed, 1 = normal (Settings). Remembered between visits. */
   sens = savedPref('downriver-sens', 1, 0.3, 2.5);
   setSensitivity(s: number) { this.sens = clamp(s, 0.3, 2.5); savePref('downriver-sens', this.sens); }

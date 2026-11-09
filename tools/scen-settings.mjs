@@ -63,5 +63,25 @@ export default async ({ page, shot, ev, key }) => {
   push(['late Esc', await mode(), await ev('__game.overlay')]);
   await wait(0.5); await esc();
   push(['Esc later', await mode(), await ev('__game.overlay')]);
+  // The × on the sheet and a click on the dim space around it both close it.
+  await click('.gearbtn');
+  push(['gear for x', await mode(), await ev('__game.overlay')]);
+  await click('.settings .sx');
+  push(['sheet x', await mode(), await ev('__game.overlay')]);
+  await click('.gearbtn');
+  await page.mouse.click(40, 600); await wait(0.15);
+  push(['backdrop', await mode(), await ev('__game.overlay')]);
+  // On the raft: Esc opens Settings, the raft waits, and closing goes back to the raft.
+  await ev(`__game.boardRaft()`); await wait(1);
+  const t0 = await ev('__game.player.raftT');
+  await esc();
+  push(['raft Esc', await mode(), await ev('__game.overlay'), await ev('__game.onRaft'), await ev(`!document.querySelector('.gearbtn').classList.contains('hidden')`)]);
+  await wait(1.5);
+  push(['raft paused', (await ev('__game.player.raftT')) === (await ev('__game.player.raftT')), +(await ev('__game.player.raftT') - t0).toFixed(5)]);
+  await shot('raft-settings');
+  await esc();
+  push(['raft Esc close', await mode(), await ev('__game.overlay')]);
+  await wait(1);
+  push(['raft moves again', +(await ev('__game.player.raftT') - t0).toFixed(5)]);
   console.log(JSON.stringify(log));
 };
