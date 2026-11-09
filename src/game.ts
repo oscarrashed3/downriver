@@ -44,7 +44,7 @@ import { SkyView, type CamPose } from './systems/skyView';
 import { Life } from './systems/life';
 import { Sequencer, type Beat } from './story/sequencer';
 import { currentStep, activeSideQuests, stepDetail, lanternsLit, knownAs, nextPerson, type QuestCtx } from './story/quests';
-import { Menu, MENU_TABS, type MenuTab, type GoalInfo } from './ui/menu';
+import { Menu, MENU_TABS, TITLE_GEAR, type MenuTab, type GoalInfo, type SettingsInfo } from './ui/menu';
 import { AREAS, AREA_AGAIN, discoveredAreas, type Area } from './data/areas';
 import { NOTE, PROMPT, NEW_GOAL, WHERE } from './data/words';
 import { BackpackView, ITEMS, bagAdd, doTrade } from './systems/backpack';
@@ -271,10 +271,18 @@ export class Game {
     document.getElementById('ui')!.prepend(this.nameTags);
     this.menu.onGo = i => this.goBack(i);
     this.menu.onTab = t => { if (this.mode === 'play' || this.mode === 'overlay') this.openTab(t); };
-    this.menu.onClose = () => this.closeOverlay();
-    this.menu.onQuality = () => { const l = this.quality.cycle(); this.applyQuality(); this.hud.notify(NOTE.quality(l)); this.menu.showSettings(this.settingsInfo()); };
+    this.menu.onGear = () => this.toggleOverlay('settings');
+    this.menu.onClose = () => { if (this.titleSettings) this.showTitleSettings(false); else this.closeOverlay(); };
+    this.menu.onQuality = q => {
+      const was = this.quality.level;
+      const l = this.quality.set(q); if (l !== was) this.applyQuality();
+      if (q !== 'auto') this.hud.notify(NOTE.quality(l));
+      this.menu.showSettings(this.settingsInfo());
+    };
     this.menu.onVolume = v => { this.sound.setVolume(v); this.menu.setMuted(this.sound.muted); };
     this.menu.onMute = () => { this.sound.setMuted(!this.sound.muted); this.menu.setMuted(this.sound.muted); };
+    this.menu.onCamDist = d => this.rig.setDistance(d);
+    this.menu.onSens = v => this.rig.setSensitivity(v);
     this.menu.onReset = () => { clearSave(); this.saveOff = true; location.reload(); };
     // Clicking the dim space around any sheet closes the menu.
     for (const el of [this.map.el, this.bagView.el, this.journalEl]) el.addEventListener('click', e => { if (e.target === el) this.closeOverlay(); });
@@ -563,10 +571,13 @@ export class Game {
     el.innerHTML = `<h1 class="hand">The Light<br>Below the Clouds</h1><div class="tag">a long way from home, and a river that knows the way back</div>
       ${saved.notice ? `<div class="notice">${esc(saved.notice)}</div>` : ''}
       <div>${has ? '<button data-a="continue">Continue</button>' : ''}<button data-a="new">${has ? 'Begin again' : 'Begin'}</button></div>
-      <div class="foot">Chapter One &middot; best with headphones &middot; press H for controls</div>`;
+      <button class="tset" data-a="settings" aria-label="Settings (Esc)">${TITLE_GEAR}<span>Settings</span></button>
+      <div class="foot">Chapter One &middot; best with headphones &middot; <b>Esc</b> settings</div>`;
     document.getElementById('ui')!.append(el);
     this.titleEl = el;
-    el.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    el.querySelector('[data-a="settings"]')!.addEventListener('click', e => { e.stopPropagation(); (e.currentTarget as HTMLElement).blur(); this.showTitleSettings(true); });
+    el.querySelectorAll('button:not([data-a="settings"])').forEach(b => b.addEventListener('click', () => {
+      this.showTitleSettings(false);
       this.sound.start();
       el.classList.add('out');
       setTimeout(() => el.remove(), 900);
@@ -583,6 +594,16 @@ export class Game {
         this.cut(Opening.wakeBeats(this), () => { this.mode = 'play'; setTimeout(() => { if (this.mode === 'play' && !this.flags.has('read-letter')) this.openLetter(); }, 700); });
       }
     }));
+  }
+
+  /** Settings over the title screen (before a journey has begun). */
+  titleSettings = false;
+  showTitleSettings(on: boolean) {
+    if (on === this.titleSettings) return;
+    this.titleSettings = on;
+    this.titleEl?.classList.toggle('dim', on);
+    if (on) { this.menu.showSettings(this.settingsInfo()); this.sound.sfxPlay('paper'); }
+    else { this.menu.hidePage(); this.sound.sfxPlay('soft'); }
   }
 
   /** Play a scripted scene. The traveler can't move; Space skips spoken lines. */
@@ -1018,7 +1039,10 @@ export class Game {
     this.openSky();
     this.startTravel(i);
   }
-  settingsInfo() { return { quality: this.quality.level.charAt(0).toUpperCase() + this.quality.level.slice(1), volume: this.sound.volume, muted: this.sound.muted }; }
+  settingsInfo(): SettingsInfo {
+    return { quality: this.quality.level, auto: !this.quality.manual, volume: this.sound.volume, muted: this.sound.muted,
+      camDist: this.rig.distGoal, sens: this.rig.sens, onTitle: this.mode === 'title' };
+  }
   /** Open the journal during a scene (no mode change). */
   showJournal(on: boolean) {
     if (on) { this.renderJournal(); this.journalEl.classList.remove('hidden'); this.sound.sfxPlay('paper'); }
@@ -1379,12 +1403,15 @@ export class Game {
     this.fps = lerp(this.fps, 1 / Math.max(1e-3, dt), 0.05);
     PAINT.uTime.value = this.time;
     const inp = this.input;
-    if (inp.hit('KeyN')) this.sound.setMuted(!this.sound.muted);
-    if (inp.hit('KeyP') && this.mode !== 'title') { const l = this.quality.cycle(); this.applyQuality(); this.hud.notify(NOTE.quality(l)); }
+    if (inp.hit('KeyN')) { this.sound.setMuted(!this.sound.muted); this.menu.setMuted(this.sound.muted); }
+    if (inp.hit('KeyP') && (this.mode !== 'title' || this.titleSettings)) { const l = this.quality.cycle(); this.applyQuality(); this.hud.notify(NOTE.quality(l)); this.menu.refreshSettings(this.settingsInfo()); }
     if (inp.hit('KeyG') && this.mode !== 'title') { this.hud.goalHidden = !this.hud.goalHidden; }
 
     switch (this.mode) {
-      case 'title': this.rig.override = Opening.titleCamera(this, this.time); break;
+      case 'title':
+        this.rig.override = Opening.titleCamera(this, this.time);
+        if (inp.hit('Escape') && this.titleEl) this.showTitleSettings(!this.titleSettings);
+        break;
       case 'cut': {
         this.seq.update(dt, inp.hit('Space') || inp.hit('Enter') || inp.hit('KeyE'));
         this.player.animate(dt, 0, false); this.player.sync();
@@ -1557,9 +1584,10 @@ export class Game {
     const mv = f.multiplyScalar(inp.axis(['KeyS', 'ArrowDown'], ['KeyW', 'ArrowUp'])).add(r.multiplyScalar(inp.axis(['KeyA'], ['KeyD'])));
     if (mv.lengthSq() > 1) mv.normalize();
     if (this.hud.helpOpen() || this.meet) mv.set(0, 0, 0);
-    // Esc, or the browser letting go of the mouse (which is what Esc does while looking around), opens the menu.
-    if (inp.lockLost) { inp.lockLost = false; this.menuByLock = this.time; this.openTab('goal'); return; }
-    if (inp.hit('Escape')) { this.openTab('goal'); return; }
+    // Esc opens Settings. While the mouse is captured the browser keeps the Esc key for itself and only lets go
+    // of the mouse, so that opens Settings too (and an Esc that arrives a moment later must not shut it again).
+    if (inp.lockLost) { inp.lockLost = false; this.menuByLock = this.time; this.openTab('settings'); return; }
+    if (inp.hit('Escape')) { this.openTab('settings'); return; }
     const keyed = MENU_TABS.find(t => t.key && inp.hit('Key' + t.key));
     if (keyed) { this.openTab(keyed.id); return; }
     if (this.sitting) {
