@@ -5,7 +5,7 @@
 // and arrives (the pin clears). Your own pin clears the same way.
 export default async ({ page, shot, ev, key }) => {
   const mode = () => ev('__game.mode');
-  await page.click('button[data-a="new"]');
+  await page.click('button[data-a="new"]', { noWaitAfter: true, timeout: 120000 });
   await ev(`__game.seq.speed = 30`);
   for (let i = 0; i < 160 && (await mode()) !== 'play'; i++) { await page.waitForTimeout(250); await ev(`(() => { const g = __game; g.input.pressed.add(g.mode === 'letter' ? 'KeyE' : 'Space'); })()`); }
   await ev(`(() => { const g = __game; g.give('read-letter'); g.renderEvery = 1; g.meet = null; g.cutCam = null; g.rig.override = null; g.mode = 'play';

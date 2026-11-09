@@ -179,14 +179,14 @@ export function populatePeaks(p: Planet, scene: THREE.Scene, c: WorldContent,
   // ---- goats: a herd by the pen, three by the river, and Pebble the runaway on the west cliffs
   R.goats = [] as { obj: THREE.Object3D; home: THREE.Vector3; dir: THREE.Vector3; t: number; look: number }[];
   const goatAt = (la: number, lo: number) => {
-    const g = put(P.goat(), la, lo, 0, undefined, 0.05);
+    const g = put(P.goat(), la, lo, 0, undefined, 0.05); g.userData.mapSkip = true;
     addOutlinesSoft(g);
     R.goats.push({ obj: g, home: p.dirRiver(la, lo), dir: p.dirRiver(la, lo), t: Math.random() * 5, look: 0 });
     return g;
   };
   for (let i = 0; i < 5; i++) goatAt(PK.pen[0] - 1 + P.rand() * 4, PK.pen[1] - P.rand() * 6);
   for (const [la, lo] of [[94, -9], [96, -12], [99, -8.5]]) goatAt(la, lo);
-  const pebble = P.goat(); pebble.scale.setScalar(0.7); addOutlinesSoft(pebble);
+  const pebble = P.goat(); pebble.userData.mapSkip = true; pebble.scale.setScalar(0.7); addOutlinesSoft(pebble);
   R.pebble = put(pebble, PK.runaway[0], PK.runaway[1], 0, undefined, 0.05);
   lm('West cliffs', PK.runaway[0], PK.runaway[1], 'peak');
 
