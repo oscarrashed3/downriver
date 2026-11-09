@@ -37,6 +37,7 @@ export class LongNight {
   private lineT = 0;
   private played = 0;
   private autoT = 0;
+  private camOn = false;
   private pile = new THREE.Group();
   private glowLog!: THREE.Mesh;
   private carried!: THREE.Mesh;
@@ -169,6 +170,10 @@ export class LongNight {
     this.updatePuff(dt);
     if (this.phase === 'wake') return;
 
+    // seated by the fire: a wide, slow shot across the flames toward Hollo, so you see everyone at once
+    const seated = !!g.sitting && this.seats.includes(g.sitting) && g.mode === 'play';
+    if (seated && this.phase !== 'arrive') { g.cutCam = ch.fireCam(this.fire, ch.hollo.root.position, 6.5, 3.2, -0.35 + Math.sin(this.t * 0.05) * 0.25); this.camOn = true; }
+    else if (this.camOn && g.mode === 'play') { this.camOn = false; g.cutCam = null; g.rig.override = null; g.rig.easeFromHere(0.8); }
     // Fold floats over the fire like a paper lantern
     if (this.phase !== 'arrive') {
       const up = this.up(this.fire);
@@ -189,7 +194,7 @@ export class LongNight {
     if (low && this.lowTold !== this.logsIn) { this.lowTold = this.logsIn; g.hud.notify(this.logsIn === 0 ? NIGHT_WORDS.firstLow : NIGHT_WORDS.low); }
 
     if (this.phase === 'arrive' && g.sitting && this.seats.includes(g.sitting)) { this.phase = 'gather'; this.t = 0; }
-    if (this.phase === 'arrive' && this.autopilot && this.t > 1) g.sit(this.seats[0]);
+    if (this.phase === 'arrive' && this.autopilot && this.t > 1 && g.mode === 'play' && !g.sitting) g.sit(this.seats[0]);
     if (this.phase === 'gather') this.updateWalkers(dt);
 
     if (this.lineT > 0) {
@@ -223,8 +228,10 @@ export class LongNight {
       if (!w.started) return;
       const s = this.seatPose(w.seat);
       const goal = s.at.clone().addScaledVector(s.fwd, 0.08);
-      const cur = w.n.root.position.clone(), gap = cur.distanceTo(goal);
-      if (gap < 0.25) {
+      const cur = w.n.root.position.clone();
+      // ground distance only: the stool top and the walking height differ a little
+      const gap = cur.clone().sub(p.center).normalize().angleTo(goal.clone().sub(p.center).normalize()) * p.R;
+      if (gap < 0.3) {
         w.done = true;
         w.n.place(goal, s.up, s.fwd); w.n.pose = { sit: 1 }; w.n.speedShown = 0; w.n.faceOverride = null;
         w.n.lookAt = fire.clone().addScaledVector(s.up, 0.8);
@@ -236,7 +243,6 @@ export class LongNight {
       const nd = cd.clone().lerp(gd, step).normalize();
       w.n.up.copy(nd);
       p.surfacePoint(nd, -0.05, w.n.root.position);
-      if (gap < 0.6) w.n.root.position.lerp(goal, 0.3);
       w.n.speedShown = 2.3; w.n.faceOverride = nd.clone().sub(cd).multiplyScalar(1e3);
     });
     if (this.walkers.every(w => w.done)) { this.phase = 'logs'; this.level = 0.9; g.hud.notify(NIGHT_WORDS.allHere); }
@@ -251,10 +257,10 @@ export class LongNight {
     const beats: Beat[] = [{
       line: { text: WINTER_LINES[0] }, dur: 6.5,
       enter: () => { g.day.frozen = false; before = g.snow.snowpack; },
-      tick: (k, dt) => { setWinter(smoothstep(0, 0.7, k)); g.day.t = (g.day.t + dt * 0.18 * g.seq.speed) % 1; g.cutCam = ch.fireCam(fire, hollo, 8 + k * 12, 3 + k * 10, 0.4 - k * 0.3); },
+      tick: (k, dt) => { setWinter(smoothstep(0, 0.7, k)); g.day.t = (g.day.t + dt * 0.18 * g.seq.speed) % 1; g.cutCam = ch.fireCam(fire, hollo, 8 + k * 10, 4 + k * 18, 0.4 - k * 0.3); },
     }, {
       line: { text: WINTER_LINES[1] }, dur: 5.5,
-      tick: (k, dt) => { g.day.t = (g.day.t + dt * 0.12 * g.seq.speed) % 1; g.cutCam = ch.fireCam(fire, hollo, 20 - k * 12, 13 - k * 9, 0.1 - k * 0.3); },
+      tick: (k, dt) => { g.day.t = (g.day.t + dt * 0.12 * g.seq.speed) % 1; g.cutCam = ch.fireCam(fire, hollo, 18 - k * 10, 22 - k * 16, 0.1 - k * 0.3); },
       exit: () => {
         passWinter(g.snow);
         if (g.snow.snowpack > before + 0.01) ch.placeNewStone(g.snow.snowpack);
@@ -288,7 +294,7 @@ export class LongNight {
   }
 
   // ------------------------------------------------------------------ Hollo wakes
-  private wakeBeats(): Beat[] {
+  wakeBeats(): Beat[] {
     const g = this.g, ch = this.ch, pl = g.player, h = ch.hollo, p = ch.p, R = this.R;
     const fire = this.fire, holloAt = h.root.position.clone();
     const spring = ch.at(PK.spring), bridge = ch.at(PK.bridge);
@@ -323,7 +329,7 @@ export class LongNight {
         const f = face(), up = this.up(f);
         const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(h.root.quaternion).projectOnPlane(up).normalize();
         const side = new THREE.Vector3().crossVectors(up, fwd);
-        g.cutCam = { pos: f.clone().addScaledVector(fwd, 5.5 - k * 1.2).addScaledVector(up, -0.6).addScaledVector(side, 1.4), look: f, up };
+        g.cutCam = { pos: f.clone().addScaledVector(fwd, 3.4 - k * 0.6).addScaledVector(up, 0.4).addScaledVector(side, 1.3), look: f, up };
         h.eyeOpen = smoothstep(0.35, 0.7, k);
         breath.color.set('#ffffff').lerp(new THREE.Color('#ffd8b0'), smoothstep(0.5, 1, k));
       },
@@ -372,19 +378,18 @@ export class LongNight {
     });
     // 5. the valley answers: short cuts
     const goats = (R.goats as { obj: THREE.Object3D }[]) ?? [];
-    const reactions: { at: () => THREE.Vector3; r: number; h: number; a: number; act?: (k: number) => void }[] = [
+    const reactions: { at: () => THREE.Vector3; r: number; h: number; a: number; act?: (k: number) => void; cam?: (k: number) => CamPose }[] = [
       { at: () => goats[0]?.obj.position.clone() ?? ch.at(PK.pen), r: 6, h: 2.5, a: 0.6, act: k => goats.slice(0, 4).forEach((gt, i) => { const up = this.up(gt.obj.position); gt.obj.position.addScaledVector(up, Math.max(0, Math.sin((k * 2 + i * 0.3) * Math.PI)) * 0.06); }) },
       { at: () => ch.at(PK.ridge), r: 14, h: 6, a: 2.2 },
       { at: () => ch.at(PK.windmill), r: 11, h: 4, a: 1.1 },
-      { at: () => fire, r: 6, h: 2.4, a: 0.9, act: () => all().forEach(n => { n.pose = { wave: 1 }; n.smileT = 2; }) },
+      { at: () => fire, r: 6, h: 2.4, a: 0.9, cam: (k: number) => ch.fireCam(fire, holloAt, 6.5 - k, 2.8, -0.2 + k * 0.3), act: () => all().forEach(n => { n.pose = { wave: 1 }; n.smileT = 2; }) },
       { at: () => ch.npc('odo').root.position.clone(), r: 3.6, h: 1.8, a: 2.6, act: () => { ch.npc('odo').pose = { wave: 1 }; } },
-      { at: () => g.fold.root.position.clone(), r: 3, h: 0.6, a: 1.7, act: k => { g.fold.root.rotation.x = k * Math.PI * 2; if (k < 0.05) g.fold.hop(); } },
+      { at: () => this.fire, r: 5, h: 3.2, a: 1.7, act: k => { const up = this.up(this.fire); g.fold.root.position.copy(this.fire).addScaledVector(up, 2.6 + Math.sin(k * Math.PI) * 1.2); if (k < 0.05) g.fold.hop(); } },
     ];
     reactions.forEach((rc, i) => beats.push({
       dur: 1.5,
       enter: () => { if (i === 3) { all().forEach(n => (n.pose = { wave: 1 })); g.sound.sfxPlay('gift'); } if (i === 2) (R.mill as THREE.Object3D).userData.fast = 5; },
-      tick: k => { const c = rc.at(); g.cutCam = ch.orbit(c, rc.r, rc.h, rc.a + k * 0.25); rc.act?.(k); },
-      exit: () => { if (i === 5) g.fold.root.rotation.x = 0; },
+      tick: k => { const c = rc.at(); g.cutCam = rc.cam ? rc.cam(k) : ch.orbit(c, rc.r, rc.h, rc.a + k * 0.25); rc.act?.(k); },
     }));
     // 6. Hollo stands, shakes the snow off in a big puff, and hums; every stone answers
     beats.push({
@@ -400,7 +405,7 @@ export class LongNight {
           ch.lanterns.flash = [2.5, 2.5, 2.5, 2.5];
           ch.lanterns.stones.forEach(s => this.ring(s.position.clone(), 14, '#ffe8b0', 2.4));
         }
-        g.cutCam = ch.fireCam(fire, h.root.position, 15 - k * 3, 3 + k * 4, -0.5 + k * 0.5);
+        g.cutCam = ch.orbit(h.root.position, 13 - k * 2, 5 + k * 4, 0.2 + k * 0.4);
       },
     });
     // 7. the theme, once, warm; Hollo looks at you, then walks home to the peaks
@@ -416,7 +421,7 @@ export class LongNight {
         p.surfacePoint(d, 0.2, h.root.position);
         const mv = h.root.position.clone().sub(prev);
         if (w > 0 && mv.lengthSq() > 1e-8) { orientTo(h.root, d, mv); h.walk += mv.length() * 0.9; }
-        g.cutCam = ch.fireCam(fire, h.root.position, 14 + k * 8, 4 + k * 6, -0.1 + k * 0.4);
+        g.cutCam = ch.orbit(h.root.position, 15 + k * 6, 10 + k * 6, 0.6 + k * 0.5);
         const f = face(); all().forEach(n => (n.lookAt = f)); pl.lookAt = f;
       },
     });
