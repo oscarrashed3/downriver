@@ -10,6 +10,8 @@ import { toonFlat } from './person';
 // hands with fingers, a face with brows and cheeks, and cloth and hair that hang on springs.
 // Small parts of one colour on one joint are merged into a single mesh, so all this detail costs
 // about as many draw calls as the old plain body.
+// The Kit and the face and part helpers are exported so the Windfolk of the Sky Isles
+// (src/world/skyIsles/windfolk.ts) are built in exactly the same hand.
 
 export type VillagerKind = 'ysolde' | 'odo' | 'bram' | 'tor' | 'nima';
 
@@ -17,13 +19,13 @@ export type VillagerKind = 'ysolde' | 'odo' | 'bram' | 'tor' | 'nima';
 export interface Gait { rate: number; stride: number; bounce: number; arm: number; waddle: number }
 export const GAIT_DEFAULT: Gait = { rate: 1, stride: 1, bounce: 1, arm: 1, waddle: 0 };
 
-type V3 = [number, number, number];
-interface Opt { r?: V3; s?: number | V3; line?: boolean; dbl?: boolean; flat?: boolean }
+export type V3 = [number, number, number];
+export interface Opt { r?: V3; s?: number | V3; line?: boolean; dbl?: boolean; flat?: boolean }
 
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _p = new THREE.Vector3(), _s = new THREE.Vector3();
 
 /** Collects small parts per joint and colour, then merges each set into one mesh. */
-class Kit {
+export class Kit {
   private sets = new Map<THREE.Object3D, Map<string, THREE.BufferGeometry[]>>();
   add(parent: THREE.Object3D, geo: THREE.BufferGeometry, color: string, x = 0, y = 0, z = 0, o: Opt = {}) {
     _e.set(...(o.r ?? [0, 0, 0])); _q.setFromEuler(_e);
@@ -54,17 +56,17 @@ class Kit {
 }
 
 const G = THREE;
-const cap = (r: number, len: number, rs = 10) => new G.CapsuleGeometry(r, len, 4, rs);
-const sph = (r: number, w = 12, h = 9) => new G.SphereGeometry(r, w, h);
-const cyl = (rt: number, rb: number, h: number, n = 10, open = false) => new G.CylinderGeometry(rt, rb, h, n, 1, open);
-const box = (x: number, y: number, z: number) => new G.BoxGeometry(x, y, z);
-const tor = (r: number, t: number, arc = Math.PI * 2, rs = 6, ts = 14) => new G.TorusGeometry(r, t, rs, ts, arc);
-const cone = (r: number, h: number, n = 8) => new G.ConeGeometry(r, h, n);
-function lathe(pts: [number, number][], n = 16, start = 0, len = Math.PI * 2) {
+export const cap = (r: number, len: number, rs = 10) => new G.CapsuleGeometry(r, len, 4, rs);
+export const sph = (r: number, w = 12, h = 9) => new G.SphereGeometry(r, w, h);
+export const cyl = (rt: number, rb: number, h: number, n = 10, open = false) => new G.CylinderGeometry(rt, rb, h, n, 1, open);
+export const box = (x: number, y: number, z: number) => new G.BoxGeometry(x, y, z);
+export const tor = (r: number, t: number, arc = Math.PI * 2, rs = 6, ts = 14) => new G.TorusGeometry(r, t, rs, ts, arc);
+export const cone = (r: number, h: number, n = 8) => new G.ConeGeometry(r, h, n);
+export function lathe(pts: [number, number][], n = 16, start = 0, len = Math.PI * 2) {
   return new G.LatheGeometry(pts.map(([r, y]) => new G.Vector2(r, y)), n, start, len);
 }
 /** Cloth folds: ripple a lathe's radius around its axis, more towards the hem. */
-function folds(g: THREE.BufferGeometry, n: number, amt: number, yTop: number, yBot: number, seed = 0) {
+export function folds(g: THREE.BufferGeometry, n: number, amt: number, yTop: number, yBot: number, seed = 0) {
   const p = g.attributes.position as THREE.BufferAttribute;
   for (let i = 0; i < p.count; i++) {
     const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
@@ -76,7 +78,7 @@ function folds(g: THREE.BufferGeometry, n: number, amt: number, yTop: number, yB
   return g;
 }
 /** A flat triangle (paper, cloth ends). */
-function tri(a: V3, b: V3, c: V3) {
+export function tri(a: V3, b: V3, c: V3) {
   const g = new G.BufferGeometry();
   g.setAttribute('position', new G.Float32BufferAttribute([...a, ...b, ...c], 3));
   g.setAttribute('uv', new G.Float32BufferAttribute([0, 0, 1, 0, 0, 1], 2));
@@ -157,7 +159,7 @@ function legs(p: Person, k: Kit, o: LegSpec) {
 }
 
 /** A hand with four fingers and a thumb, gently curled, merged into one mesh. */
-function handGeo(s: number, size = 1) {
+export function handGeo(s: number, size = 1) {
   const parts: THREE.BufferGeometry[] = [];
   const put = (g: THREE.BufferGeometry, x: number, y: number, z: number, r: V3 = [0, 0, 0], sc: V3 = [1, 1, 1]) => {
     _e.set(...r); _q.setFromEuler(_e); _m.compose(_p.set(x, y, z), _q, _s.set(...sc));
@@ -185,8 +187,8 @@ function arms(p: Person, k: Kit, o: ArmSpec) {
   }
 }
 
-interface FaceSpec { skin: string; brow: string; browW?: number; browT?: number; browTilt?: number; nose?: 'button' | 'round' | 'long' | 'bulb'; noseC?: string; blush?: string; wrinkles?: boolean; lids?: number; ears?: number; skull?: V3; freckles?: boolean; lashes?: boolean }
-function face(p: Person, k: Kit, look: PersonLook, f: FaceSpec) {
+export interface FaceSpec { skin: string; brow: string; browW?: number; browT?: number; browTilt?: number; nose?: 'button' | 'round' | 'long' | 'bulb'; noseC?: string; blush?: string; wrinkles?: boolean; lids?: number; ears?: number; skull?: V3; freckles?: boolean; lashes?: boolean }
+export function face(p: Person, k: Kit, look: PersonLook, f: FaceSpec) {
   const h = p.head, sk = f.skull ?? [1, 1.05, 0.98];
   k.add(h, sph(0.165, 16, 12), f.skin, 0, 0.17, 0, { s: sk });
   k.add(h, sph(0.12, 12, 9), f.skin, 0, 0.1, 0.035, { s: [1.1, 0.8, 1] });
@@ -231,18 +233,18 @@ function face(p: Person, k: Kit, look: PersonLook, f: FaceSpec) {
   void look;
 }
 
-function neckHead(p: Person, k: Kit, skin: string, HS: number, neckR = 0.05) {
+export function neckHead(p: Person, k: Kit, skin: string, HS: number, neckR = 0.05) {
   p.neck.position.y = 0.5; p.torso.add(p.neck);
   k.add(p.neck, cyl(neckR, neckR + 0.01, 0.11, 8), skin, 0, 0.02, 0);
   p.head.position.y = 0.07; p.head.scale.setScalar(HS); p.neck.add(p.head);
   p.head.add(p.hair);
 }
-function anchors(p: Person) {
+export function anchors(p: Person) {
   p.hipR.position.set(0.2, -0.02, 0.05); p.torso.add(p.hipR);
   p.strapPoint.position.set(0.12, 0.3, 0.17); p.torso.add(p.strapPoint);
 }
 /** A pivot that hangs from a parent at a point, ready for the Sway. */
-function pivot(parent: THREE.Object3D, x: number, y: number, z: number) { const g = new G.Group(); g.position.set(x, y, z); parent.add(g); return g; }
+export function pivot(parent: THREE.Object3D, x: number, y: number, z: number) { const g = new G.Group(); g.position.set(x, y, z); parent.add(g); return g; }
 
 // ---------------------------------------------------------------- Ysolde, keeper of the spring
 

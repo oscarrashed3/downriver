@@ -46,6 +46,8 @@ export interface PersonLook {
   villager?: VillagerKind;
   /** Their own walk; defaults to Nilo's. */
   gait?: Partial<Gait>;
+  /** A body built by other code (the Sky Isles windfolk): fills the joints instead of the plain body. */
+  custom?: (p: Person, look: PersonLook) => void;
 }
 
 export type PersonProp = 'stick' | 'tinCup' | 'kettle' | 'notebook' | 'goggles' | 'bell' | 'lavender' | 'brooch' | 'kneePads' | 'boatPeek' | 'kiteString' | 'towel';
@@ -160,6 +162,7 @@ export class Person {
     this.hips.position.y = this.hipY;
     this.body.scale.setScalar(H);
     this.gait = { ...GAIT_DEFAULT, ...look.gait };
+    if (look.custom) { look.custom(this, look); addOutlines(this.root, '#3a2a2e', 0.012); return; }
     if (look.villager && !look.wanderer) { buildVillager(this, look); addOutlines(this.root, '#3a2a2e', 0.012); return; }
     if (look.wanderer) { buildWanderer(this, look); addOutlines(this.root, '#2a1e24', 0.011); return; }
 
