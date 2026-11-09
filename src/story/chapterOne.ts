@@ -15,7 +15,7 @@ import { orientTo, anyTangent } from '../world/sphere';
 import { clamp, lerp, smoothstep } from '../world/noise';
 import { SCRIPTS } from '../data/scripts';
 import { NOTE, PROMPT, DOORS } from '../data/words';
-import { CAMPFIRE, WINTER_LINES, DAWN_LINES, FAREWELL, KITE_GIFT, KITE_FLIGHT, POSTMAN, SENDOFF, ECHOES, NOT_YET } from '../data/story';
+import { CAMPFIRE, WINTER_LINES, FAREWELL, KITE_GIFT, KITE_FLIGHT, POSTMAN, SENDOFF, ECHOES, NOT_YET } from '../data/story';
 import { passWinter, isHealed, projectedSnowpack } from '../systems/snowpack';
 import { currentStep, invitedCount, lanternsLit, FRIENDS } from './quests';
 import { letterPanel } from './panels';
@@ -23,14 +23,19 @@ import { makePostman, type Postman } from '../world/postman';
 import { bagAdd, bagTake } from '../systems/backpack';
 import { makeSketch } from '../systems/sketch';
 import type { Hollo } from '../world/hollo';
+import { HolloCloud } from '../world/holloCloud';
 import type { CamPose } from '../systems/skyView';
 
 /** Viewpoints: sit, and the view draws itself into the sketchbook. */
 export const VIEWPOINTS = [
-  { id: 'vp-spring', at: [17.4, 12.6], look: [13.2, 0], label: 'Hollo, asleep on the spring' },
+  { id: 'vp-spring', at: [17.4, 12.6], look: [13.2, 0], label: "Hollo's spring, under the peaks" },
   { id: 'vp-ridge', at: [48.2, 41.5], look: [66, 0], label: 'From Kite Ridge, the whole valley' },
   { id: 'vp-bridge', at: [79.5, 8.5], look: [70, -12], label: "Odo's bridge, and the village behind it" },
 ];
+
+/** Where the ring of Hollo's clouds turns, over the peaks above the spring; and the wide shot of it [lat, lon, height, look down]. */
+const RING = [8, 0];
+const SKY_SHOT = [50, -12, 30, 0.42];
 
 const POLE_READINGS = [{ now: 1.1, old: 2.6 }, { now: 0.9, old: 2.3 }, { now: 0.8, old: 2.1 }];
 
@@ -64,8 +69,8 @@ export class ChapterOne {
   beam: THREE.Mesh;
   frozenMat: THREE.Material;
   springMat: THREE.Material;
-  /** Where Hollo stands once he is awake: up on the high shoulder above the spring. */
-  static HOLLO_HOME = [25, 16];
+  /** Hollo once he wakes: the clouds over the peaks. */
+  holloCloud: HolloCloud;
   /** Nima running to find you with the snow news: 'wait' until you are free, then 'run'. */
   nimaRun: 'wait' | 'run' | null = null;
   nimaAway = false;
@@ -86,6 +91,13 @@ export class ChapterOne {
     this.kiteGame = new KiteGame(g, this.R.torKite as THREE.Group, this.kiteString);
     this.night = new LongNight(g, this);
     this.hollo = this.R.hollo as Hollo;
+    const p = this.p;
+    this.holloCloud = new HolloCloud(this.hollo, p, g.scene, () => ({
+      swirl: this.at(PK.holloSwirl),
+      axis: p.dirRiver(RING[0], RING[1]),
+      home: p.dirRiver(40, 0),
+      river: r => p.surfacePoint(p.dirRiver(26 + r() * 12, (r() - 0.5) * 5), 8 + r() * 8),
+    }), () => g.sky?.cloudMat);
     // the spring is ice while Hollo sleeps on it
     const water = this.R.spring.userData.water as THREE.Mesh;
     this.springMat = water.material as THREE.Material;
@@ -244,12 +256,31 @@ export class ChapterOne {
       },
     });
     // Hollo himself: you can't wake him, but you can sit with him
+    const springAt = this.at(PK.spring), healed = () => this.has('peaks-healed');
     add({
-      id: 'hollo', world: 0, get pos() { return R.hollo.root.position; }, radius: 7,
+      // once he is the clouds, the spot where he slept is where you look up at him
+      id: 'hollo', world: 0, get pos() { return healed() ? springAt : R.hollo.root.position; }, radius: 7,
       label: () => (this.has('peaks-healed') ? PROMPT.holloAwake : PROMPT.hollo),
       act: () => {
         g.sound.sfxPlay('soft'); g.fold.hop();
-        g.hud.notify(this.has('peaks-healed') ? NOTE.holloHello : NOTE.holloAsleep(lanternsLit(g.questCtx())));
+        if (!this.has('peaks-healed')) { g.hud.notify(NOTE.holloAsleep(lanternsLit(g.questCtx()))); return; }
+        const pl = g.player;
+        // the camera cranes up and back over the treetops until his cloud fills the sky; under the old willow
+        // it backs out from under the crown first, so the leaves never sit in front of him
+        const tree = this.at(PK.tree), fromTree = pl.pos.clone().sub(tree).projectOnPlane(pl.up);
+        const back = fromTree.length() < 10 ? fromTree.normalize() : pl.pos.clone().sub(this.holloCloud.bigCloud).projectOnPlane(pl.up).normalize();
+        g.cut([{
+          dur: 4.5,
+          enter: () => g.sound.melody([74, 0, 78, 0, 81], 0.5),
+          tick: k => {
+            const cl = this.holloCloud.bigCloud, up = pl.up.clone();
+            const e = smoothstep(0, 0.75, k);
+            const pos = pl.pos.clone().addScaledVector(back, 2.4 + e * 9).addScaledVector(up, 1.4 + e * 8);
+            g.cutCam = { pos, look: pl.pos.clone().addScaledVector(up, 1.6).lerp(cl, 0.3 + e * 0.7), up };
+            pl.lookAt = cl.clone();
+          },
+          exit: () => { pl.lookAt = null; g.hud.notify(NOTE.holloHello); },
+        }]);
       },
     } as any);
 
@@ -451,13 +482,13 @@ export class ChapterOne {
     if (this.has('quest:night') && !this.has('invited:nima')) this.nimaRun = 'wait';
   }
 
-  /** Hollo up on the high shoulder, standing, eyes open; the spring free and running. */
+  /** Hollo is the clouds now: his body gone from the spring, his own big cloud drifting over the peaks; the spring free and running. */
   holloAwake() {
-    const h = this.hollo, [la, lo] = ChapterOne.HOLLO_HOME;
+    const h = this.hollo;
     h.rise = 1; h.eyeOpen = 1;
-    const d = this.p.dirRiver(la, lo);
-    this.p.surfacePoint(d, 0.2, h.root.position);
-    orientTo(h.root, d, this.at(PK.bridge).sub(h.root.position));
+    this.holloCloud.settle();
+    h.root.visible = false;
+    this.p.solids = this.p.solids.filter(s => s.obj !== h.root);
     (this.R.spring.userData.water as THREE.Mesh).material = this.springMat;
     (this.R.holloFire as THREE.Object3D).visible = false;
   }
@@ -488,6 +519,7 @@ export class ChapterOne {
     if (this.rainT > 0) this.rainT -= dt;
     if (this.kitePending && g.mode === 'play') this.startKiteGame();
     this.night.update(dt);
+    this.holloCloud.update(dt, g.time);
     if (this.kiteWatch) { const tor = this.npc('tor'); tor.lookAt = this.kiteGame.kitePos.clone(); tor.pose = this.kiteGame.caught ? { wave: Math.sin(g.time * 3) > 0.6 ? 1 : 0 } : {}; }
 
     // Night lanterns
@@ -589,7 +621,7 @@ export class ChapterOne {
       g.hud.notify(NOTE.windSeen);
       g.save();
     }
-    if (this.has('kite-flown') && !this.has('told:stones') && g.mode === 'play') { g.flags.add('told:stones'); setTimeout(() => g.hud.notify(NOTE.stonesBegin), 4000); }
+    if (this.has('kite-flown') && !this.has('told:stones') && !this.has('peaks-healed') && g.mode === 'play') { g.flags.add('told:stones'); setTimeout(() => g.hud.notify(NOTE.stonesBegin), 4000); }
     this.lanterns.update(dt);
     if (this.has('quest:night') && !this.has('gathered') && FRIENDS.every(f => this.has('invited:' + f))) {
       g.give('gathered'); g.sound.sfxPlay('chime');
@@ -780,7 +812,17 @@ export class ChapterOne {
     ];
   }
 
+  /** The wide shot of the sky over the healed valley: from high above the river, looking up the valley at the ring of clouds over the peaks. */
+  skyShot(): CamPose {
+    const p = this.p, [la, lo, h] = SKY_SHOT;
+    const pos = p.surfacePoint(p.dirRiver(la, lo), h);
+    const ring = p.center.clone().addScaledVector(p.dirRiver(RING[0], RING[1]), p.R + 30);
+    const look = ring.lerp(this.at(PK.spring), SKY_SHOT[3]);
+    return { pos, look, up: pos.clone().sub(p.center).normalize() };
+  }
+
   /** A shot from the far side of a fire, looking back across it at Hollo, so the giant fills the background. */
+
   fireCam(fire: THREE.Vector3, hollo: THREE.Vector3, r: number, h: number, swing: number): CamPose {
     const up = fire.clone().sub(this.p.center).normalize();
     const away = fire.clone().sub(hollo).projectOnPlane(up).normalize().applyAxisAngle(up, swing);
@@ -852,139 +894,6 @@ export class ChapterOne {
         tor.lookAt = null; pl.lookAt = null;
         g.hud.notify(NOTE.firstGlide);
         g.hud.notify(NOTE.kiteWind);
-        g.save();
-      },
-    });
-    return beats;
-  }
-
-  /** The long night beside Hollo: stories round the fire, the snow coming, and at dawn the giant wakes. */
-  campfireNight(): Beat[] {
-    const g = this.g, R = this.R, pl = g.player, h = this.hollo;
-    const fire = (R.holloFire as THREE.Object3D).position.clone();
-    const holloAt = h.root.position.clone();
-    const order = ['ysolde', 'bram', 'nima', 'tor', 'odo'];
-    let lastStep = -1;
-    const setWinter = (w: number) => {
-      g.winter = w;
-      g.grass.snow = w;
-      const step = Math.round(w * 4);
-      if (step !== lastStep) { lastStep = step; g.applySnow(); }
-    };
-    const F = PK.holloFire;
-    const seat = (i: number) => { const a = i / 6 * Math.PI * 2 + 0.3; return [F[0] + Math.cos(a) * 2.2, F[1] + Math.sin(a) * 2.6]; };
-    let before = 0;
-    const [hl, ho] = ChapterOne.HOLLO_HOME;
-    const startDir = holloAt.clone().sub(this.p.center).normalize();
-    const endDir = this.p.dirRiver(hl, ho);
-    const beats: Beat[] = [{ dur: 0.7, tick: k => g.hud.setFade(smoothstep(0, 1, k), '#1a1830') }, {
-      dur: 1.8,
-      enter: () => {
-        g.hud.setFade(1, '#1a1830', true);
-        order.forEach((id, i) => this.stand(this.npc(id), seat(i + 1), fire, { sit: 1 }));
-        const d = this.p.dirRiver(seat(0)[0], seat(0)[1]);
-        pl.placeAt(this.p, d);
-        pl.facing.copy(fire.clone().sub(pl.pos).projectOnPlane(pl.up).normalize());
-        pl.pose = { sit: 1 }; pl.sync();
-        g.day.frozen = true;
-        g.day.setLocal(pl.up, -0.3, false);
-        g.cutCam = this.fireCam(fire, holloAt, 6, 2.6, -0.5);
-        this.peopleAway = true;
-      },
-      tick: k => g.hud.setFade(1 - smoothstep(0.3, 1, k), '#1a1830'),
-    }];
-    CAMPFIRE.forEach((l, i) => beats.push({
-      line: l,
-      enter: () => { const n = this.npc(order[i]); n.smileT = 2.5; n.pose = { sit: 1, talking: true } as Npc['pose']; },
-      tick: k => { g.cutCam = this.fireCam(fire, holloAt, 5.5, 2.2, -0.6 + (i + k) * 0.25); },
-      exit: () => { this.npc(order[i]).pose = { sit: 1 }; },
-    }));
-    beats.push({
-      line: { text: WINTER_LINES[0] }, dur: 7,
-      enter: () => { g.day.frozen = false; before = g.snow.snowpack; },
-      tick: (k, dt) => {
-        setWinter(smoothstep(0, 0.7, k));
-        g.day.t = (g.day.t + dt * 0.2 * g.seq.speed) % 1;
-        g.cutCam = this.fireCam(fire, holloAt, 8 + k * 14, 3 + k * 12, 0.4 - k * 0.3);
-      },
-    });
-    beats.push({
-      line: { text: WINTER_LINES[1] }, dur: 6,
-      tick: (k, dt) => {
-        g.day.t = (g.day.t + dt * 0.15 * g.seq.speed) % 1;
-        g.cutCam = this.fireCam(fire, holloAt, 22 - k * 10, 15 - k * 9, 0.1 - k * 0.3);
-      },
-      exit: () => {
-        passWinter(g.snow);
-        if (g.snow.snowpack > before + 0.01) this.placeNewStone(g.snow.snowpack);
-        g.day.setLocal(pl.up, -0.06);
-      },
-    });
-    // Dawn: the eyes open
-    beats.push({
-      line: { text: DAWN_LINES[0] }, dur: 6,
-      tick: (k, dt) => {
-        g.day.t = (g.day.t + dt * 0.01 * g.seq.speed) % 1;
-        const face = h.head.getWorldPosition(new THREE.Vector3());
-        const up = face.clone().sub(this.p.center).normalize();
-        const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(h.root.quaternion).projectOnPlane(up).normalize();
-        g.cutCam = { pos: face.clone().addScaledVector(fwd, 6.5 - k * 2).addScaledVector(up, 0.6), look: face, up };
-        h.eyeOpen = k > 0.55 ? 1 : 0;
-        for (const id of order) this.npc(id).lookAt = face;
-        pl.lookAt = face;
-      },
-      exit: () => { g.sound.sfxPlay('power'); },
-    });
-    beats.push({
-      line: { text: DAWN_LINES[1] }, dur: 11,
-      tick: k => {
-        h.rise = smoothstep(0, 0.3, k);
-        const w = smoothstep(0.3, 1, k);
-        const d = startDir.clone().lerp(endDir, w).normalize();
-        const prev = h.root.position.clone();
-        this.p.surfacePoint(d, 0.2, h.root.position);
-        const mv = h.root.position.clone().sub(prev);
-        if (w > 0 && mv.lengthSq() > 1e-8) { orientTo(h.root, d, mv); h.walk += mv.length() * 0.9; }
-        else if (k > 0.15) orientTo(h.root, d, this.at([hl, ho]).sub(h.root.position));
-        setWinter(1 - smoothstep(0.2, 1, k) * 0.5);
-        g.cutCam = this.fireCam(fire, h.root.position, 14 + k * 8, 4 + k * 5, -0.3 + k * 0.4);
-        const face = h.head.getWorldPosition(new THREE.Vector3());
-        for (const id of order) this.npc(id).lookAt = face;
-        pl.lookAt = face;
-      },
-      exit: () => {
-        (R.spring.userData.water as THREE.Mesh).material = this.springMat;
-        if (isHealed(g.snow) || this.has('gathered')) {
-          g.give('peaks-healed'); g.give('journal:hollo'); g.give('item:frost');
-          if (this.has('built-fence')) g.give('journal:fences');
-        }
-        g.applyRiver();
-      },
-    });
-    beats.push({
-      line: { text: DAWN_LINES[2] }, dur: 7,
-      enter: () => { g.day.setLocal(pl.up, 0.1); g.sound.sfxPlay('splash'); },
-      tick: (k, dt) => {
-        setWinter(0.5 - smoothstep(0, 0.7, k) * 0.5);
-        g.grass.lush = lerp(0.62, 1, smoothstep(0.2, 1, k));
-        g.grass.bloom = smoothstep(0.3, 1, k);
-        g.day.t = (g.day.t + dt * 0.012 * g.seq.speed) % 1;
-        const spring = this.at(PK.spring);
-        g.cutCam = this.fireCam(spring, h.root.position, 9 - k * 2, 3.5 - k, 0.5 + k * 0.4);
-      },
-    });
-    beats.push({
-      dur: 1.2,
-      exit: () => {
-        setWinter(0);
-        g.day.frozen = false;
-        g.day.setLocal(pl.up, 0.35);
-        pl.pose = {}; pl.lookAt = null;
-        for (const n of this.c.npcs) this.sendHome(n);
-        this.peopleAway = false;
-        this.holloAwake();
-        g.applyRiver();
-        g.hud.notify(NOTE.allLit);
         g.save();
       },
     });

@@ -11,7 +11,7 @@ export interface Area {
 }
 
 export const AREAS: Area[] = [
-  { id: 'spring', world: 0, name: "Hollo's Spring", sub: 'where the river begins, asleep', at: [16, 0], r: 13, ground: '#d6e6ee', light: '#cfe4ff', sound: 'chimes' },
+  { id: 'spring', world: 0, name: "Hollo's Spring", sub: 'where the river begins', at: [16, 0], r: 13, ground: '#d6e6ee', light: '#cfe4ff', sound: 'chimes' },
   { id: 'village', world: 0, name: 'Hearth Village', sub: 'where the smoke goes up straight', at: [60.5, -17], r: 16, ground: '#a8c45a', light: '#ffd9a0', sound: 'fire' },
   { id: 'terraces', world: 0, name: 'Goat Terraces', sub: 'stone walls, and goats on top of them', at: [68.5, -33], r: 11, ground: '#c8b46a', light: '#ffe6b0', sound: 'goats' },
   { id: 'ridge', world: 0, name: 'Kite Ridge', sub: 'where the wind can be read', at: [50, 47], r: 13, ground: '#9ab070', light: '#e8f0ff', sound: 'wind' },

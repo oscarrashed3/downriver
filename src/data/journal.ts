@@ -44,7 +44,7 @@ export const JOURNAL: Record<string, JournalEntry> = {
   },
   'stone-returns': {
     id: 'stone-returns', title: 'A cup of water',
-    text: 'Sixty winters Ysolde carried a cup up to the spring. This morning the spring filled it for her. Hollo walked back up to the peaks, and the water followed him, all the way to the next world.',
+    text: 'Sixty winters Ysolde carried a cup up to the spring. This morning the spring filled it for her. Hollo came apart into clouds over the peaks, and the water followed him down, all the way to the next world.',
     sketch: c => { [70, 62, 55, 48, 42, 52].forEach((h, i) => { c.fillStyle = i === 5 ? '#9fd3ff' : '#8e8aa8'; c.fillRect(14 + i * 17, 88 - h * 0.9, 10, h * 0.9); }); },
   },
   'where-snow-goes': {
@@ -69,7 +69,7 @@ export const JOURNAL: Record<string, JournalEntry> = {
   },
   'hollo': {
     id: 'hollo', title: 'The snow that walks',
-    text: 'Hollo sleeps on the spring when the mountain feels empty, and climbs back to the peaks when it feels full. The water follows him down. Three things woke him: the wind read right, the snow held, and the whole valley beside him on the long night.',
+    text: 'Hollo sleeps on the spring when the mountain feels empty, and goes back to being cloud over the peaks when it feels full. The snow falls from him, and the water follows it down. Three things woke him: the wind read right, the snow held, and the whole valley beside him on the long night.',
     sketch: c => { c.fillStyle = '#f4f6ff'; c.beginPath(); c.ellipse(60, 58, 40, 22, 0, 0, 7); c.fill(); line(c, [[22, 60], [30, 40], [60, 34], [92, 42], [100, 60]]); line(c, [[85, 50], [90, 52]]); line(c, [[10, 82], [110, 82]], 1); },
   },
   'first-letter': {

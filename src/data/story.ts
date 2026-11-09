@@ -48,22 +48,17 @@ export const NIGHT_WORDS = {
   singPrompt: (tune: number[], played: number) => `<b>${tune.map((n, i) => (i < played ? `<s>${n}</s>` : i === played ? `<u>${n}</u>` : n)).join(' ')}</b> play the stones' tune`,
 };
 
-/** Hollo wakes: the thaw, Hollo standing, the walk home. */
+/** Hollo wakes: the thaw, Hollo rising and humming, then coming apart into the clouds over the peaks. */
 export const WAKE_LINES = [
   'The warmth runs out from the spring like a breath let go.',
-  'Hollo stands, shakes off the whole winter, and hums. Every stone answers.',
-  'He looks at you for a long moment. Then he walks home to the peaks, and the river finds its voice.',
+  'Hollo rises, and hums. Every stone answers.',
+  'Then he lets go. Puff by puff, the giant comes apart, and goes back to being sky.',
+  'He was never only snow. He was the clouds the snow comes from.',
 ];
 
 export const WINTER_LINES = [
   'The snow comes. It piles behind the fences on every ridge, and this time it stays.',
   'The night is long. Nobody leaves. Hollo breathes a little faster.',
-];
-
-export const DAWN_LINES = [
-  'At first light, something very big opens its eyes.',
-  'Hollo looks at you for a long moment. Then he stands, shakes off the night, and walks home to the peaks.',
-  'Under him, the spring wakes, cold and bright. The river finds its voice.',
 ];
 
 export const FAREWELL: { who: string; text: string }[] = [
@@ -78,7 +73,7 @@ export const FAREWELL: { who: string; text: string }[] = [
 export const SENDOFF = {
   push: 'Odo unties the rope. The river takes the boat gently, as if it had been waiting.',
   lanterns: 'Along the bank, one by one, they light paper lanterns and let them go.',
-  hollo: 'Far up the valley, Hollo hums. The lanterns rise on his breath.',
+  hollo: 'High over the peaks, Hollo\'s cloud hums. The lanterns rise on his breath.',
 };
 
 /** The postman drops out of the sky with the first letter from the light keeper. */

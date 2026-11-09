@@ -17,6 +17,10 @@ import { CAMPFIRE, WINTER_LINES, NIGHT_WORDS, WAKE_LINES } from '../data/story';
 import { passWinter, isHealed } from '../systems/snowpack';
 import { NOTE } from '../data/words';
 
+/** The rising shot's swing round the fire, and the downstream river shot [lat, lon from the river, height]. */
+const RISE_SWING = -0.3;
+const RIVER_CAM = [44, 1.5, 7];
+
 const ORDER = ['ysolde', 'bram', 'nima', 'tor', 'odo'];
 const NOTES = [62, 66, 69, 74];
 const TUNE = [0, 2, 1, 3];
@@ -42,9 +46,6 @@ export class LongNight {
   private glowLog!: THREE.Mesh;
   private carried!: THREE.Mesh;
   private rings: { m: THREE.Mesh; t: number }[] = [];
-  private puff: THREE.Points | null = null;
-  private puffV: THREE.Vector3[] = [];
-  private puffT = -1;
 
   constructor(private g: Game, private ch: ChapterOne) {
     const bark = new THREE.MeshToonMaterial({ color: '#6a4a32' }), cut = new THREE.MeshToonMaterial({ color: '#d8b884' });
@@ -167,7 +168,6 @@ export class LongNight {
     }
     for (const r of this.rings.filter(r => r.t >= r.m.userData.dur)) { g.scene.remove(r.m); r.m.geometry.dispose(); (r.m.material as THREE.Material).dispose(); }
     this.rings = this.rings.filter(r => r.t < r.m.userData.dur);
-    this.updatePuff(dt);
     if (this.phase === 'wake') return;
 
     // seated by the fire: a wide, slow shot across the flames toward Hollo, so you see everyone at once
@@ -391,73 +391,88 @@ export class LongNight {
       enter: () => { if (i === 3) { all().forEach(n => (n.pose = { wave: 1 })); g.sound.sfxPlay('gift'); } if (i === 2) (R.mill as THREE.Object3D).userData.fast = 5; },
       tick: k => { const c = rc.at(); g.cutCam = rc.cam ? rc.cam(k) : ch.orbit(c, rc.r, rc.h, rc.a + k * 0.25); rc.act?.(k); },
     }));
-    // 6. Hollo stands, shakes the snow off in a big puff, and hums; every stone answers
+    // 6. Hollo rises and hums; every stone answers. Seen across the fire, past the people, so his face shows
+    const riseLook = (k: number) => fire.clone().lerp(holloAt, 0.62).addScaledVector(this.up(fire), 3 + k * 2.5);
     beats.push({
-      line: { text: WAKE_LINES[1] }, dur: 6,
+      line: { text: WAKE_LINES[1] }, dur: 4,
       enter: () => { all().forEach(n => (n.pose = {})); },
       tick: k => {
-        h.rise = smoothstep(0, 0.45, k);
-        if (k > 0.45 && this.puffT < 0) this.shake(face());
-        if (k > 0.62 && !h.root.userData.hummed) {
+        h.rise = smoothstep(0, 0.55, k);
+        if (k > 0.5 && !h.root.userData.hummed) {
           h.root.userData.hummed = true;
           g.sound.tone(38, 0, 'strings', 0.7, 6); g.sound.tone(45, 0.1, 'strings', 0.5, 6);
           NOTES.forEach((m, j) => g.sound.tone(m, 0.6 + j * 0.05, 'bells', 0.4, 4)); // the stones in harmony
           ch.lanterns.flash = [2.5, 2.5, 2.5, 2.5];
           ch.lanterns.stones.forEach(s => this.ring(s.position.clone(), 14, '#ffe8b0', 2.4));
         }
-        g.cutCam = ch.orbit(h.root.position, 13 - k * 2, 5 + k * 4, 0.2 + k * 0.4);
-      },
-    });
-    // 7. the theme, once, warm; Hollo looks at you, then walks home to the peaks
-    const [hl, ho] = ChapterOneHome;
-    const startDir = holloAt.clone().sub(p.center).normalize(), endDir = p.dirRiver(hl, ho);
-    beats.push({
-      line: { text: WAKE_LINES[2] }, dur: 9,
-      enter: () => { g.sound.melody(theme, 0.5); g.sound.tone(50, 0, 'strings', 0.4, 8); g.sound.tone(57, 0.2, 'strings', 0.35, 8); },
-      tick: k => {
-        const w = smoothstep(0.25, 1, k);
-        const d = startDir.clone().lerp(endDir, w).normalize();
-        const prev = h.root.position.clone();
-        p.surfacePoint(d, 0.2, h.root.position);
-        const mv = h.root.position.clone().sub(prev);
-        if (w > 0 && mv.lengthSq() > 1e-8) { orientTo(h.root, d, mv); h.walk += mv.length() * 0.9; }
-        g.cutCam = ch.orbit(h.root.position, 15 + k * 6, 10 + k * 6, 0.6 + k * 0.5);
+        const c = ch.fireCam(fire, holloAt, 9 + k * 1.5, 2.8 + k * 1.6, RISE_SWING + k * 0.08);
+        g.cutCam = { ...c, look: riseLook(k) };
         const f = face(); all().forEach(n => (n.lookAt = f)); pl.lookAt = f;
       },
     });
+    // 7. he lets go: his coat comes apart into soft cloud puffs that swirl round the fire and the people, drift out
+    // over the river and settle as a ring of clouds above the peaks; his own cloud keeps his eyes a moment, and winks
+    const cloud = ch.holloCloud, sky = ch.skyShot();
+    const fUp = this.up(fire);
+    const above = (v: THREE.Vector3, min: number) => { // keep the camera clear of the ground
+      const d = v.clone().sub(p.center).normalize(), floor = p.surfacePoint(d, min);
+      return floor.distanceTo(p.center) > v.distanceTo(p.center) ? floor : v;
+    };
+    const mix = (a: CamPose, b: CamPose, w: number): CamPose => ({ pos: a.pos.clone().lerp(b.pos, w), look: a.look.clone().lerp(b.look, w), up: a.up });
+    let winked = false;
+    // close on his own cloud for the wink, from the side of the valley shot, so the pull back to it is one straight glide
+    const close = (): CamPose => {
+      const big = cloud.homeCloud(), bu = this.up(big), to = sky.pos.clone().sub(big).normalize();
+      return { pos: big.clone().addScaledVector(to, 24).addScaledVector(bu, -1), look: big.clone().addScaledVector(bu, 1.2), up: bu };
+    };
+    // looking back up the river from downstream, low over the water, as the puffs come out over it
+    const riverDown = p.surfacePoint(p.dirRiver(30, 0), 0);
+    const riverCam = (k: number): CamPose => {
+      const pos = p.surfacePoint(p.dirRiver(RIVER_CAM[0] + k * 3, RIVER_CAM[1]), RIVER_CAM[2] + k * 6);
+      return { pos, look: pos, up: this.up(pos) };
+    };
     beats.push({
-      dur: 1,
+      line: { text: WAKE_LINES[2] }, dur: 12.5,
+      enter: () => {
+        cloud.begin();
+        g.sound.melody(theme, 0.5); g.sound.tone(50, 0, 'strings', 0.4, 9); g.sound.tone(57, 0.2, 'strings', 0.35, 9);
+        g.sound.sfxPlay('whoosh');
+      },
+      tick: k => {
+        cloud.set(k);
+        if (k > 0.79 && !winked) { winked = true; g.sound.tone(81, 0, 'bells', 0.3, 2); g.sound.tone(86, 0.25, 'bells', 0.2, 2); }
+        const follow = cloud.centroid();
+        // across the fire as he loosens and the puffs swirl over the people; pulling back and up as they climb;
+        // then from downstream over the river as they drift out above it; then up to his own cloud for the wink
+        const a0 = ch.fireCam(fire, holloAt, 10.5 + k * 22, 4.4 + k * 16, RISE_SWING + 0.08 + k * 0.3);
+        const A: CamPose = { pos: a0.pos, look: riseLook(1).lerp(follow, smoothstep(0, 0.22, k)), up: fUp };
+        const rc = riverCam(smoothstep(0.3, 0.62, k));
+        const B: CamPose = { pos: rc.pos, look: follow.clone().lerp(riverDown, 0.3), up: rc.up };
+        let cam = mix(A, B, smoothstep(0.3, 0.46, k));
+        cam = mix(cam, close(), smoothstep(0.56, 0.72, k));
+        cam.pos = above(cam.pos, 2.2);
+        cam.up = this.up(cam.pos);
+        g.cutCam = cam;
+        cloud.eyesFace(cam.pos);
+        all().forEach(n => (n.lookAt = follow)); pl.lookAt = follow;
+      },
+      exit: () => cloud.set(1),
+    });
+    // 8. a last wide look: the ring of clouds above the healed valley, the sun coming up warm behind it
+    beats.push({
+      line: { text: WAKE_LINES[3] }, dur: 5,
+      tick: k => {
+        const cam = mix(close(), sky, smoothstep(0, 0.8, k));
+        cam.pos = above(cam.pos, 2.2); cam.up = this.up(cam.pos);
+        g.cutCam = cam;
+      },
+    });
+    beats.push({
+      dur: 0.6,
       exit: () => this.end(),
     });
     void sUp; void valleyUp; void clamp;
     return beats;
-  }
-
-  private shake(at: THREE.Vector3) {
-    const n = 220, geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
-    this.puff = new THREE.Points(geo, new THREE.PointsMaterial({ color: '#ffffff', size: 0.5, transparent: true, opacity: 0.9, depthWrite: false }));
-    this.puff.frustumCulled = false;
-    this.g.scene.add(this.puff);
-    const up = this.up(at);
-    this.puffV = Array.from({ length: n }, () => new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(4 + Math.random() * 6).addScaledVector(up, 3));
-    const a = geo.attributes.position as THREE.BufferAttribute;
-    for (let i = 0; i < n; i++) { const q = at.clone().addScaledVector(this.puffV[i], 0.2); a.setXYZ(i, q.x, q.y, q.z); }
-    this.puffT = 0;
-    this.g.sound.sfxPlay('whoosh');
-  }
-
-  private updatePuff(dt: number) {
-    if (!this.puff || this.puffT < 0) return;
-    this.puffT += dt;
-    const a = this.puff.geometry.attributes.position as THREE.BufferAttribute;
-    for (let i = 0; i < this.puffV.length; i++) {
-      this.puffV[i].multiplyScalar(1 - dt * 1.6);
-      a.setXYZ(i, a.getX(i) + this.puffV[i].x * dt, a.getY(i) + this.puffV[i].y * dt, a.getZ(i) + this.puffV[i].z * dt);
-    }
-    a.needsUpdate = true;
-    (this.puff.material as THREE.PointsMaterial).opacity = 0.9 * (1 - smoothstep(0.6, 2.4, this.puffT));
-    if (this.puffT > 2.4) { this.g.scene.remove(this.puff); this.puff.geometry.dispose(); this.puff = null; }
   }
 
   /** Back to play on the healed valley. */
@@ -480,4 +495,3 @@ export class LongNight {
   }
 }
 
-const ChapterOneHome = [25, 16];

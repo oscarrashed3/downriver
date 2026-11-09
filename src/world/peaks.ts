@@ -15,7 +15,7 @@ import type { Shape2 } from './collide';
 
 /** Where everything in Chapter One stands: [lat from the north pole, degrees of longitude from the river]. */
 export const PK = {
-  spring: [13.2, 0], wake: [21.5, -5.2], holloFire: [21.0, -9.6], ysoldeSpring: [21.9, -1.8], tree: [15.6, 15.5], spar: [17.4, 19.0], benchSpring: [17.0, 6.6],
+  spring: [13.2, 0], wake: [21.5, -5.2], holloFire: [21.0, -9.6], holloSwirl: [17.6, -5.3], ysoldeSpring: [21.9, -1.8], tree: [15.6, 15.5], spar: [17.4, 19.0], benchSpring: [17.0, 6.6],
   fire: [60.2, -17.5], ysoldeHouse: [56.6, -26.5], ysoldeBench: [58.4, -22.6], bramHouse: [65.8, -28.8], torHouse: [65.6, -9.4],
   house4: [54.2, -11.4], house5: [67.6, -19.5], windmill: [51.8, -24.5], garden: [55.8, -16.8], laundry: [62.4, -25.6],
   woodpile: [60.4, -11.6], workbench: [59.2, -13.0], tor: [58.6, -14.2], bram: [66.0, -25.2], pen: [69.5, -31.5],

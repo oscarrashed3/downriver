@@ -185,7 +185,7 @@ describe('Save migration', () => {
 
 describe('Story text', () => {
   it('keeps every line short enough for two lines on screen', () => {
-    const lines: string[] = [STORY.LETTER, ...STORY.WINTER_LINES, STORY.KITE_GIFT, ...STORY.KITE_FLIGHT, ...STORY.ECHOES, ...STORY.DAWN_LINES, ...STORY.OPENING.storm, STORY.POSTMAN.arrive, STORY.POSTMAN.hand, STORY.POSTMAN.after,
+    const lines: string[] = [STORY.LETTER, ...STORY.WINTER_LINES, STORY.KITE_GIFT, ...STORY.KITE_FLIGHT, ...STORY.ECHOES, ...STORY.WAKE_LINES, ...STORY.OPENING.storm, STORY.POSTMAN.arrive, STORY.POSTMAN.hand, STORY.POSTMAN.after,
       ...STORY.CAMPFIRE.map(l => l.text), ...STORY.FAREWELL.map(l => l.text), ...Object.values(STORY.NOT_YET), STORY.OPENING.homeLight];
     lines.forEach(l => expect(l.length, l).toBeLessThanOrEqual(110));
   });

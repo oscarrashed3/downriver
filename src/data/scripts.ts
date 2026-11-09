@@ -93,7 +93,7 @@ export const SCRIPTS: Record<string, Script> = {
     nodes: [
       { type: 'branch', ifFlag: 'peaks-healed', then: [
         { type: 'say', text: 'Sixty winters I carried this cup up here. Today the spring filled it.' },
-        { type: 'silence', seconds: 2.2, reward: 'He looked at you before he went up. Hollo never looks at anyone.' },
+        { type: 'silence', seconds: 2.2, reward: 'He winked at you before he went up. Hollo never looks at anyone.' },
         { type: 'give', items: ['journal:stone-returns'] },
         { type: 'say', text: 'Go and find Odo on his bridge. He has waited all winter for this.' },
       ], else: [
@@ -414,7 +414,7 @@ export const RETURN_LINES: Record<string, ReturnSet[]> = {
     ] },
     { ...CAME_BACK, lines: [
       'You came back. The spring said you would. It gurgled.',
-      "Hollo climbs a little higher every week. As if he's looking for you.",
+      "Hollo's cloud drifts a little lower every week. As if he's looking for you.",
       'The river you rode is still singing. Almost your name.',
     ] },
   ],
@@ -480,7 +480,7 @@ export const RETURN_LINES: Record<string, ReturnSet[]> = {
     { ...HEALED, lines: [
       'Snow on every ridge! The clouds landed right where we said.',
       'I named a new cloud after you. It is small and keeps walking off.',
-      'When Hollo stood up he looked like a cloud. A big sleepy one.',
+      'Hollo came apart into clouds! I knew he was one. A big sleepy one.',
     ] },
     { ...CAME_BACK, lines: [
       'You came back! I saw a cloud shaped like a boat and I just knew.',
