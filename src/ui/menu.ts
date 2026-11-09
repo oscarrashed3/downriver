@@ -39,11 +39,17 @@ const GEAR = `<svg viewBox="0 0 40 40" aria-hidden="true"><path d="M17.6 5h4.8l.
 /** A line-drawn gear for the title screen's Settings button (takes the text colour). */
 export const TITLE_GEAR = `<svg viewBox="0 0 40 40" aria-hidden="true"><path d="M17.6 5h4.8l.9 4.2 2.6 1.1 3.6-2.3 3.4 3.4-2.3 3.6 1.1 2.6 4.2.9v4.8l-4.2.9-1.1 2.6 2.3 3.6-3.4 3.4-3.6-2.3-2.6 1.1-.9 4.2h-4.8l-.9-4.2-2.6-1.1-3.6 2.3-3.4-3.4 2.3-3.6-1.1-2.6L5 22.4v-4.8l4.2-.9 1.1-2.6L8 10.5 11.4 7.1 15 9.4l2.6-1.1z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><circle cx="20" cy="20" r="5.2" fill="none" stroke="currentColor" stroke-width="2.2"/></svg>`;
 
-/** The few keys worth remembering, for the Settings page. */
+/** The few keys worth remembering, for the Settings page (the rest are one click away under "See all controls"). */
 const KEYS_SHORT: [string, string][] = [
-  ['W A S D', 'walk'], ['Mouse', 'look (click the world to capture it)'], ['X', 'run'], ['Space', 'jump, hold to listen'],
-  ['E', 'talk, use, sit'], ['M', 'map'], ['Esc', 'this page'], ['Scroll', 'camera nearer / further'],
+  ['W A S D', 'walk'], ['Mouse', 'look around'], ['E', 'talk, use, sit'], ['Esc', 'this page'],
 ];
+
+/** Paper for the Settings page: a torn (deckled) edge, drawn by displacing the sheet's outline with soft noise. */
+const PAPER_DEFS = `<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+  <filter id="dr-deckle" x="-4%" y="-4%" width="108%" height="108%">
+    <feTurbulence type="fractalNoise" baseFrequency="0.045" numOctaves="3" seed="11" result="n"/>
+    <feDisplacementMap in="SourceGraphic" in2="n" scale="11" xChannelSelector="R" yChannelSelector="G"/>
+  </filter></defs></svg>`;
 
 const pct = (v: number) => Math.round(v * 100);
 /** Slider positions for camera distance and mouse speed, as whole numbers 0..100. */
@@ -118,6 +124,7 @@ export class Menu {
     });
     this.page.addEventListener('input', e => {
       const r = e.target as HTMLInputElement, v = Number(r.value);
+      r.style.setProperty('--v', v + '%');
       const out = (t: string) => { const o = r.parentElement?.querySelector('output'); if (o) o.textContent = t; };
       if (r.dataset.a === 'volume') { this.onVolume(v / 100); out(v + '%'); }
       if (r.dataset.a === 'camdist') { const d = 4 + v / 100 * 10; this.onCamDist(d); out(distWord(d)); }
@@ -126,7 +133,8 @@ export class Menu {
     // Sliders and buttons on the page must not keep keyboard focus: Space, arrows and Esc belong to the game.
     this.page.addEventListener('change', e => (e.target as HTMLElement).blur?.());
     this.page.addEventListener('pointerup', e => { const t = e.target as HTMLElement; if (t.tagName === 'BUTTON') t.blur(); });
-    root.append(this.page, this.strip, this.gear, this.button);
+    const defs = document.createElement('div'); defs.innerHTML = PAPER_DEFS;
+    root.append(defs.firstElementChild!, this.page, this.strip, this.gear, this.button);
   }
 
   /** Show the corner button only while walking around. */
@@ -166,29 +174,31 @@ export class Menu {
       return `<button data-a="quality" data-q="${id}" class="${on ? 'on' : ''}" aria-pressed="${on}"><b>${label}</b><small>${note}</small></button>`;
     };
     const cap = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
-    this.open(`<div class="sheet menusheet settings${s.onTitle ? ' ontitle' : ''}">
+    this.open(`<div class="setpaper${s.onTitle ? ' ontitle' : ''}"><div class="deckle" aria-hidden="true"></div><div class="sheet menusheet settings${s.onTitle ? ' ontitle' : ''}">
       <button class="sx" data-a="close" aria-label="Close (Esc)" title="Close (Esc)">×</button>
       <h2>Settings</h2>
       <section><h3>Picture <span class="hint">Lower is smoother on older laptops &middot; <kbd>P</kbd></span></h3>
         <div class="seg">${q('auto', 'Auto', s.auto ? `now ${cap(s.quality)}` : 'picks for you')}${q('low', 'Low', 'smoothest')}${q('medium', 'Medium', 'balanced')}${q('high', 'High', 'most painterly')}</div>
       </section>
       <section><h3>Sound <span class="hint">Best with headphones &middot; <kbd>N</kbd> on / off</span></h3>
-        <div class="slide"><label for="set-vol">Volume</label><input id="set-vol" type="range" min="0" max="100" value="${pct(s.volume)}" data-a="volume"><output>${pct(s.volume)}%</output>
+        <div class="slide"><label for="set-vol">Volume</label><input id="set-vol" type="range" min="0" max="100" value="${pct(s.volume)}" data-a="volume" style="--v:${pct(s.volume)}%"><output>${pct(s.volume)}%</output>
           <button data-a="mute" class="mute${s.muted ? ' off' : ''}" aria-pressed="${s.muted}">${s.muted ? 'Sound off' : 'Sound on'}</button></div>
       </section>
       <section><h3>Camera <span class="hint">The mouse wheel also brings it nearer</span></h3>
-        <div class="slide"><label for="set-dist">Distance</label><input id="set-dist" type="range" min="0" max="100" value="${distTo100(s.camDist)}" data-a="camdist"><output>${distWord(s.camDist)}</output></div>
-        <div class="slide"><label for="set-sens">Mouse speed</label><input id="set-sens" type="range" min="0" max="100" value="${sensTo100(s.sens)}" data-a="sens"><output>${sensWord(s.sens)}</output></div>
+        <div class="slide"><label for="set-dist">Distance</label><input id="set-dist" type="range" min="0" max="100" value="${distTo100(s.camDist)}" data-a="camdist" style="--v:${distTo100(s.camDist)}%"><output>${distWord(s.camDist)}</output></div>
+        <div class="slide"><label for="set-sens">Mouse speed</label><input id="set-sens" type="range" min="0" max="100" value="${sensTo100(s.sens)}" data-a="sens" style="--v:${sensTo100(s.sens)}%"><output>${sensWord(s.sens)}</output></div>
       </section>
-      <section><h3>Controls ${s.onTitle ? '' : '<button class="link" data-a="controls">See all controls</button>'}</h3>
+      <section class="ctrl"><h3>Controls ${s.onTitle ? '' : '<button class="link" data-a="controls">See all controls</button>'}</h3>
         <div class="keys">${KEYS_SHORT.map(([k, w]) => `<div><kbd>${k}</kbd><span>${w}</span></div>`).join('')}</div>
       </section>
       ${s.onTitle ? '' : `<section class="journey"><h3>Your journey</h3>
         <div class="slide"><button data-a="reset" class="reset">Begin again</button><span class="hint">Erases your save and starts from the very beginning</span></div>
       </section>`}
-      <p class="foot">Kept on this computer &middot; <kbd>Esc</kbd> to close</p></div>`);
+      <p class="foot">Kept on this computer &middot; <kbd>Esc</kbd> to close</p></div></div>`);
     this.page.classList.toggle('ontitle', !!s.onTitle);
   }
+
+  settingsShowing() { return !this.page.classList.contains('hidden') && !!this.page.querySelector('.settings'); }
 
   /** Redraw the Settings page if it is the one showing (after P or N from the keyboard). */
   refreshSettings(s: SettingsInfo) { if (!this.page.classList.contains('hidden') && this.page.querySelector('.settings')) this.showSettings(s); }

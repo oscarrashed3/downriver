@@ -210,7 +210,7 @@ export class LanternTasks {
     });
     // the ember
     const carrying = this.has('ember-carry') && !this.has('ember-delivered');
-    this.lantern.visible = carrying && g.mode !== 'raft';
+    this.lantern.visible = carrying && !g.onRaft;
     g.fold.root.visible = !carrying || g.mode === 'cut';
     if (!carrying) return;
     if (g.mode !== 'play') return;

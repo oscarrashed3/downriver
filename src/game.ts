@@ -288,13 +288,13 @@ export class Game {
     this.nameTags = document.createElement('div'); this.nameTags.className = 'nametags';
     document.getElementById('ui')!.prepend(this.nameTags);
     this.menu.onGo = i => this.goBack(i);
-    this.menu.onTab = t => { if (this.mode === 'play' || this.mode === 'overlay') this.openTab(t); };
+    this.menu.onTab = t => { if (this.mode === 'play' || this.mode === 'raft' || this.mode === 'overlay') this.openTab(t); };
     this.menu.onGear = () => this.toggleOverlay('settings');
     this.menu.onClose = () => { if (this.titleSettings) this.showTitleSettings(false); else this.closeOverlay(); };
     this.menu.onQuality = q => {
       const was = this.quality.level;
       const l = this.quality.set(q); if (l !== was) this.applyQuality();
-      if (q !== 'auto') this.hud.notify(NOTE.quality(l));
+      // no toast here: the cards on the page already show the choice (and a toast would sit under the tab strip)
       this.menu.showSettings(this.settingsInfo());
     };
     this.menu.onVolume = v => { this.sound.setVolume(v); this.menu.setMuted(this.sound.muted); };
@@ -792,6 +792,9 @@ export class Game {
   }
 
   updateRaft(dt: number) {
+    // Esc (or the browser letting go of the mouse) opens Settings here too; the raft waits while it is open.
+    if (this.input.lockLost) { this.input.lockLost = false; this.menuByLock = this.time; this.openTab('settings'); return; }
+    if (this.input.hit('Escape')) { this.openTab('settings'); return; }
     const p = this.planet;
     const pl = this.player;
     const flow = flowArrivingAt(this.river, this.cur);
@@ -992,12 +995,17 @@ export class Game {
 
   // ------------------------------------------------------------------ overlays
   /** Open a menu tab, or close the menu if that tab is already open. */
+  /** Where the menu was opened from: walking, or drifting on the raft (which waits, paused, until it closes). */
+  overlayFrom: 'play' | 'raft' = 'play';
+  /** On the raft, even while the menu is open over it. */
+  get onRaft() { return this.mode === 'raft' || (this.mode === 'overlay' && this.overlayFrom === 'raft'); }
   toggleOverlay(kind: MenuTab) {
     if (this.overlay === kind) this.closeOverlay(); else this.openTab(kind);
   }
   openTab(kind: MenuTab) {
     if (this.overlay === kind) return;
     this.hideSheets();
+    if (this.mode !== 'overlay') this.overlayFrom = this.mode === 'raft' ? 'raft' : 'play';
     this.overlay = kind; this.mode = 'overlay';
     this.input.unlock();
     this.menu.select(kind);
@@ -1033,7 +1041,8 @@ export class Game {
     this.hideSheets();
     this.menu.select(null);
     this.overlay = null;
-    if (this.mode === 'overlay') this.mode = 'play';
+    if (this.mode === 'overlay') this.mode = this.overlayFrom;
+    this.overlayFrom = 'play';
     this.sound.sfxPlay('soft');
   }
   goalInfo(): GoalInfo {
@@ -1071,7 +1080,7 @@ export class Game {
   }
   updateFox(dt: number) {
     const fx = this.fox, joined = this.flags.has('fox-joined');
-    fx.f.root.visible = joined ? this.mode !== 'raft' && this.mode !== 'ride' : this.cur === FOX_WORLD;
+    fx.f.root.visible = joined ? !this.onRaft && this.mode !== 'ride' : this.cur === FOX_WORLD;
     if (!fx.f.root.visible) return;
     const p = this.planet;
     if (joined && this.foxWorld !== this.cur) { this.foxWorld = this.cur; fx.place(p, this.player.up.clone()); }
@@ -1671,7 +1680,10 @@ export class Game {
     PAINT.uTime.value = this.time;
     const inp = this.input;
     if (inp.hit('KeyN')) { this.sound.setMuted(!this.sound.muted); this.menu.setMuted(this.sound.muted); }
-    if (inp.hit('KeyP') && (this.mode !== 'title' || this.titleSettings)) { const l = this.quality.cycle(); this.applyQuality(); this.hud.notify(NOTE.quality(l)); this.menu.refreshSettings(this.settingsInfo()); }
+    if (inp.hit('KeyP') && (this.mode !== 'title' || this.titleSettings)) {
+      const l = this.quality.cycle(); this.applyQuality();
+      if (this.menu.settingsShowing()) this.menu.refreshSettings(this.settingsInfo()); else this.hud.notify(NOTE.quality(l));
+    }
     if (inp.hit('KeyG') && this.mode !== 'title') { this.hud.goalHidden = !this.hud.goalHidden; }
 
     switch (this.mode) {
@@ -1716,8 +1728,8 @@ export class Game {
     const p = this.planet;
     const viewUp = this.mode === 'title' ? new THREE.Vector3(0, 1, 0) : this.player.up;
     this.day.update(this.mode === 'overlay' ? 0 : dt * (this.sitting ? 9 : 1), viewUp);
-    this.menu.setButton(this.mode === 'play' || this.mode === 'overlay');
-    if (this.mode !== 'play' && this.mode !== 'overlay') inp.lockLost = false;
+    this.menu.setButton(this.mode === 'play' || this.mode === 'raft' || this.mode === 'overlay');
+    if (this.mode !== 'play' && this.mode !== 'raft' && this.mode !== 'overlay') inp.lockLost = false;
     if (this.mode === 'title' && !this.islands.baked) this.bakeIslands();
     this.day.apply(WORLDS[this.cur].palette, this.sunLight, this.moonLight, this.scene.fog as THREE.FogExp2, p.center);
     const aw = this.mode === 'title' ? [] : this.areaWeights();
@@ -1733,7 +1745,7 @@ export class Game {
     this.player.windLocal.copy(east).applyQuaternion(invQ);
 
     // ---- the world moves on
-    if (this.mode !== 'ride' && this.mode !== 'raft') {
+    if (this.mode !== 'ride' && !this.onRaft) {
       const hollo = this.cur === 0 && !this.flags.has('peaks-healed') ? this.ch1.hollo.root.position : null;
       const nearGiant = !!hollo && hollo.distanceTo(this.player.pos) < 16;
       const spd = this.player.vel.clone().projectOnPlane(this.player.up).length();
@@ -1794,7 +1806,7 @@ export class Game {
     this.rain.update(dt, p.center, this.player.pos, 16, this.ch1.rainT > 0 ? 1 : 0);
     // sound
     const near = p.riverNearest(this.player.up);
-    const riverNear = this.mode === 'raft' ? 1 : clamp(1 - near.dist / 30);
+    const riverNear = this.onRaft ? 1 : clamp(1 - near.dist / 30);
     const alt = clamp(p.height(this.player.up) / p.cfg.amplitude);
     this.sound.amb.day = this.day.day;
     // each area sounds a little like itself
@@ -1810,7 +1822,8 @@ export class Game {
     }
     this.sound.update(riverK, flowArrivingAt(this.river, this.cur), windK);
     this.hud.setFrost(onPeaks && this.mode === 'play' ? clamp((1 - this.player.warmth) * 1.1) : 0);
-    const showGoal = this.mode === 'play' || this.mode === 'raft' || this.mode === 'overlay';
+    // hidden while the menu is open: the tab strip runs along the top where the goal line sits
+    const showGoal = this.mode === 'play' || this.mode === 'raft';
     const qc = this.questCtx();
     const step = currentStep(qc);
     const goal = step && this.flags.has('read-letter') ? stepDetail(qc) : null;
