@@ -18,63 +18,141 @@ export function toonMat(color: string, variation = 1, rim = 1): THREE.MeshToonMa
 // ------------------------------------------------------------------ rock
 
 /**
- * Light thrown back up by the sunlit cloud sea under the islands: undersides and shaded cliffs stay pale and
- * pearly, as in the pictures, instead of sinking into brown. One shared uniform; the world can tint it at dusk.
+ * The island light. uBounce: light thrown back up by the sunlit cloud sea under the islands, so undersides and
+ * shaded cliffs stay pale and pearly instead of sinking into brown. uShadow: the cool lilac the limestone turns in
+ * shade (a hue shift, not a darkening). uLit: how bright and warm lit faces are. One set, shared by every island;
+ * the world can tint them at dusk.
  */
 export const ISLAND_LIGHT = {
-  uBounce: { value: new THREE.Color('#d4d6f2').multiplyScalar(0.46) },
+  uBounce: { value: new THREE.Color('#d8daf4').multiplyScalar(0.22) },
+  uShadow: { value: new THREE.Color('#a9a6cc') },
+  uLit: { value: 1.14 },
 };
-const BOUNCE_GLSL = /* glsl */ `
+
+/**
+ * Painted light for the island body and its growth. The toon light of paint() decides how lit each fragment is
+ * (sun band, half band, shade, with cast shadows and cloud shadows in it); this turns that into the pictures'
+ * two-tone: lit faces in warm cream and gold, shaded ones shifted to cool lilac (rock) or blue-green (grass), with a
+ * little bounce from the clouds below. vRock picks rock or grass shading.
+ */
+const GRADE_GLSL = /* glsl */ `
   {
+    vec3 lw = vec3(0.299, 0.587, 0.114);
+    vec3 alb = diffuseColor.rgb;
+    float k = dot(outgoingLight, lw) / max(dot(alb, lw), 1e-3);
+    // the half band counts as mostly lit: only faces turned well away from the sun go into shade
+    float lit = smoothstep(0.3, 0.58, k) * 0.78 + smoothstep(0.7, 0.95, k) * 0.22;
+    vec3 sunHue = uSunCol / max(dot(uSunCol, vec3(0.3333)), 1e-3);
+    vec3 litC = alb * mix(vec3(1.0), sunHue, 0.3) * uLit * (1.0 + 0.12 * clamp(k - 1.0, 0.0, 1.0));
+    vec3 ambHue = uAmbSky / max(dot(uAmbSky, vec3(0.3333)), 1e-3);
+    float g = dot(alb, vec3(0.3333));
+    vec3 rockSh = mix(alb * vec3(0.78, 0.74, 0.76), g * uShadow * 1.04, 0.45) * mix(vec3(1.0), ambHue, 0.1);
+    vec3 grassSh = alb * vec3(0.56, 0.7, 0.7);
+    vec3 shC = mix(grassSh, rockSh, vRock);
     float bny = dot(pN, pUp);
-    outgoingLight += diffuseColor.rgb * uBounce * (smoothstep(0.3, -1.0, bny) + 0.3);
+    shC += alb * uBounce * (smoothstep(0.3, -1.0, bny) + 0.25);
+    vec3 graded = mix(shC, litC, lit);
+    // keep paint()'s rim light on top
+    float rimK2 = pow(1.0 - clamp(dot(pN, pV), 0.0, 1.0), 3.0) * clamp(dot(pN, uSun) * 0.6 + 0.4, 0.0, 1.0);
+    outgoingLight = graded + uRimCol * rimK2 * uRim * uMatRim * 0.6;
   }
   #include <opaque_fragment>`;
+const GRADE_UNIFORMS = 'uniform vec3 uBounce; uniform vec3 uShadow; uniform float uLit; uniform vec3 uSunCol;';
+
+/**
+ * The strokes painted on the limestone (where aRock is 1), in local space so they stay put on a moving island:
+ * - a sharp bright line along the top edge of every bed, and ledge tops lit brighter still;
+ * - a dark undercut line under every bed that overhangs, and dark ledge undersides;
+ * - a few bold bedding lines inside the thicker beds and vertical joint cracks, as crisp toon strokes;
+ * - green moss drips running down the face below every mossy ledge and below the turf.
+ * aBand: metres below the top of this bed and above its bottom; aLedge: + ledge above, - overhang above,
+ * +-2 on the ledge strips themselves.
+ */
+const ROCK_GLSL = /* glsl */ `#include <color_fragment>
+  {
+    vec3 q = vLoc;
+    vec3 upW = normalize(vPWorld - uCenter);
+    float ny = dot(normalize(vPNormal), upW);
+    float s = uRockScale;
+    vec3 rc = diffuseColor.rgb;
+    // broad patches of paler and warmer stone
+    float tone = pNoise(vec3(q.x * 0.09, q.y * 0.35, q.z * 0.09) / s);
+    rc *= 0.95 + 0.1 * tone;
+    float strip = step(1.5, abs(vLedge));
+    // bold bedding lines inside thick beds, broken here and there
+    float yy = q.y + (pNoise(q * vec3(0.1, 0.02, 0.1) / s) - 0.5) * 0.5 * s;
+    float f = fract(yy / (0.62 * s));
+    float bw = 0.045 * s;
+    float bedLine = aaStep(f * 0.62 * s, bw) * step(0.45, pNoise(q * vec3(0.22, 1.0, 0.22) / s + 3.0));
+    bedLine *= step(0.22 * s, vBand.x) * step(0.18 * s, vBand.y) * (1.0 - strip);
+    // vertical joint cracks: thin wandering lines, longer where they run through several beds
+    float cn = pNoise(vec3(q.x * 0.85, q.y * 0.07, q.z * 0.85) / s + 31.0);
+    float crack = aaStep(abs(cn - 0.5), 0.02) * step(0.5, pNoise(q * vec3(0.25, 0.45, 0.25) / s + 7.0)) * (1.0 - strip);
+    rc *= 1.0 - bedLine * 0.2 - crack * 0.38;
+    // the top edge of every bed catches the light: a crisp bright line (not under an overhang)
+    float hi = aaStep(vBand.x, 0.07 * s) * step(-0.05, vLedge) * (1.0 - strip);
+    rc = mix(rc, rc * 1.12 + vec3(0.05, 0.04, 0.02), hi);
+    // ledge strips: tops lit bright, undersides dark
+    rc = mix(rc, rc * 1.08 + vec3(0.03, 0.025, 0.0), strip * step(0.3, ny));
+    rc = mix(rc, rc * vec3(0.5, 0.48, 0.6), strip * step(ny, -0.25));
+    // the undercut: a dark band at the top of a bed that a bed above overhangs
+    float uc = aaStep(vBand.x, (0.1 + 0.25 * clamp(-vLedge, 0.0, 1.0)) * s) * step(vLedge, -0.05) * (1.0 - strip);
+    rc = mix(rc, rc * vec3(0.52, 0.5, 0.64), uc);
+    // a thin dark crease along the foot of every bed
+    rc *= 1.0 - aaStep(vBand.y, 0.04 * s) * 0.25 * (1.0 - strip);
+    // moss drips: streaks of green hanging down from a mossy ledge (or the turf), tapering as they go
+    float dn = pNoise(vec3(q.x * 2.6, q.y * 0.12, q.z * 2.6) / s + 11.0);
+    float dl = (0.6 + 3.2 * pNoise(vec3(q.x * 0.35, 5.0, q.z * 0.35) / s)) * s * (0.4 + 0.6 * clamp(vLedge, 0.0, 1.0));
+    float thr = 0.6 + 0.4 * clamp(vBand.x / dl, 0.0, 1.0);
+    float drip = (1.0 - aaStep(dn, thr)) * step(0.05, vLedge) * (1.0 - strip) * uMoss;
+    vec3 mossC = mix(vec3(0.42, 0.62, 0.24), vec3(0.6, 0.76, 0.32), pNoise(q * 0.6));
+    rc = mix(rc, mossC, drip * 0.95);
+    diffuseColor.rgb = mix(diffuseColor.rgb, rc, vRock);
+    gRock = vRock * (1.0 - drip * 0.9);
+  }`;
+
+const AASTEP = /* glsl */ `
+  // 1 where v < t, with a pixel-wide soft edge (so painted lines stay crisp but never crawl)
+  float aaStep(float v, float t){ float w = max(fwidth(v), 1e-4) * 0.8; return 1.0 - smoothstep(t - w, t + w, v); }`;
+
+/** Give a painted foliage material the island grading (lit yellow-green, shade shifted to blue-green). */
+export function gradeFoliage(m: THREE.MeshToonMaterial, key: string) {
+  const base = m.onBeforeCompile;
+  const baseKey = m.customProgramCacheKey();
+  m.onBeforeCompile = (sh, r) => {
+    base.call(m, sh, r);
+    Object.assign(sh.uniforms, ISLAND_LIGHT);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\n#define vRock 0.0\n' + GRADE_UNIFORMS)
+      .replace('#include <opaque_fragment>', GRADE_GLSL);
+  };
+  m.customProgramCacheKey = () => baseKey + key;
+  return m;
+}
 
 let rockMat: THREE.MeshToonMaterial | null = null;
 /**
- * The island body: grass, soil and limestone all come from vertex colours (bands, moss, stains are baked per vertex).
- * Where the attribute aRock is 1 the fragment paints fine bedding lines that wander a little, break off here and
- * there, and a light pitting, so a cliff reads as layered limestone up close without any texture.
+ * The island body: grass, soil and limestone all come from vertex colours (beds, moss, stains are baked per vertex);
+ * the fragment paints the strokes of ROCK_GLSL on the stone and grades the light (GRADE_GLSL).
  */
 export function islandRockMaterial(): THREE.MeshToonMaterial {
   if (rockMat) return rockMat;
-  const m = paint(new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: softRamp() }), { variation: 0.55, rim: 0.7 });
+  const m = paint(new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: softRamp() }), { variation: 0.4, rim: 0.6 });
   const base = m.onBeforeCompile;
   m.onBeforeCompile = (sh, r) => {
     base.call(m, sh, r);
-    sh.uniforms.uBounce = ISLAND_LIGHT.uBounce;
+    Object.assign(sh.uniforms, ISLAND_LIGHT);
+    sh.uniforms.uRockScale = { value: 1 };
+    sh.uniforms.uMoss = { value: 1 };
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute float aRock; varying float vRock; varying vec3 vLoc;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRock = aRock; vLoc = position;');
+      .replace('#include <common>', '#include <common>\nattribute float aRock; attribute vec2 aBand; attribute float aLedge; varying float vRock; varying vec3 vLoc; varying vec2 vBand; varying float vLedge;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRock = aRock; vLoc = position; vBand = aBand; vLedge = aLedge;');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying float vRock; varying vec3 vLoc; uniform vec3 uBounce;')
-      .replace('#include <opaque_fragment>', BOUNCE_GLSL)
-      .replace('#include <color_fragment>', `#include <color_fragment>
-        {
-          vec3 q = vLoc;
-          // the bedding wanders a little, as real strata do
-          float yy = q.y + (pNoise(q * vec3(0.16, 0.04, 0.16)) - 0.5) * 1.3 + (pNoise(q * vec3(0.7, 0.2, 0.7)) - 0.5) * 0.25;
-          // the spacing of the beds changes with height, so they never look ruled
-          float sp = 0.3 + 0.22 * pNoise(vec3(q.x * 0.02, yy * 0.35, q.z * 0.02));
-          float f = fract(yy / sp);
-          float wdt = 0.05 + 0.08 * pNoise(q * vec3(0.4, 0.1, 0.4));
-          float line = 1.0 - smoothstep(0.0, wdt, f) * smoothstep(0.0, wdt * 0.6, 1.0 - f);
-          float brk = smoothstep(0.42, 0.7, pNoise(q * vec3(0.3, 1.2, 0.3)));
-          float f2 = fract(yy / 0.11 + 0.37);
-          float fine = (1.0 - smoothstep(0.0, 0.18, f2) * smoothstep(0.0, 0.18, 1.0 - f2)) * smoothstep(0.45, 0.75, pNoise(q * vec3(0.5, 3.0, 0.5)));
-          float tone = pNoise(vec3(q.x * 0.07, yy * 1.6, q.z * 0.07));
-          float pits = smoothstep(0.66, 0.82, pNoise(q * 2.6));
-          // vertical fissures: thin wandering lines where a tall, narrow noise crosses its middle
-          float cn = pNoise(vec3(q.x * 0.55, q.y * 0.06, q.z * 0.55) + 31.0);
-          float crack = (1.0 - smoothstep(0.0, 0.035, abs(cn - 0.5))) * smoothstep(0.45, 0.7, pNoise(q * vec3(0.2, 0.5, 0.2) + 7.0));
-          vec3 rc = diffuseColor.rgb * (0.92 + tone * 0.16);
-          rc *= 1.0 - line * brk * 0.2 - fine * 0.06 - pits * 0.09 - crack * 0.28;
-          diffuseColor.rgb = mix(diffuseColor.rgb, rc, vRock);
-        }`);
+      .replace('#include <common>', '#include <common>\nvarying float vRock; varying vec3 vLoc; varying vec2 vBand; varying float vLedge; uniform float uRockScale; uniform float uMoss; float gRock = 1.0; ' + GRADE_UNIFORMS + AASTEP)
+      .replace('#include <opaque_fragment>', GRADE_GLSL.replace(/vRock/g, 'gRock'))
+      .replace('#include <color_fragment>', ROCK_GLSL);
   };
-  m.customProgramCacheKey = () => 'skyIslandRock';
-  m.userData.bounce = true;
+  m.customProgramCacheKey = () => 'skyIslandRock3';
   rockMat = m;
   return m;
 }
@@ -89,10 +167,10 @@ function ivySheet(): THREE.CanvasTexture {
   const x = c.getContext('2d')!;
   let s = 31; const r = () => ((s = (s * 16807) % 2147483647) / 2147483647);
   x.fillStyle = '#fff';
-  for (let i = 0; i < 9; i++) {
-    const a = r() * Math.PI * 2, d = Math.pow(r(), 0.8) * S * 0.3;
+  for (let i = 0; i < 15; i++) {
+    const a = r() * Math.PI * 2, d = Math.pow(r(), 0.9) * S * 0.3;
     const cx = S / 2 + Math.cos(a) * d, cy = S / 2 + Math.sin(a) * d;
-    const L = 15 + r() * 12;
+    const L = 19 + r() * 13;
     x.save(); x.translate(cx, cy); x.rotate(r() * Math.PI * 2);
     // a three-lobed ivy leaf
     x.beginPath(); x.moveTo(0, L * 0.35);
@@ -103,7 +181,7 @@ function ivySheet(): THREE.CanvasTexture {
     x.quadraticCurveTo(L * 0.75, L * 0.2, 0, L * 0.35);
     x.fill(); x.restore();
   }
-  x.beginPath(); x.arc(S / 2, S / 2, S * 0.12, 0, Math.PI * 2); x.fill();
+  x.beginPath(); x.arc(S / 2, S / 2, S * 0.2, 0, Math.PI * 2); x.fill();
   ivyTex = new THREE.CanvasTexture(c);
   ivyTex.colorSpace = THREE.NoColorSpace;
   return ivyTex;
@@ -122,16 +200,16 @@ export function ivyMaterial(): THREE.MeshToonMaterial {
   const base = m.onBeforeCompile;
   m.onBeforeCompile = (sh, r) => {
     base.call(m, sh, r);
-    sh.uniforms.uBounce = ISLAND_LIGHT.uBounce;
+    Object.assign(sh.uniforms, ISLAND_LIGHT);
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform vec3 uBounce;')
-      .replace('#include <opaque_fragment>', BOUNCE_GLSL);
+      .replace('#include <common>', '#include <common>\n#define vRock 0.0\n' + GRADE_UNIFORMS)
+      .replace('#include <opaque_fragment>', GRADE_GLSL);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec2 aSway; uniform float uTime;')
       .replace('#include <begin_vertex>', `#include <begin_vertex>
         transformed += vec3(sin(uTime * 1.3 + aSway.y), 0.0, cos(uTime * 1.05 + aSway.y * 1.7)) * aSway.x;`);
   };
-  m.customProgramCacheKey = () => 'skyIslandIvy';
+  m.customProgramCacheKey = () => 'skyIslandIvy2';
   ivyMat = m;
   return m;
 }
@@ -208,9 +286,9 @@ export function tuftMaterial(kind: 'grass' | 'flower'): THREE.ShaderMaterial {
       ${NOISE_GLSL}
       void main(){
         float pch = pNoise(vW * 0.09) * 0.7 + pNoise(vW * 0.4) * 0.3;
-        vec3 tip = mix(vec3(0.55, 0.76, 0.27), vec3(0.76, 0.84, 0.36), pch);
-        tip = mix(tip, tip * vec3(0.8, 0.96, 1.05), smoothstep(0.6, 0.92, vVar) * 0.6);
-        vec3 base = vCol * 0.62;
+        vec3 tip = mix(vec3(0.62, 0.8, 0.3), vec3(0.84, 0.9, 0.42), pch);
+        tip = mix(tip, tip * vec3(0.86, 0.98, 1.04), smoothstep(0.6, 0.92, vVar) * 0.5);
+        vec3 base = vCol * 0.8;
         vec3 col = mix(base, tip, smoothstep(0.0, 1.0, vH));
         #ifdef FLOWER
           vec3 stem = vec3(0.3, 0.52, 0.22);
@@ -221,9 +299,9 @@ export function tuftMaterial(kind: 'grass' | 'flower'): THREE.ShaderMaterial {
         float lam = clamp(dot(vUpN, uSun) * 0.55 + 0.45, 0.0, 1.0);
         float back = pow(clamp(dot(-V, uSun), 0.0, 1.0), 4.0) * vH;
         float cs = smoothstep(0.5, 0.72, pNoise(vW * 0.03 + uWind * uTime * 0.35));
-        vec3 light = uSunCol * lam * 0.42 * (1.0 - cs * uCloudShadow) + uAmbSky * 0.9;
+        vec3 light = uSunCol * lam * 0.6 * (1.0 - cs * uCloudShadow) + uAmbSky * 1.3 + vec3(0.06, 0.07, 0.04);
         col = col * light + uSunCol * back * vec3(0.9, 1.0, 0.45) * 0.25;
-        col *= mix(0.72, 1.0, vH);
+        col *= mix(0.82, 1.0, vH);
         gl_FragColor = vec4(col, 1.0);
         #include <fog_fragment>
       }`,
@@ -235,18 +313,19 @@ export function tuftMaterial(kind: 'grass' | 'flower'): THREE.ShaderMaterial {
 
 // ------------------------------------------------------------------ water
 
-let waterMats: Partial<Record<'fall' | 'stream', THREE.ShaderMaterial>> = {};
+let waterMats: Partial<Record<'fall' | 'stream' | 'fallDepth', THREE.ShaderMaterial>> = {};
 /**
  * Painted moving water. uv.x runs across the sheet from -1 to 1, uv.y along it in metres; aT is 0 at the lip and 1
  * where the fall ends. Streaks scroll down the sheet, white foam gathers at the lip and the soft ragged edges, and
  * the lower fall breaks up into spray and fades out into the mist. The stream on top uses the same water, flatter.
  */
-export function waterMaterial(kind: 'fall' | 'stream'): THREE.ShaderMaterial {
+export function waterMaterial(kind: 'fall' | 'stream' | 'fallDepth'): THREE.ShaderMaterial {
   const have = waterMats[kind];
   if (have) return have;
+  const depthOnly = kind === 'fallDepth';
   const m = new THREE.ShaderMaterial({
-    fog: true, transparent: true, depthWrite: false, side: THREE.DoubleSide,
-    defines: kind === 'stream' ? { STREAM: 1 } : {},
+    fog: true, transparent: !depthOnly, depthWrite: depthOnly, colorWrite: !depthOnly, side: THREE.DoubleSide,
+    defines: kind === 'stream' ? { STREAM: 1 } : depthOnly ? { DEPTH_ONLY: 1 } : {},
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uDummy: { value: 0 } }]),
     vertexShader: /* glsl */ `
       #include <common>
@@ -282,35 +361,57 @@ export function waterMaterial(kind: 'fall' | 'stream'): THREE.ShaderMaterial {
           vec3 col = mix(deep * 0.92, pale, foam);
           float a = (0.82 + foam * 0.18) * smoothstep(0.0, 0.06, vT);
         #else
-          float flow = y - uTime * (7.0 + vLayer * 2.5);
-          float n1 = pNoise(vec3(x * 6.0 + vLayer * 11.0, flow * 0.16, 0.0));
-          float n2 = pNoise(vec3(x * 15.0 + vLayer * 5.0, flow * 0.42, 3.0));
-          float n3 = pNoise(vec3(x * 3.0, flow * 0.07, 9.0 + vLayer));
-          float streak = n1 * 0.55 + n2 * 0.3 + n3 * 0.15;
-          float foam = max(smoothstep(0.42, 0.62, n1), smoothstep(0.5, 0.7, n2) * 0.85);
-          foam = 0.35 + 0.65 * max(foam, smoothstep(0.3, 0.6, streak) * 0.7);
-          foam = max(foam, 1.0 - smoothstep(0.0, 2.2, y));             // white water at the lip
-          foam = max(foam, smoothstep(0.35, 0.9, vT) * 0.85);          // the fall turns to spray as it drops
-          // fine blue-grey striations running down the white water
-          float fine = pNoise(vec3(x * 26.0 + vLayer * 3.0, flow * 0.09, 5.0));
-          vec3 col = mix(deep, pale, foam);
-          col = mix(col, deep * 1.05, smoothstep(0.55, 0.85, fine) * 0.45 * (1.0 - smoothstep(0.6, 1.0, vT)));
-          // the edges of the sheet are thinner, so a touch more blue shows through
-          col = mix(col, deep, smoothstep(0.5, 0.95, abs(x)) * 0.25);
-          // ragged soft edges, and holes opening in the lower fall
-          float rag = (pNoise(vec3(x * 2.0, flow * 0.25, 7.0)) - 0.5) * 0.55;
-          float a = 1.0 - smoothstep(0.55 + rag, 1.0, abs(x));
-          a *= mix(0.9, 1.0, foam) * (1.0 - vLayer * 0.15);
-          float holes = smoothstep(0.3, 0.95, vT) * (1.0 - smoothstep(0.3, 0.62, streak + 0.12));
-          a *= 1.0 - holes;
-          a *= 1.0 - smoothstep(0.62, 1.0, vT);
-          a *= smoothstep(0.0, 0.25, y);
+          float flow = y - uTime * (8.5 + vLayer * 1.3);
+          vec3 col; float a; float aBody = 0.0;
+          {
+            // broad, long streaks and finer foam threads scrolling down, each strand at its own pace
+            float n1 = pNoise(vec3(x * 3.2 + vLayer * 11.0, flow * 0.05, 0.0));
+            float n2 = pNoise(vec3(x * 8.5 + vLayer * 5.0, flow * 0.18, 3.0));
+            float n3 = pNoise(vec3(x * 19.0 + vLayer * 2.0, flow * 0.45, 9.0));
+            float body = n1 * 0.55 + n2 * 0.3 + n3 * 0.15;
+            // near-white body; a little blue only in the troughs, mostly in the upper fall
+            float trough = 1.0 - smoothstep(0.3, 0.44, body);
+            col = mix(vec3(1.0), vec3(0.6, 0.78, 0.94), trough * 0.7 * (1.0 - smoothstep(0.45, 0.85, vT)));
+            // high-contrast white foam threads
+            col = mix(col, vec3(1.08), smoothstep(0.58, 0.68, n2 * 0.7 + n3 * 0.3) * 0.7);
+            // thick white water for the first metres under the lip
+            col = mix(col, vec3(1.04), 1.0 - smoothstep(0.5, 3.5, y));
+            // soft ragged edges that widen and fray as the water falls
+            float rag = (pNoise(vec3(x * 2.4 + vLayer, flow * 0.12, 7.0)) - 0.5) * (0.3 + 0.7 * vT);
+            float e0 = mix(0.72, 0.2, vT);
+            a = 1.0 - smoothstep(e0 + rag, 1.0 + rag * 0.25, abs(x));
+            // the solid body (for the depth pass): the strand's core, narrowing to a rounded tongue lower down
+            float brk = pNoise(vec3(x * 2.6 + vLayer * 3.0, flow * 0.035, 13.0));
+            aBody = a * (1.0 - smoothstep(0.42 + 0.32 * brk, 0.62 + 0.32 * brk, vT)) * smoothstep(0.0, 0.4, y);
+            a *= mix(0.98, 0.8, smoothstep(0.35, 1.0, vT));
+            // lower down it breaks into ropes and spray
+            float holes = smoothstep(0.4, 0.95, vT) * (1.0 - smoothstep(0.34, 0.56, body + 0.12 * (1.0 - vT)));
+            a *= 1.0 - holes;
+            a *= 1.0 - smoothstep(0.72, 1.0, vT);
+            a *= smoothstep(0.0, 0.4, y);
+            col *= 1.0 - 0.05 * mod(vLayer, 2.0);
+          }
+        #endif
+        #ifdef DEPTH_ONLY
+          // the opaque body of the fall writes depth, so the screen ink outlines the curtain instead of drawing the
+          // silhouettes of whatever is behind it through it
+          // (only the strands' solid cores: no holes, so the ink never draws inside the broken lower fall)
+          if (aBody < 0.6) discard;
+          gl_FragColor = vec4(0.0);
+          return;
         #endif
         vec3 N = normalize(vN);
         float lam = clamp(dot(N, uSun) * 0.5 + 0.5, 0.0, 1.0);
         vec3 V = normalize(cameraPosition - vW);
         float spec = pow(clamp(dot(reflect(-uSun, N), V), 0.0, 1.0), 24.0);
-        col = col * (uSunCol * (0.45 + 0.4 * lam) + uAmbSky * 0.75) + uSunCol * spec * 0.25;
+        #ifdef STREAM
+          col = col * (uSunCol * (0.45 + 0.4 * lam) + uAmbSky * 0.75) + uSunCol * spec * 0.25;
+        #else
+          // white water is lit almost white all round; only its shaded side cools a little
+          // (the sun's colour is only half let in, so a golden sun warms the water without dyeing it orange)
+          vec3 sunL = mix(vec3(dot(uSunCol, vec3(0.3333))), uSunCol, 0.45);
+          col = col * (uAmbSky * 1.25 + sunL * (0.6 + 0.38 * lam)) + uSunCol * spec * 0.12;
+        #endif
         gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));
         #include <fog_fragment>
       }`,
@@ -364,8 +465,8 @@ export function mistMaterial(): THREE.ShaderMaterial {
         float z = sqrt(max(0.0, 1.0 - dot(p, p)));
         vec3 N = normalize(vRight * p.x + vUpV * p.y + vToCam * z);
         float lit = smoothstep(-0.4, 0.7, dot(N, uSun));
-        vec3 shade = vec3(0.8, 0.85, 0.95), bright = vec3(1.04, 1.04, 1.03);
-        vec3 col = mix(shade, bright, lit) * (0.72 + uSunCol * 0.3);
+        vec3 shade = vec3(0.84, 0.88, 0.97), bright = vec3(1.06, 1.05, 1.03);
+        vec3 col = mix(shade, bright, lit) * (0.76 + uSunCol * 0.28);
         gl_FragColor = vec4(col, a * vAlpha);
         #include <fog_fragment>
       }`,
