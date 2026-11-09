@@ -19,12 +19,14 @@ export class Sky {
         uTime: { value: 0 },
         // far views (the title, the sky view): the depths below the worlds glow warm instead of going deep blue
         uAbyss: { value: 0 },
+        // the dream sky of the far shots: a pale clear blue between the cornflower overhead and the warm horizon
+        uDreamSky: { value: 0 },
         uAbyssCol: { value: new THREE.Color('#ffc890') },
         uAbyssMid: { value: new THREE.Color('#86a9ea') },
       },
       vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = projectionMatrix * modelViewMatrix * vec4(position,1.0); gl_Position = p.xyww; }`,
       fragmentShader: `
-        uniform vec3 uUp, uSun, uTop, uHorizon, uCloud, uDusk, uAbyssCol, uAbyssMid; uniform float uTime, uAbyss; varying vec3 vDir;
+        uniform vec3 uUp, uSun, uTop, uHorizon, uCloud, uDusk, uAbyssCol, uAbyssMid; uniform float uTime, uAbyss, uDreamSky; varying vec3 vDir;
         float h(vec3 p){ return fract(sin(dot(p, vec3(127.1,311.7,74.7))) * 43758.5453); }
         void main(){
           vec3 d = normalize(vDir);
@@ -35,7 +37,7 @@ export class Sky {
           float sunAmt = max(dot(d, uSun), 0.0);
           // three painted stops per time of day: deep teal night, clear cobalt day, warm peach dusk
           vec3 nTop = vec3(0.03, 0.10, 0.14), nMid = vec3(0.06, 0.20, 0.25), nHor = vec3(0.16, 0.34, 0.38);
-          vec3 dMid = mix(uHorizon, uTop, 0.42);
+          vec3 dMid = mix(mix(uHorizon, uTop, 0.42), mix(uTop, vec3(0.9, 0.94, 1.0), 0.5), uDreamSky);
           vec3 kTop = vec3(0.24, 0.30, 0.52), kMid = vec3(0.86, 0.58, 0.56), kHor = vec3(1.0, 0.80, 0.60);
           vec3 top = mix(nTop, uTop, day), mid = mix(nMid, dMid, day), hor = mix(nHor, uHorizon, day);
           float dk = dusk * (0.6 + 0.4 * pow(sunAmt, 2.0));

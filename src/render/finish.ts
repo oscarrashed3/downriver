@@ -41,13 +41,14 @@ export class FinishPass extends Pass {
         uSunVis: { value: 0 },
         uSunCol: { value: new THREE.Color('#ffe2a8') },
         uMist: { value: 0 },
+        uDream: { value: 0 },
         uMistCol: { value: new THREE.Color('#dfe8f4') },
       },
       vertexShader: /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
       fragmentShader: /* glsl */ `
         #include <packing>
         uniform sampler2D tDiffuse, tDepth;
-        uniform vec2 uRes; uniform float uNear, uFar, uTime, uInkK, uLineW, uBrush, uHaze, uGrain, uVignette, uSat, uNight, uSunVis, uMist;
+        uniform vec2 uRes; uniform float uNear, uFar, uTime, uInkK, uLineW, uBrush, uHaze, uGrain, uVignette, uSat, uNight, uSunVis, uMist, uDream;
         uniform vec2 uSun; uniform vec3 uSunCol, uMistCol, uHazeCol;
         uniform vec3 uInk, uShadowTint, uHighTint;
         varying vec2 vUv;
@@ -81,7 +82,7 @@ export class FinishPass extends Pass {
           vec4 src = texture2D(tDiffuse, vUv);
           float dc = lin(vUv);
           // brush strokes thin out with distance, so far detail melts but the near world keeps its shapes
-          float bk = uBrush * (uRes.y / 1080.0) * mix(1.0, 0.6, smoothstep(10.0, 120.0, dc));
+          float bk = uBrush * (uRes.y / 1080.0) * mix(1.0, 0.6, smoothstep(10.0, 120.0, dc)) * (1.0 - 0.75 * uDream * smoothstep(60.0, 400.0, dc));
           vec3 col = bk > 0.25 ? brush(vUv, bk) : src.rgb;
           vec2 px = uLineW / uRes;
           float dl = lin(vUv - vec2(px.x, 0.0)), dr = lin(vUv + vec2(px.x, 0.0));
@@ -100,9 +101,10 @@ export class FinishPass extends Pass {
           float luma = dot(col, vec3(0.299, 0.587, 0.114));
           // Grade: saturation, cool shadows, warm lights.
           vec3 grey = vec3(luma);
-          col = mix(grey, col, uSat);
+          col = mix(grey, col, uSat + 0.16 * uDream);
           float sh = 1.0 - smoothstep(0.05, 0.45, luma);
-          col *= mix(uHighTint, uShadowTint, sh);
+          // (the dream shots keep their clear blues: the warm light tint is mostly lifted there)
+          col *= mix(mix(uHighTint, vec3(1.0), uDream * 0.8), uShadowTint, sh);
           float solid = 1.0 - step(uFar * 0.9, dc);
           // Aerial perspective: distance turns blue-grey and pale, like the far ranges in a valley painting.
           float hz = smoothstep(30.0, 320.0, dc) * solid * uHaze;
@@ -127,9 +129,11 @@ export class FinishPass extends Pass {
           vec3 nearCol = dc <= dmin + 0.01 ? col : texture2D(tDiffuse, vUv).rgb;
           vec3 inkCol = nearCol * mix(vec3(0.42, 0.46, 0.58), vec3(0.5, 0.6, 0.75), uNight);
           col = mix(col, inkCol, clamp(ink * 0.75, 0.0, 0.8));
+          // The dream grade of the far shots: warm, lifted, luminous; the vignette opens up.
+          col = mix(col, col * vec3(1.02, 1.0, 0.98) + vec3(0.04, 0.032, 0.022), uDream * 0.7);
           // Vignette and grain.
           vec2 q = vUv - 0.5;
-          col *= 1.0 - dot(q, q) * uVignette * 1.6;
+          col *= 1.0 - dot(q, q) * uVignette * 1.6 * (1.0 - 0.6 * uDream);
           float g = hash(vUv * uRes + fract(uTime * 13.0) * 100.0) - 0.5;
           col += g * uGrain * (0.35 + luma);
           // paper: a slow blotchy tooth and a faint canvas weave, the same on every frame
