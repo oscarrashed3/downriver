@@ -136,7 +136,7 @@ function flipWinding(g: THREE.BufferGeometry) {
 let clothM: THREE.MeshToonMaterial | null = null, skinM: THREE.MeshToonMaterial | null = null;
 /** Cloth, leather, straw, hair: the game's toon ramp and painted look, a little more brush variation. */
 export function clothMaterial() {
-  return (clothM ??= paint(new THREE.MeshToonMaterial({ color: '#ffffff', vertexColors: true, gradientMap: softRamp(), side: THREE.FrontSide }), { variation: 0.75, rim: 0.55 }));
+  return (clothM ??= backLit(paint(new THREE.MeshToonMaterial({ color: '#ffffff', vertexColors: true, gradientMap: softRamp(), side: THREE.FrontSide }), { variation: 0.75, rim: 0.55 }), 0.55, 0.36));
 }
 let skinRampT: THREE.DataTexture | null = null;
 /** A gentler ramp for skin: the shade side of a face stays warm and light, so it reads as one soft shape. */
@@ -153,7 +153,31 @@ export function skinRamp() {
   return skinRampT;
 }
 export function skinMaterial() {
-  return (skinM ??= paint(new THREE.MeshToonMaterial({ color: '#ffffff', vertexColors: true, gradientMap: skinRamp() }), { variation: 0.12, rim: 0.7 }));
+  return (skinM ??= backLit(paint(new THREE.MeshToonMaterial({ color: '#ffffff', vertexColors: true, gradientMap: skinRamp() }), { variation: 0.12, rim: 0.7 }), 0.75, 0.5));
+}
+
+/**
+ * A warm back-light on top of the painted look: when the sun is behind the person (golden hour, the farewell
+ * shot) their outline catches a glowing rim, and the shade side keeps a share of its own colour (a painted
+ * bounce) instead of sinking into a grey-brown. Midday, sun behind the camera, it adds almost nothing.
+ */
+export function backLit(m: THREE.MeshToonMaterial, rim: number, floor: number) {
+  const base = m.onBeforeCompile;
+  m.onBeforeCompile = (sh, r) => {
+    base.call(m, sh, r);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <opaque_fragment>', `
+      {
+        vec3 bV = normalize(cameraPosition - vPWorld), bN = normalize(vPNormal);
+        float edge = pow(1.0 - clamp(dot(bN, bV), 0.0, 1.0), 2.0);
+        float behind = smoothstep(-0.15, 0.75, dot(-bV, uSun));
+        outgoingLight += uRimCol * diffuseColor.rgb * edge * behind * ${rim.toFixed(3)} * 1.6;
+        outgoingLight = max(outgoingLight, diffuseColor.rgb * ${floor.toFixed(3)});
+      }
+      #include <opaque_fragment>`);
+  };
+  const key = m.customProgramCacheKey();
+  m.customProgramCacheKey = () => key + '_bl' + rim + '_' + floor;
+  return m;
 }
 
 const inkMats = new Map<string, THREE.ShaderMaterial>();
@@ -365,4 +389,80 @@ export function limbWeights(upper: Bone, lower: Bone, jy: number, blend = 0.05, 
     if (top) out.push([top, wt]);
     return out;
   };
+}
+
+/**
+ * A bunched cowl of scarf cloth round the neck: ONE closed tube (no seams, no overlapping rings, so its ink hull
+ * is whole), its centre line an ellipse round the neck that drops and pushes out at the front so the cloth lies
+ * against the chest under the chin. The section is a soft flattened oval, wider at the front, leaning back against
+ * the chest there; two or three rolls run round it diagonally, their valleys shaded darker.
+ * Centred at the origin (the base of the neck), +z forward.
+ */
+export function cowl(o: { rx: number; rz: number; drop: number; hh: number; th: number; seed?: number; rolls?: number; side?: number; N?: number; M?: number }) {
+  const N = o.N ?? 40, M = o.M ?? 14, seed = o.seed ?? 0, rolls = o.rolls ?? 2.5, side = o.side ?? 1;
+  const pos: number[] = [], col: number[] = [], idx: number[] = [];
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), r = new THREE.Vector3();
+  for (let i = 0; i < N; i++) {
+    const u = (i / N) * Math.PI * 2;                       // 0 = front
+    // the front gathers lower and fuller, a little off to the knot's side
+    const fr = Math.pow(Math.max(0, Math.cos(u - 0.25 * side)), 1.6);
+    const lump = 1 + 0.12 * wob(u * 2.0, seed) ;
+    c.set(Math.sin(u) * (o.rx + 0.014 * fr), -o.drop * fr * fr, Math.cos(u) * (o.rz + 0.022 * fr));
+    r.set(Math.sin(u), 0, Math.cos(u));
+    // the section leans back against the chest at the front (its outward axis tips up)
+    const tilt = 0.75 * fr;
+    a.copy(r).multiplyScalar(Math.cos(tilt)).addScaledVector(_up0, Math.sin(tilt));
+    b.copy(r).multiplyScalar(-Math.sin(tilt)).addScaledVector(_up0, Math.cos(tilt));
+    const hh = o.hh * (1 + 0.55 * fr) * lump, th = o.th * (1 + 0.25 * fr) * lump;
+    for (let j = 0; j < M; j++) {
+      const v = (j / M) * Math.PI * 2;
+      const cv = Math.cos(v), sv = Math.sin(v);
+      // flatter against the neck on the inside, rounder outside
+      let out = cv * th * (cv > 0 ? 1 : 0.55);
+      // rolls: ridges across the height, running diagonally round the neck
+      const roll = Math.sin(sv * Math.PI * rolls * 0.5 + u * 1.3 * side + seed);
+      out += Math.max(0, cv) * th * 0.32 * roll;
+      const up = sv * hh * (1 + 0.06 * roll);
+      pos.push(c.x + a.x * out + b.x * up, c.y + a.y * out + b.y * up, c.z + a.z * out + b.z * up);
+      const sh = 1 - 0.2 * Math.max(0, -roll) * Math.max(0, cv) - 0.12 * Math.max(0, -sv);
+      col.push(sh, sh, sh * 0.98);
+    }
+  }
+  for (let i = 0; i < N; i++) for (let j = 0; j < M; j++) {
+    const i1 = (i + 1) % N, j1 = (j + 1) % M;
+    const p00 = i * M + j, p10 = i1 * M + j, p01 = i * M + j1, p11 = i1 * M + j1;
+    idx.push(p00, p10, p01, p10, p11, p01);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  // make sure the faces point outwards (the winding depends on the frame's handedness)
+  const n0 = new THREE.Vector3().fromBufferAttribute(g.attributes.normal as THREE.BufferAttribute, 0);
+  const p0 = new THREE.Vector3().fromBufferAttribute(g.attributes.position as THREE.BufferAttribute, 0);
+  const c0 = new THREE.Vector3(0, -o.drop * Math.pow(Math.max(0, Math.cos(-0.25 * side)), 3.2), o.rz);
+  if (n0.dot(p0.sub(c0)) < 0) { const ia = g.index!.array as Uint16Array; for (let i = 0; i < ia.length; i += 3) { const t = ia[i + 1]; ia[i + 1] = ia[i + 2]; ia[i + 2] = t; } g.computeVertexNormals(); }
+  return g;
+}
+const _up0 = new THREE.Vector3(0, 1, 0);
+
+/**
+ * A flattened knot of cloth pressed against the chest where the tails come out: a lumpy squashed sphere with a
+ * pinched waist across it, so it reads as cloth tied over itself, not a ball.
+ */
+export function flatKnot(r: number, seed = 0) {
+  const g = new THREE.SphereGeometry(r, 14, 10);
+  const pa = g.attributes.position as THREE.BufferAttribute, cols = new Float32Array(pa.count * 3);
+  for (let i = 0; i < pa.count; i++) {
+    _v.fromBufferAttribute(pa, i);
+    const pinch = 1 - 0.22 * Math.exp(-((_v.x / r) ** 2) / 0.05);
+    const k = (1 + 0.1 * wob(_v.y / r * 3 + _v.x / r * 2, seed)) * pinch;
+    pa.setXYZ(i, _v.x * k * 1.25, _v.y * k * 0.9, _v.z * k * 0.55);
+    const v = 1 - 0.25 * (1 - pinch) / 0.22;
+    cols[i * 3] = v; cols[i * 3 + 1] = v; cols[i * 3 + 2] = v;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+  g.computeVertexNormals();
+  return g;
 }

@@ -1,13 +1,14 @@
 import * as THREE from 'three';
 import type { Person } from '../../player/person';
 import type { Sway } from '../../player/villagers';
-import { RigKit, cloth, strand, wrapLoop, lump, lathe, limbWeights, smooth, wob, type V3, type Weights } from './windRig';
+import { RigKit, cloth, strand, wrapLoop, lump, lathe, limbWeights, smooth, wob, cowl, flatKnot, type V3, type Weights } from './windRig';
 
-// The windfolk body, built for the Sky Isles look of the pictures: light and long-limbed, about 6 heads tall
-// for the children and 7 for the grown-ups, slender necks, narrow shoulders, legs half the height, arms that
-// reach mid-thigh. Limbs are single tapered tubes skinned across the knee and elbow (windRig.ts). The head is
-// an anime head: a rounded skull with a small tapered chin, big tall eyes and a tiny nose drawn as decals
-// that lie exactly on the skin, hair as a cap that follows the skull with strand clumps laid over it.
+// The windfolk body, built to sit beside the World 1 villagers: chunky and cheerful, about 5 heads tall for the
+// children and 5.5 to 6 for the grown-ups, a rounded shoulder yoke, tapered sleeves, big hands with fingers.
+// Limbs are single tapered tubes skinned across the knee and elbow (windRig.ts). The head is sculpted, not an
+// egg: a jaw that narrows to a small chin, a flatter cheek plane, shallow eye sockets, a nose bridge and ears;
+// the eyes, brows, cheeks and mouths are decals that lie exactly on that skin, the hair a cap that follows the
+// skull with strand clumps laid over it.
 
 export interface Dims {
   legL: number;      // hip joint to sole
@@ -78,8 +79,9 @@ export function windBody(p: Person, k: RigKit, d: Dims, c: BodyCols): Rig {
   p.hips.add(p.torso);
   // ---- torso: hips, waist, chest, narrow sloping shoulders
   const T = d.torsoL, W = B, be = d.belly ?? 0, ch = d.chest ?? 0;
-  const shY = T - 0.075, shX = 0.115 * W;
-  const tprof: [number, number][] = [[0, -0.09], [0.1 * W, -0.075], [0.116 * W, -0.01], [0.112 * W + be * 0.5, 0.08], [0.1 * W + be, T * 0.36], [0.108 * W + be * 0.8 + ch * 0.5, T * 0.58], [0.118 * W + be * 0.3 + ch, T * 0.74], [0.118 * W, shY - 0.01], [0.09 * W, shY + 0.035], [d.neckR + 0.012, T - 0.012], [0, T]];
+  const shY = T - 0.085, shX = 0.122 * W;
+  // hips, a soft waist, a full chest and a rounded yoke over the shoulders (no coat-hanger corners)
+  const tprof: [number, number][] = [[0, -0.09], [0.1 * W, -0.078], [0.118 * W, -0.01], [0.115 * W + be * 0.5, 0.08], [0.106 * W + be, T * 0.36], [0.114 * W + be * 0.8 + ch * 0.5, T * 0.56], [0.126 * W + be * 0.3 + ch, T * 0.72], [0.132 * W, shY - 0.025], [0.124 * W, shY + 0.012], [0.1 * W, shY + 0.042], [0.062 * W + d.neckR * 0.4, T - 0.004], [d.neckR + 0.01, T + 0.002], [0, T + 0.004]];
   k.add(p.torso, cloth(tprof.slice().reverse(), { n: 18, folds: 5, amt: 0.02, yTop: T, hemLine: false, hem: 0, shade: 0.1, sz: dp + be * 0.6 }), c.shirt, 0, 0, 0, { ink: d.coreInk ?? 1, w: (v) => { const wh = smooth(0.14, -0.05, v.y); return [[p.torso, 1 - wh], [p.hips, wh]]; } });
   // ---- arms
   const upL = d.armL * 0.52, foL = d.armL * 0.48, aR = d.armR;
@@ -88,6 +90,7 @@ export function windBody(p: Person, k: RigKit, d: Dims, c: BodyCols): Rig {
   for (const s of [-1, 1]) {
     const sh = pivot(p.torso, shX * s, shY, 0); sh.rotation.z = 0.08 * s;
     const el = pivot(sh, 0, -upL, 0);
+    el.rotation.order = 'YXZ'; // rotation.y turns the elbow's bend round the upper arm (fists on hips)
     const w = armW(sh, el);
     // the bare arm (or the sleeve, if the sleeve colour runs to the wrist)
     const aprof: [number, number][] = [[0, 0.04], [aR * 0.95, 0.025], [aR, -0.03], [aR * 0.9, -upL * 0.55], [aR * 0.76, -upL], [aR * 0.8, -upL - foL * 0.3], [aR * 0.58, -upL - foL], [0, -upL - foL - 0.01]];
@@ -96,14 +99,15 @@ export function windBody(p: Person, k: RigKit, d: Dims, c: BodyCols): Rig {
       // a sleeve over the upper arm, ending just below the elbow
       k.add(sh, cloth([[aR + 0.012, 0.045], [aR + 0.016, -0.02], [aR * 0.9 + 0.014, -upL * 0.6], [aR * 0.8 + 0.014, -upL - 0.035]], { n: 10, folds: 3, amt: 0.08, hem: 0.006 }), c.sleeve, 0, 0, 0, { w, lining: 0.75 });
     }
-    k.add(sh, sph(aR * 1.15, 10, 8), c.sleeve, 0, -0.005, 0, { w: () => [[sh, 0.55], [p.torso, 0.45]] });
+    // the round of the shoulder, so the sleeve grows out of the yoke
+    k.add(sh, sph(aR * 1.42, 12, 9), c.sleeve, s * aR * 0.12, -0.012, 0, { s: [1, 1.05, 0.95], w: () => [[sh, 0.6], [p.torso, 0.4]] });
     // the hand: palm and thumb on the hand joint, the four fingers on their own joint so they can curl and open
     const hs = d.hand ?? 1, skin = c.glove ?? c.skin, isSkin = !c.glove;
     const hand = proxy(el, 0, -foL, 0);
     k.add(hand, sph(0.026 * hs, 10, 8), skin, 0, -0.028 * hs, 0.002, { s: [0.62, 1.2, 0.95], skin: isSkin });
     k.add(hand, cap(0.0085 * hs, 0.022 * hs, 6), skin, -0.012 * s * hs, -0.022 * hs, 0.02 * hs, { r: [0.6, 0, -0.5 * s], skin: isSkin });
     const fg = pivot(hand, 0, -0.054 * hs, 0); fingers.push(fg);
-    for (let i = 0; i < 4; i++) k.add(fg, cap(0.0072 * hs, 0.026 * hs, 6), skin, 0.0015 * s, -0.016 * hs + Math.abs(i - 1.5) * 0.002, (-0.014 + i * 0.0095) * hs, { r: [0, 0, 0], skin: isSkin, ink: 0.7 });
+    for (let i = 0; i < 4; i++) k.add(fg, cap(0.0076 * hs, (0.027 - Math.abs(i - 1.2) * 0.003) * hs, 6), skin, 0.0015 * s, -0.016 * hs + Math.abs(i - 1.5) * 0.002, (-0.014 + i * 0.0095) * hs, { r: [(i - 1.5) * 0.16, 0, 0], skin: isSkin, ink: 0.7 });
     p.arms.push({ sh, el, hand });
   }
   // ---- neck and head
@@ -114,8 +118,11 @@ export function windBody(p: Person, k: RigKit, d: Dims, c: BodyCols): Rig {
   const C = new THREE.Vector3(0, d.R * 0.92, d.R * 0.12);
   headR = d.R; headC.copy(C);
   k.add(p.head, skull(d.R, C), c.skin, 0, 0, 0, { skin: true, ink: 0.8 });
-  // small ears, mostly hidden by the hair
-  for (const s of [-1, 1]) k.add(p.head, sph(d.R * 0.2, 8, 6), c.skin, s * d.R * 0.88, C.y - d.R * 0.12, C.z - d.R * 0.08, { s: [0.45, 1, 0.7], skin: true, ink: 0.6 });
+  // ears: a rounded shell tipped back, with a darker hollow
+  for (const s of [-1, 1]) {
+    k.add(p.head, sph(d.R * 0.22, 10, 8), c.skin, s * d.R * 0.86, C.y - d.R * 0.14, C.z - d.R * 0.1, { s: [0.42, 1.05, 0.72], r: [0.15, -0.35 * s, -0.12 * s], skin: true, ink: 0.7 });
+    k.add(p.head, sph(d.R * 0.13, 8, 6), new THREE.Color(c.skin).multiplyScalar(0.78), s * d.R * 0.915, C.y - d.R * 0.14, C.z - d.R * 0.07, { s: [0.3, 0.95, 0.62], r: [0.15, -0.35 * s, -0.12 * s], skin: true, ink: 0 });
+  }
   const skirtW = (skirt: THREE.Object3D, waist: number, len: number): Weights => (v) => { const ws = smooth(waist - 0.02, waist - len, v.y); return [[p.torso, 1 - ws], [skirt, ws]]; };
   const tsz = dp + be * 0.6;
   const tdown = tprof.slice().reverse();
@@ -146,13 +153,28 @@ const _d = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3
 
 /** A point on the skull in the direction `d` (unit, from the centre), lifted `lift` off the skin. */
 export function headPt(d: THREE.Vector3, lift = 0, out = new THREE.Vector3(), R = headR, C = headC) {
-  let x = d.x * 0.9, y = d.y, z = d.z;
+  let x = d.x * 0.92, y = d.y, z = d.z;
+  const fz = Math.max(0, d.z);
   if (d.y < 0) {
     const t = -d.y;
-    x *= 1 - 0.34 * Math.pow(t, 1.2);
-    if (d.z > 0) { z *= 1 - 0.04 * t; y *= 1.1; } else { z *= 1 - 0.32 * t; }
+    // full cheeks down to the mouth, then a jaw that narrows to a small chin
+    x *= 1 - 0.1 * t - 0.36 * smooth(0.35, 1.0, t);
+    if (d.z > 0) { z *= 1 - 0.05 * t; y *= 1.1; } else { z *= 1 - 0.3 * t; }
   }
-  if (d.z > 0.5) z *= 1 - 0.07 * (d.z - 0.5) / 0.5; // a flatter face
+  // the chin: a small rounded point, forward and a touch down
+  const chin = Math.exp(-((d.y + 0.84) ** 2) / 0.014 - (d.x * d.x) / 0.035) * fz;
+  z += 0.075 * chin; y -= 0.035 * chin;
+  // the jaw line: a soft corner under each cheek
+  const jaw = Math.exp(-((d.y + 0.55) ** 2) / 0.02 - ((Math.abs(d.x) - 0.62) ** 2) / 0.02) * smooth(-0.2, 0.4, d.z);
+  x *= 1 + 0.05 * jaw;
+  if (d.z > 0.5) z *= 1 - 0.09 * (d.z - 0.5) / 0.5;   // a flatter face plane
+  // the cheek plane: the sides of the face a little flatter, so the front reads as a face, not a ball
+  const cheek = Math.exp(-((d.y + 0.3) ** 2) / 0.06) * smooth(0.25, 0.55, Math.abs(d.x)) * smooth(0.2, 0.6, d.z);
+  z -= 0.03 * cheek;
+  // shallow eye sockets under a soft brow, and a nose bridge between them
+  for (const s of [-1, 1]) z -= 0.035 * Math.exp(-((d.x - 0.44 * s) ** 2 + ((d.y + 0.15) ** 2) * 1.3) / 0.03) * fz;
+  z += 0.018 * Math.exp(-((d.y - 0.12) ** 2) / 0.012) * smooth(0.75, 0.2, Math.abs(d.x)) * fz;
+  z += 0.04 * Math.exp(-(d.x * d.x) / 0.006) * smooth(-0.08, -0.22, d.y) * smooth(-0.62, -0.44, d.y) * fz;
   if (d.z < -0.2) z *= 1.04;                        // a rounder back of the head
   const k = R + lift;
   return out.set(C.x + x * k, C.y + y * k, C.z + z * k);
@@ -268,7 +290,8 @@ export interface FaceSpec {
 export function windFace(p: Person, r: Rig, f: FaceSpec) {
   const k = r.k, h = p.head, R = r.d.R, C = r.C;
   const ex = R * (f.eyeX ?? 0.4), ey = C.y - R * 0.16;
-  const ew = R * 0.19 * (f.eyeW ?? 1), eh = R * 0.27 * (f.eyeH ?? 1);
+  // warm painted eyes, set into the sockets: a good size, never sticker-big
+  const ew = R * 0.165 * (f.eyeW ?? 1), eh = R * 0.225 * (f.eyeH ?? 1);
   const iris = f.eye ?? '#5a3a24', lashC = f.lashC ?? '#2a1a1e';
   for (const s of [-1, 1]) {
     const cx = ex * s;
@@ -305,7 +328,12 @@ export function windFace(p: Person, r: Rig, f: FaceSpec) {
     k.add(brow, band((u) => { const x = (u - 0.5) * 2; return [cx + x * bw * -s * -1 + (cocked ? R * 0.01 * s : 0), by + (1 - x * x) * bw * arch + x * tilt * bw * 0.5 * s + (cocked ? R * 0.1 : 0)]; }, (u) => bt * (0.55 + 0.6 * Math.sin(Math.PI * Math.min(1, u * 1.2))), 0.0035, 12, bc), f.brow, 0, 0, 0, { skin: true, ink: 0 });
     p.brows.push(brow);
     // blush: soft, flat, low on the cheek
-    if (f.blush) k.add(h, decal(cx * 1.15, ey - eh * 1.15, ellipse(ew * 0.95, eh * 0.38), 0.0006, 0, 2, 16), f.blush, 0, 0, 0, { skin: true, ink: 0 });
+    if (f.blush) {
+      // a soft cheek tint: two rings, the outer barely darker than the skin
+      const bc = new THREE.Color(f.blush), sk = new THREE.Color(f.skin);
+      k.add(h, decal(cx * 1.12, ey - eh * 1.35, ellipse(ew * 0.85, eh * 0.36), 0.0005, 0, 2, 16), sk.clone().lerp(bc, 0.35), 0, 0, 0, { skin: true, ink: 0 });
+      k.add(h, decal(cx * 1.12, ey - eh * 1.35, ellipse(ew * 0.5, eh * 0.2), 0.0008, 0, 2, 14), sk.clone().lerp(bc, 0.62), 0, 0, 0, { skin: true, ink: 0 });
+    }
     if (f.freckles) for (let i = 0; i < 4; i++) k.add(h, decal(cx * (0.82 + (i % 2) * 0.32) + s * i * R * 0.02, ey - eh * (1.05 + (i % 3) * 0.12), ellipse(R * 0.014, R * 0.014), 0.0012, 0, 1, 6), '#c07a5a', 0, 0, 0, { skin: true, ink: 0 });
     if (f.wrinkles) {
       k.add(h, band((u) => [cx + s * (ew * 1.25 + u * R * 0.06), ey - eh * 0.1 + u * eh * 0.3], () => R * 0.012, 0.001, 4), new THREE.Color(f.skin).multiplyScalar(0.8), 0, 0, 0, { skin: true, ink: 0 });
@@ -316,7 +344,12 @@ export function windFace(p: Person, r: Rig, f: FaceSpec) {
   const ny = C.y - R * 0.5;
   const nose = f.nose ?? 'dot';
   const nc = new THREE.Color(f.skin).multiplyScalar(0.8);
-  if (nose === 'dot') k.add(h, decal(R * 0.015, ny, ellipse(R * 0.03, R * 0.018), 0.001, 0.3, 1, 10), nc, 0, 0, 0, { skin: true, ink: 0 });
+  if (nose === 'dot') {
+    // a small button on the end of the bridge, and its shade
+    const pt = headPt(faceDir(0, ny + R * 0.03), 0);
+    k.add(h, sph(R * 0.055, 10, 8), f.skin, pt.x, pt.y - R * 0.01, pt.z - R * 0.025, { s: [1.05, 0.85, 1], skin: true, ink: 0 });
+    k.add(h, decal(R * 0.02, ny - R * 0.035, ellipse(R * 0.032, R * 0.014), 0.001, 0.2, 1, 10), nc, 0, 0, 0, { skin: true, ink: 0 });
+  }
   else {
     const L = nose === 'long' ? 1.4 : nose === 'round' ? 1.1 : 0.9;
     const pt = headPt(faceDir(0, ny + R * 0.04 * L), 0);
@@ -421,27 +454,29 @@ export const headInfo = () => ({ R: headR, C: headC.clone() });
 // ---------------------------------------------------------------- the scarf round the neck
 
 /**
- * A scarf wrapped round the neck: two or three overlapping lumpy loops, a knot at the front, and a short
- * end hanging from the knot on a spring. Returns the anchors (inside the wrap) for the long simulated tails.
+ * A scarf wrapped round the neck: ONE bunched cowl of soft folded cloth (windRig.cowl: a closed tube, so its ink
+ * is whole), lying low against the chest under the chin, and a flat knot on one side where the tails come out.
+ * A short end hangs from the knot on a spring. Returns the two anchors (at the knot) for the long simulated tails.
  */
-export function scarfWrap(p: Person, r: Rig, sway: Sway, color: string, o: { loops?: number; bulk?: number; side?: number; endC?: string; seed?: number } = {}) {
+export function scarfWrap(p: Person, r: Rig, sway: Sway, color: string, o: { loops?: number; bulk?: number; side?: number; endC?: string; seed?: number; end?: boolean } = {}) {
   const k = r.k, T = p.torso, top = r.d.torsoL, nr = r.d.neckR, bulk = o.bulk ?? 1, s = o.side ?? 1, seed = o.seed ?? 0;
-  const R0 = nr + 0.03 * bulk;
-  const loops = o.loops ?? 3;
-  // the cloth gathered close round the neck inside the loops, so no gap shows between neck and wrap
-  k.add(T, cloth([[nr + 0.006, top + 0.035], [nr + 0.012, top], [nr + 0.03 * bulk, top - 0.05], [nr + 0.045 * bulk, top - 0.08]], { n: 16, folds: 7, amt: 0.12, hem: 0, hemLine: false, seed }), color, 0, 0, 0.004, { ink: 0.3 });
-  k.add(T, wrapLoop(R0 + 0.02 * bulk, 0.032 * bulk, { seed, lumps: 3, creases: 10, sx: 1.18 }), color, 0, top - 0.035, 0.01, { r: [0.22, 0, 0.05 * s] });
-  k.add(T, wrapLoop(R0, 0.028 * bulk, { seed: seed + 2, lumps: 4, creases: 9 }), color, 0, top + 0.012, 0.004, { r: [-0.14, 0.4, -0.06 * s] });
-  if (loops > 2) k.add(T, wrapLoop(R0 + 0.045 * bulk, 0.03 * bulk, { seed: seed + 5, lumps: 3, creases: 8, sx: 1.3, flat: 0.55 }), color, 0, top - 0.07, 0.02, { r: [0.42, 0, 0.1 * s] });
-  // the knot, a little to one side, and a short end hanging from it
-  const kx = 0.045 * s * bulk, kz = R0 + 0.04 * bulk, ky = top - 0.065;
-  k.add(T, lump(0.03 * bulk, 0.2, seed + 1), color, kx, ky, kz, { s: [1.2, 0.95, 0.8] });
-  const end = pivot(T, kx + 0.01 * s, ky - 0.01, kz + 0.005); end.rotation.set(-0.08, 0, 0.12 * s);
-  k.add(end, strand([[0, 0, 0], [0.005 * s, -0.06, 0.012], [0.0, -0.13, 0.008], [-0.01 * s, -0.19 * bulk, 0.012]], 0.06 * bulk, 0.012, { segs: 10, sides: 8, tip: 0.75, root: 0.6, up: () => _b.set(0, 0, 1), shade: [0.95, 1.0] }), color);
-  if (o.endC) k.add(end, strand([[-0.008 * s, -0.17 * bulk, 0.0135], [-0.01 * s, -0.19 * bulk, 0.0135]], 0.046 * bulk, 0.014, { segs: 2, sides: 8, tip: 1, root: 1, up: () => _b.set(0, 0, 1) }), o.endC, 0, 0, 0, { ink: 0.5 });
-  sway.add(end, { freq: 1.6, damp: 0.25, gain: 0.03, wind: 0.5, bob: 0.12, limit: 0.7 });
-  const a1 = pivot(T, -0.05 * s * bulk, top - 0.035, -R0 * 0.85);
-  const a2 = pivot(T, -0.01 * s * bulk, top - 0.06, -R0 * 0.95);
+  const [tx, tz] = r.torsoAt(top - 0.05);
+  // the cloth snug round the neck inside the cowl, so no gap shows between them
+  k.add(T, cloth([[nr + 0.004, top + 0.05], [nr + 0.01, top + 0.01], [nr + 0.03 * bulk, top - 0.03]], { n: 14, folds: 6, amt: 0.1, hem: 0, hemLine: false, seed }), color, 0, 0, 0.002, { ink: 0 });
+  const rx = Math.max(nr + 0.036 * bulk, tx * 0.62), rz = Math.max(nr + 0.032 * bulk, tz * 0.7);
+  k.add(T, cowl({ rx, rz, drop: 0.045 * bulk, hh: 0.03 * bulk, th: 0.024 * bulk, seed, rolls: 2.6, side: s }), color, 0, top + 0.008, 0.004, { ink: 0.75 });
+  // the knot, flattened against the chest, off to one side under the chin
+  const ka = 0.42 * s, kx = Math.sin(ka) * (rx + 0.02), kz = Math.cos(ka) * (rz + 0.028), ky = top - 0.035 * bulk;
+  k.add(T, flatKnot(0.026 * bulk, seed + 1), color, kx, ky, kz, { r: [-0.5, ka * 0.8, 0.3 * s], ink: 0.75 });
+  if (o.end !== false) {
+    const end = pivot(T, kx + 0.006 * s, ky - 0.015, kz + 0.004); end.rotation.set(-0.3, 0, 0.1 * s);
+    k.add(end, strand([[0, 0, 0], [0.004 * s, -0.04, 0.008], [0.0, -0.085, 0.01], [-0.006 * s, -0.12 * bulk, 0.012]], 0.05 * bulk, 0.009, { segs: 8, sides: 8, tip: 0.85, root: 0.6, up: () => _b.set(0, 0.2, 1), shade: [0.92, 1.0] }), color, 0, 0, 0, { ink: 0.7 });
+    if (o.endC) k.add(end, strand([[-0.005 * s, -0.105 * bulk, 0.0125], [-0.006 * s, -0.12 * bulk, 0.0125]], 0.042 * bulk, 0.011, { segs: 2, sides: 8, tip: 1, root: 1, up: () => _b.set(0, 0, 1) }), o.endC, 0, 0, 0, { ink: 0 });
+    sway.add(end, { freq: 1.6, damp: 0.25, gain: 0.03, wind: 0.5, bob: 0.12, limit: 0.7 });
+  }
+  // both tails leave the knot, one from its top over the shoulder, one from under it
+  const a1 = pivot(T, kx - 0.004 * s, ky + 0.012, kz - 0.006);
+  const a2 = pivot(T, kx + 0.012 * s, ky - 0.012, kz - 0.01);
   return [a1, a2];
 }
 
@@ -450,8 +485,9 @@ export function scarfWrap(p: Person, r: Rig, sway: Sway, color: string, o: { loo
 /** A woven straw hat: a drooping, slightly uneven brim with woven rings, a rounded crown, a band, ribbon ends. */
 export function strawHat(k: RigKit, head: THREE.Object3D, sway: Sway, o: { R: number; brim?: number; crown?: number; band: string; straw?: string; tilt?: V3; ribbon?: boolean; seed?: number; y?: number }) {
   const C = headC, R = o.R, straw = o.straw ?? '#e9c877', dark = new THREE.Color(straw).multiplyScalar(0.8);
-  const g = pivot(head, 0, C.y + R * (o.y ?? 0.42), C.z - R * 0.05); g.rotation.set(...(o.tilt ?? [-0.12, 0, 0.05]));
-  const Rb = R * (o.brim ?? 2.4), cr = R * 0.95, ch = R * (o.crown ?? 0.55), seed = o.seed ?? 0;
+  // the brim rests just above the brow and the crown fits over the skull (never a disc floating on the hair)
+  const g = pivot(head, 0, C.y + R * (o.y ?? 0.34), C.z - R * 0.06); g.rotation.set(...(o.tilt ?? [-0.12, 0, 0.05]));
+  const Rb = R * (o.brim ?? 2.2), cr = R * 1.02, ch = R * (o.crown ?? 0.85), seed = o.seed ?? 0;
   // the brim: woven rings as seams, a gentle droop, the edge a little wavy
   const brim = cloth([[cr * 0.98, 0.006], [cr * 1.08, 0.0], [Rb * 0.55, -0.012], [Rb * 0.82, -0.03], [Rb, -0.05]], { n: 30, folds: 5, amt: 0.04, yTop: 0, seed, hem: 0.012, lines: [-0.006, -0.018, -0.032], shade: 0.15 });
   k.add(g, brim, straw, 0, 0, 0, { lining: 0.78, ink: 0.8 });

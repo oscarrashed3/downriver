@@ -44,7 +44,7 @@ export interface ScarfCollider { o: THREE.Object3D; r: number }
 let ribbonMat: THREE.MeshToonMaterial | null = null;
 /** One shared toon material for every ribbon: colours come from the vertices. */
 function scarfMaterial() {
-  if (!ribbonMat) ribbonMat = paint(new THREE.MeshToonMaterial({ color: '#ffffff', vertexColors: true, gradientMap: softRamp(), side: THREE.DoubleSide }), { variation: 0.5 });
+  if (!ribbonMat) ribbonMat = paint(new THREE.MeshToonMaterial({ color: '#ffffff', vertexColors: true, gradientMap: softRamp(), side: THREE.FrontSide }), { variation: 0.5 });
   return ribbonMat;
 }
 
@@ -157,8 +157,9 @@ export class WindScarf {
     dt = Math.min(dt, 0.05);
     const H = 1 / 120;
     this.acc += dt;
-    const grav = 9.8 * 0.8 * (this.spec.droop ?? 1);
-    const drag = 2.3;
+    // heavy enough to sag in a lull, loose enough to be pushed about: the wind no longer holds it straight
+    const grav = 9.8 * 1.05 * (this.spec.droop ?? 1);
+    const drag = 1.25;
     this.colliders.forEach((c, i) => { c.o.getWorldPosition(this.cs[i].c); this.cs[i].r = c.r * c.o.getWorldScale(_ws).x; });
     this.anchor.getWorldPosition(_a);
     const airLen = air.length();
@@ -227,7 +228,11 @@ export class WindScarf {
       _n.crossVectors(_d, _s).normalize();
       // a ripple running from the knot to the tip, growing towards the free end
       const rip = (Math.sin(u * 8 - t * 8 + sd) * 0.6 + Math.sin(u * 15 - t * 13 + sd * 2) * 0.4) * 0.06 * fl * Math.min(1, u * 1.8);
-      const c = _c.copy(this.x[i]).addScaledVector(_n, rip);
+      // travelling waves, sideways and up-down, growing to the tip: the tail always makes a soft S, never a plank
+      const L = sp.length, ws = sd * 1.7;
+      const wl = (Math.sin(u * 5.2 - t * 3.0 + ws) * 0.7 + Math.sin(u * 9.0 - t * 4.6 + ws * 2) * 0.3) * 0.085 * L * u * fl;
+      const wv = (Math.sin(u * 4.4 - t * 2.4 + ws + 1.3) * 0.75 + Math.sin(u * 8.0 - t * 4.1 + ws) * 0.25) * 0.075 * L * u * fl;
+      const c = _c.copy(this.x[i]).addScaledVector(_n, rip + wv).addScaledVector(s, wl);
       // width: gathered at the knot, then narrowing to about 60% at the tip
       const w = sp.width * (u < 0.07 ? 0.62 + u * 5.4 : 1 - 0.4 * ((u - 0.07) / 0.93));
       // the cross-section cups and curls; the bend changes sign as it travels, so the cloth rolls
