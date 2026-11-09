@@ -51,6 +51,11 @@ export interface FloatingIslandOpts {
   cottages?: number;
   /** how much the cliff narrows from the lip to its base, share of the radius (default 0.06) */
   taper?: number;
+  /**
+   * Places on the top to keep clear of grass, flowers, trees, bushes and stones (a river crossing the island, a
+   * village): true when local (x, z) is within `pad` metres of somewhere that must stay clear.
+   */
+  avoid?: (x: number, z: number, pad: number) => boolean;
 }
 
 export interface FloatingIsland {
@@ -90,7 +95,7 @@ export function buildFloatingIsland(opts: FloatingIslandOpts): FloatingIsland {
 
   const fallAvoid = (opts.waterfalls ?? []).map(w => ({ a: w.angle, half: (w.width * 0.75) / sh.outline(w.angle) }));
   const nearFall = (a: number, k: number) => fallAvoid.some(v => Math.abs(Math.atan2(Math.sin(a - v.a), Math.cos(a - v.a))) < v.half * k);
-  const nearWater = (x: number, z: number, pad: number) => sh.streams.some(st => { const q = sh.nearest(st, x, z); return q.d < q.w * 0.5 + pad; });
+  const nearWater = (x: number, z: number, pad: number) => sh.streams.some(st => { const q = sh.nearest(st, x, z); return q.d < q.w * 0.5 + pad; }) || (opts.avoid?.(x, z, pad) ?? false);
   /** a random point on the top, uniform by area */
   const randomTop = (sMin = 0, sMax = 1) => {
     const a = rng() * TAU, s = Math.sqrt(sMin * sMin + rng() * (sMax * sMax - sMin * sMin));

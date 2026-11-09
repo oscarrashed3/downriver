@@ -276,6 +276,7 @@ export function rainbow(f: FallOut, at: THREE.Vector3): THREE.Mesh {
   const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0), rainbowMaterial());
   m.position.copy(at).add(new THREE.Vector3(0, -size * 0.45, 0));
   m.scale.set(size * 2, size, 1);
-  m.renderOrder = 4; m.userData.noOutline = true;
+  // camera-facing and sized by its own transform: set it on a planet as a whole, never bend its vertices
+  m.renderOrder = 4; m.userData.noOutline = true; m.userData.rigid = true;
   return m;
 }

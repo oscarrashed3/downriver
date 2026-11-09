@@ -46,12 +46,12 @@ function normalFrom(src: THREE.Texture, strength: number, blur = 2): THREE.Textu
   const d = x.getImageData(0, 0, S, S).data;
   const h = new Float32Array(S * S);
   for (let i = 0; i < S * S; i++) h[i] = (d[i * 4] * 0.3 + d[i * 4 + 1] * 0.59 + d[i * 4 + 2] * 0.11) / 255;
-  const out = x.createImageData(S, S);
+  const out = x.createImageData(S, S), od = out.data;
   const at = (i: number, j: number) => h[((j + S) % S) * S + ((i + S) % S)];
   for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
     const nx = (at(i - 1, j) - at(i + 1, j)) * strength, ny = (at(i, j + 1) - at(i, j - 1)) * strength;
     const l = Math.hypot(nx, ny, 1), o = (j * S + i) * 4;
-    out.data[o] = (nx / l * 0.5 + 0.5) * 255; out.data[o + 1] = (ny / l * 0.5 + 0.5) * 255; out.data[o + 2] = (1 / l * 0.5 + 0.5) * 255; out.data[o + 3] = 255;
+    od[o] = (nx / l * 0.5 + 0.5) * 255; od[o + 1] = (ny / l * 0.5 + 0.5) * 255; od[o + 2] = (1 / l * 0.5 + 0.5) * 255; od[o + 3] = 255;
   }
   x.filter = 'none'; x.putImageData(out, 0, 0);
   const t = new THREE.CanvasTexture(c);

@@ -7,6 +7,8 @@ import { prepare, populate } from '../src/world/content';
 import { laterArrivalDir, dockDir } from '../src/world/arrival';
 import { dirLatLon } from '../src/world/sphere';
 import { HOME_LIGHT } from '../src/world/w_lantern';
+import { FOX_SPOT } from '../src/world/w_sky';
+import { skyWalkable, isleAt, onIsle, skySpotProblem } from '../src/world/skyIsles/terrain';
 
 // Oscar's hard rules, checked on the real terrain so overnight work cannot quietly break them.
 const riverLon = Math.atan2(0.8, 0.5) * 180 / Math.PI; // as game.ts
@@ -32,8 +34,18 @@ function across(p: Planet, t: number, half: number, step = 0.25): number[] {
   const d = p.pathPoint(t), d2 = p.pathPoint(Math.min(1, t + 0.003));
   if (t + 0.003 > 1) d2.copy(p.pathPoint(t - 0.003)).sub(d).negate().add(d);
   const side = new THREE.Vector3().crossVectors(d, d2.clone().sub(d)).normalize();
+  const at = (s: number) => d.clone().addScaledVector(side, s / p.R).normalize();
   const out: number[] = [];
-  for (let s = -half; s <= half; s += step) out.push(p.height(d.clone().addScaledVector(side, s / p.R).normalize()));
+  if (p.cfg.shape === 'sky') {
+    // the Sky Isles: only the ground you can stand on, out from the river to an island's lip or the aqueduct's
+    // edge (beyond is the drop to the cloud sea, not a wall)
+    let lo = 0, hi = 0;
+    while (lo - step >= -half && skyWalkable(p, at(lo - step))) lo -= step;
+    while (hi + step <= half && skyWalkable(p, at(hi + step))) hi += step;
+    for (let s = lo; s <= hi + 1e-6; s += step) out.push(p.height(at(s)));
+    return out;
+  }
+  for (let s = -half; s <= half; s += step) out.push(p.height(at(s)));
   return out;
 }
 
@@ -53,7 +65,9 @@ describe('Hard rules', () => {
         const h = across(p, t, half);
         expect(worstClimb(h, 0.25), `${p.cfg.id} t=${t.toFixed(2)}`).toBeLessThan(MAX_CLIMB);
         const water = p.bedAt(t) + p.cfg.waterDepth;
-        if (p.cfg.shape !== 'sea') expect(water - Math.min(...h), `${p.cfg.id} depth at t=${t.toFixed(2)}`).toBeLessThan(MAX_DEPTH);
+        // (in the Sky Isles only the river's own channel: an island's side streams run lower, at their own level)
+        const wade = p.cfg.shape === 'sky' ? across(p, t, p.cfg.riverWidth * 1.25) : h;
+        if (p.cfg.shape !== 'sea') expect(water - Math.min(...wade), `${p.cfg.id} depth at t=${t.toFixed(2)}`).toBeLessThan(MAX_DEPTH);
       }
     });
   }
@@ -108,6 +122,42 @@ describe('Hard rules', () => {
       expect(p.riverNearest(d).dist).toBeLessThan(p.cfg.riverWidth + 2.5);
     });
   }
+
+  it('sky: the river is walkable all the way down, on the islands and the aqueducts', () => {
+    const p = planets[WORLDS.findIndex(w => w.id === 'sky')];
+    for (let t = 0.012; t <= 0.995; t += 0.0025) {
+      const d = p.pathPoint(t);
+      expect(skyWalkable(p, d), `river at t=${t.toFixed(4)}`).toBe(true);
+      // and at least a stride of bank or parapet beside it on one side
+      const d2 = p.pathPoint(Math.min(1, t + 0.003));
+      const side = new THREE.Vector3().crossVectors(d, d2.sub(d)).normalize();
+      const off = (m: number) => d.clone().addScaledVector(side, m / p.R).normalize();
+      expect(skyWalkable(p, off(3.6)) || skyWalkable(p, off(-3.6)), `bank at t=${t.toFixed(4)}`).toBe(true);
+    }
+  });
+
+  it('sky: you arrive on Landing Isle, and the fox waits on the drifting islet', () => {
+    const p = planets[WORLDS.findIndex(w => w.id === 'sky')];
+    const a = laterArrivalDir(p);
+    expect(isleAt(p, a)?.def.id).toBe('landing');
+    expect(onIsle(p, a, 1.6), 'arrival well in from the lip').toBe(true);
+    expect(onIsle(p, dockDir(p)), 'dock on the island').toBe(true);
+    const fox = p.dirRiver(FOX_SPOT.lat, FOX_SPOT.lon);
+    expect(isleAt(p, fox)?.def.id).toBe('drift');
+  });
+
+  it('sky: the people and the edge stand on islands', () => {
+    const i = WORLDS.findIndex(w => w.id === 'sky'), p = planets[i];
+    p.build();
+    const c = populate(p, new THREE.Scene(), i);
+    expect(c.npcs.length).toBeGreaterThan(0);
+    for (const n of c.npcs) {
+      const d = n.root.position.clone().sub(p.center).normalize();
+      expect(skySpotProblem(p, d), `npc ${n.id}`).toBe(null);
+    }
+    const edge = (c.refs.edge as THREE.Object3D).position.clone().sub(p.center).normalize();
+    expect(onIsle(p, edge, 1.5), 'the edge arch').toBe(true);
+  }, 120000);
 
   it('the Endless Sea is laid out exactly as before the move to six worlds', () => {
     const i = WORLDS.findIndex(w => w.id === 'sea'), p = planets[i];

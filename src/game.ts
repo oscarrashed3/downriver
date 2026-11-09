@@ -52,6 +52,8 @@ import { NOTE, PROMPT, NEW_GOAL, WHERE } from './data/words';
 import { BackpackView, ITEMS, bagAdd, doTrade } from './systems/backpack';
 import { foldMood } from './player/fold';
 import { Fox } from './world/fox';
+import type { SkyWorld } from './world/skyIsles/world';
+import { skyFlowers, onIsle, skyWalkable } from './world/skyIsles/terrain';
 import { CHAPTERS, MAIN_QUEST, NOT_YET, OPENING, WORLD_TASKS } from './data/story';
 import { ChapterOne } from './story/chapterOne';
 import * as Opening from './story/opening';
@@ -102,6 +104,9 @@ export class Game {
   skyread: Skyreading;
   skyView: SkyView;
   grass: Grass;
+  /** The Sky Isles' own meadow (drawn and updated only in World 2). */
+  skyGrass: Grass | null = null;
+  skyWorld: SkyWorld | null = null;
   life: Life;
   quality = new QualityAuto();
   motes: Motes;
@@ -264,6 +269,15 @@ export class Game {
     const p0 = this.planets[0];
     this.grass = new Grass(p0, p0.grassW!, 3.4, d => peaksFlowers(p0, d));
     this.scene.add(this.grass.group);
+    // the Sky Isles: their own world-builder, and their own meadow on the island tops
+    this.skyWorld = (this.contents[FOX_WORLD]?.refs.skyWorld as SkyWorld | undefined) ?? null;
+    const pS = this.planets[FOX_WORLD];
+    if (this.skyWorld && pS.grassW) {
+      this.skyGrass = new Grass(pS, pS.grassW, 1.7, d => skyFlowers(pS, d));
+      this.skyGrass.lush = 1; this.skyGrass.bloom = 1;
+      this.skyGrass.group.visible = false;
+      this.scene.add(this.skyGrass.group);
+    }
     const R0 = this.contents[0].refs;
     this.life = new Life(this.scene, p0, PK.flowers, R0.chimneys, (R0.fire as THREE.Object3D).position, PK.fire);
 
@@ -540,6 +554,7 @@ export class Game {
     this.composer.setPixelRatio(Math.min(devicePixelRatio, pr.pixelRatio));
     this.composer.setSize(innerWidth, innerHeight);
     this.grass?.setQuality(pr.grass);
+    this.skyGrass?.setQuality(pr.grass);
     this.bloom.enabled = pr.bloom;
     this.finish.mat.uniforms.uBrush.value = pr.brush;
     this.sunLight.castShadow = pr.shadows;
@@ -683,11 +698,32 @@ export class Game {
     return s;
   }
 
+  /** In the Sky Isles a fall to the cloud sea is soft: after a moment there, the wind lifts you back to the last island. */
+  private skySafe: THREE.Vector3 | null = null;
+  private skyLowT = 0;
+  private skyRescue(dt: number) {
+    const p = this.planet, pl = this.player;
+    if (pl.grounded && (pl.onDeck || skyWalkable(p, pl.up))) { (this.skySafe ??= new THREE.Vector3()).copy(pl.up); this.skyLowT = 0; return; }
+    const low = pl.pos.distanceTo(p.center) < p.R + 3;
+    this.skyLowT = low && pl.grounded ? this.skyLowT + dt : 0;
+    if (this.skyLowT > 1.4) {
+      this.skyLowT = 0;
+      pl.placeAt(p, this.skySafe ? this.skySafe.clone() : this.arrivalDir(this.cur));
+      this.hud.notify('A warm gust lifts you out of the cloud and sets you down on the island again.');
+      this.sound.sfxPlay('soft');
+    }
+  }
+
   surfaceSound(): 'step' | 'stepSnow' | 'stepGrass' | 'stepWood' | 'stepStone' {
     const p = this.planet, d = this.player.up;
     if (this.cur !== 0) {
       switch (WORLDS[this.cur].id) {
-        case 'sky': return p.height(d) - p.skyCloud(Math.acos(Math.max(-1, Math.min(1, d.y))) * 180 / Math.PI) < 1.2 ? 'stepSnow' : 'stepGrass'; // soft cloud underfoot, or island meadow
+        case 'sky': {
+          // soft cloud underfoot, stone on the aqueducts, planks on the bridges, or island meadow
+          if (this.player.onDeck) return 'stepWood';
+          if (!onIsle(p, d)) return p.groundBelow(d, this.player.pos.distanceTo(p.center)) > p.R + 2 ? 'stepStone' : 'stepSnow';
+          return 'stepGrass';
+        }
         case 'garden': return 'stepGrass';
         case 'desert': return 'stepSnow';
         case 'lantern': return 'stepStone';
@@ -1513,6 +1549,8 @@ export class Game {
   /** Paint the worlds into the sky moons (once, on the title's first frame; a short hitch while the title fades in). */
   bakeIslands() {
     if (this.islands.baked) return;
+    // the Sky Isles are drawn by their own builder, hidden outside World 2: show them for their moon
+    this.skyWorld?.bakeView(true);
     const fog = this.scene.fog as THREE.FogExp2;
     const density = fog.density;
     this.islands.bake({
@@ -1525,10 +1563,11 @@ export class Game {
         this.sunLight.position.copy(this.player.pos).addScaledVector(this.day.sun, 120);
         this.sunLight.target.position.copy(this.player.pos); this.sunLight.target.updateMatrixWorld();
       },
-      hide: [this.sky.mesh, this.sky.clouds, ...this.streams, ...this.updrafts, this.beacon, this.cloudSea.group, this.grass.group,
+      hide: [this.sky.mesh, this.sky.clouds, ...this.streams, ...this.updrafts, this.beacon, this.cloudSea.group, this.grass.group, ...(this.skyGrass ? [this.skyGrass.group] : []),
         this.motes.points, this.rain.points, this.blizzard.points, this.player.root, this.fold.root, this.fold.string, ...this.skyView.silhouettes, this.skyView.marker],
       homePos: this.beaconPos,
     });
+    this.skyWorld?.bakeView(false);
   }
 
   /**
@@ -1780,6 +1819,12 @@ export class Game {
 
     (this.contents[this.cur].refs.lifeNear as THREE.Vector3 | undefined)?.copy(this.player.pos);
     for (const c of this.contents) c.animate.forEach(f => f(dt, this.time));
+    if (this.skyWorld) {
+      const inSky = this.cur === FOX_WORLD && this.mode !== 'title';
+      if (inSky !== this.skyWorld.isActive) this.skyWorld.setActive(inSky);
+      this.skyWorld.frame(dt, this.time, this.camera);
+      if (inSky && this.mode === 'play') this.skyRescue(dt);
+    }
     const npcWind = east.clone();
     for (const n of this.contents[this.cur].npcs) n.update(dt, this.mode === 'cut' ? null : this.player.pos, npcWind.clone().applyQuaternion(n.root.quaternion.clone().invert()));
     for (const pl of this.planets) pl.waterMat.uniforms.uTime.value = this.time;
@@ -1793,6 +1838,7 @@ export class Game {
     this.hud.sky.classList.toggle('on', this.skyread.active && this.mode === 'play');
     const onPeaks = this.cur === 0;
     this.grass.update(this.player.pos, this.camera.position, onPeaks && this.skyView.k < 0.6);
+    this.skyGrass?.update(this.player.pos, this.camera.position, !!this.skyWorld?.isActive && this.skyView.k < 0.6);
     const whistled = this.mode === 'play' && inp.hit('KeyF');
     this.life.update(dt, this.time, this.day.day, this.player.pos, whistled, onPeaks);
     if (onPeaks) this.ch1.update(dt, whistled);

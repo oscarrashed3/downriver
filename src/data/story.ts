@@ -17,7 +17,7 @@ export const CHAPTERS = [
  * each world's builder writes the real quest.
  */
 export const WORLD_TASKS: Record<string, string> = {
-  sky: 'Find the Wind Keeper by the Chime Spire, on the second island.',
+  sky: 'Find the Wind Keeper in Sailtown, on the second island.',
   garden: 'Find the gardener by the fallen watering can.',
   sea: 'Find Maren, the Salt Keeper, among the stilt houses.',
   desert: 'Find Sefa in Sahra, the wandering town, across the river.',

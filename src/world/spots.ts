@@ -1,6 +1,7 @@
 // Where a person can stand: on dry, gentle ground, clear of the water, walls, rails and trees.
 import * as THREE from 'three';
 import type { Planet } from './planet';
+import { skySpotProblem } from './skyIsles/terrain';
 
 export interface Avoid { pos: THREE.Vector3; r: number }
 
@@ -11,6 +12,7 @@ const MAX_FLOW = 1.6;
 export function spotProblem(p: Planet, d: THREE.Vector3, avoid: Avoid[] = []): string | null {
   const w = p.surfacePoint(d);
   if (p.riverNearest(d).dist < p.cfg.riverWidth * MAX_FLOW + 1.0) return 'water';
+  if (p.cfg.shape === 'sky') { const bad = skySpotProblem(p, d); if (bad) return bad; }
   if (p.slope(d) > 0.5) return 'steep';
   for (const s of p.solids) {
     const r = s.shape.kind === 'circle' ? s.shape.r : Math.hypot(s.shape.hw, s.shape.hd);

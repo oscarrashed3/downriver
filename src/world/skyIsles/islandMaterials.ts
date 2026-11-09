@@ -158,13 +158,17 @@ export function gradeFoliage(m: THREE.MeshToonMaterial, key: string, rock = 0) {
   return m;
 }
 
-let rockMat: THREE.MeshToonMaterial | null = null;
+const rockMats: Partial<Record<'flat' | 'bent', THREE.MeshToonMaterial>> = {};
 /**
  * The island body: grass, soil and limestone all come from vertex colours (beds, moss, stains are baked per vertex);
  * the fragment paints the strokes of ROCK_GLSL on the stone and grades the light (GRADE_GLSL).
+ * bent: for an island bent onto a planet (skyIsles/bend.ts), whose vertices keep their flat island-space position
+ * in an aLoc attribute, so the strokes stay laid out as in the island's own frame.
  */
-export function islandRockMaterial(): THREE.MeshToonMaterial {
-  if (rockMat) return rockMat;
+export function islandRockMaterial(bent = false): THREE.MeshToonMaterial {
+  const key = bent ? 'bent' : 'flat';
+  const had = rockMats[key];
+  if (had) return had;
   const m = paint(new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: softRamp() }), { variation: 0.4, rim: 0.6 });
   const base = m.onBeforeCompile;
   m.onBeforeCompile = (sh, r) => {
@@ -173,15 +177,15 @@ export function islandRockMaterial(): THREE.MeshToonMaterial {
     sh.uniforms.uRockScale = { value: 1 };
     sh.uniforms.uMoss = { value: 1 };
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute float aRock; attribute vec2 aBand; attribute float aLedge; attribute float aUnder; attribute float aAO; attribute float aMantle; varying float vMantle; varying float vRock; varying vec3 vLoc; varying vec2 vBand; varying float vLedge; varying float vUnder; varying float vAO;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRock = aRock; vLoc = position; vBand = aBand; vLedge = aLedge; vUnder = aUnder; vAO = aAO; vMantle = aMantle;');
+      .replace('#include <common>', '#include <common>\nattribute float aRock; attribute vec2 aBand; attribute float aLedge; attribute float aUnder; attribute float aAO; attribute float aMantle; varying float vMantle; varying float vRock; varying vec3 vLoc; varying vec2 vBand; varying float vLedge; varying float vUnder; varying float vAO;' + (bent ? ' attribute vec3 aLoc;' : ''))
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRock = aRock; vLoc = ' + (bent ? 'aLoc' : 'position') + '; vBand = aBand; vLedge = aLedge; vUnder = aUnder; vAO = aAO; vMantle = aMantle;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying float vRock; varying vec3 vLoc; varying vec2 vBand; varying float vLedge; varying float vUnder; varying float vAO; varying float vMantle; uniform float uRockScale; uniform float uMoss; float gRock = 1.0; float gAO = 0.0; ' + GRADE_UNIFORMS + AASTEP)
       .replace('#include <opaque_fragment>', GRADE_GLSL.replace(/vRock/g, 'gRock'))
       .replace('#include <color_fragment>', ROCK_GLSL);
   };
-  m.customProgramCacheKey = () => 'skyIslandRock5';
-  rockMat = m;
+  m.customProgramCacheKey = () => 'skyIslandRock5' + key;
+  rockMats[key] = m;
   return m;
 }
 

@@ -6,6 +6,8 @@ import { dirLatLon, angleBetween } from './sphere';
 import type { WorldConfig } from './worlds';
 import { makeWaterMaterial } from './water';
 import { paint, softRamp } from '../render/paint';
+import { skyHeight, skyRecolor, groundBelow } from './skyIsles/terrain';
+import { buildSkyRiver } from './skyIsles/river';
 
 export interface Flatten { dir: THREE.Vector3; radius: number; height: number; blend: number }
 
@@ -142,6 +144,7 @@ export class Planet {
   }
 
   height(d: THREE.Vector3): number {
+    if (this.cfg.shape === 'sky') return skyHeight(this, d);
     let h = this.baseHeight(d);
     for (const f of this.flattens) {
       const a = angleBetween(d, f.dir) * this.R;
@@ -150,14 +153,6 @@ export class Planet {
     }
     const { dist, t } = this.riverNearest(d);
     const bed = this.bedAt(t);
-    if (this.cfg.shape === 'sky') {
-      // The river runs along the top of a chain of islands, broad where it is level and narrow where it drops.
-      // narrow enough that the edge and the cloud sea below are always in sight from the bank
-      const hw = this.cfg.riverWidth + this.cfg.bankWidth + 0.5 + 2.0 * this.plateau(t);
-      const isle = smoothstep(hw + 2.0, hw, dist);
-      const top = bed + this.cfg.waterDepth + 0.6 + this.noise.n3(d.x * 10, d.y * 10, d.z * 10) * 0.25;
-      if (isle > 0) h = Math.max(h, lerp(h, top, isle));
-    }
     if (this.cfg.shape === 'lantern') h = lanternGround(this, d, h, bed);
     if (this.cfg.shape === 'sea') {
       // A long marsh island carries the river across the ocean, all the way to the edge where it falls on.
@@ -184,7 +179,7 @@ export class Planet {
   bedAt(t: number): number {
     if (this.cfg.shape !== 'sky') return this.cfg.riverBed;
     let lift = SKY_LIFT;
-    for (const [ts, drop] of SKY_STEPS) lift -= drop * smoothstep(ts - 0.006, ts + 0.006, t);
+    for (const [ts, drop] of SKY_STEPS) lift -= drop * smoothstep(ts - SKY_STEP_HALF, ts + SKY_STEP_HALF, t);
     return this.cfg.riverBed + lift;
   }
 
@@ -202,6 +197,15 @@ export class Planet {
 
   surfaceRadius(d: THREE.Vector3): number {
     return this.R + this.height(d);
+  }
+
+  /**
+   * The ground under a body at distance r from the centre (for movement). The same as surfaceRadius everywhere
+   * but the Sky Isles, where a body below an island's top meets the cloud floor, not the top above it.
+   */
+  groundBelow(d: THREE.Vector3, r: number): number {
+    if (this.cfg.shape === 'sky') return groundBelow(this, d, r);
+    return this.surfaceRadius(d);
   }
 
   /** World position on the surface plus an offset along the normal. */
@@ -286,6 +290,7 @@ export class Planet {
   }
 
   recolor() {
+    if (this.cfg.shape === 'sky') { skyRecolor(this); return; }
     const geo = this.terrain.geometry as THREE.BufferGeometry;
     const pos = geo.attributes.position as THREE.BufferAttribute;
     const nor = geo.attributes.normal as THREE.BufferAttribute;
@@ -329,21 +334,13 @@ export class Planet {
       const big = this.noise.n3(d.x * 7 + 3, d.y * 7, d.z * 7);
       if (h < 0.5) c.copy(low).lerp(mid, smoothstep(0, 0.5, h + jitter + big * 0.12));
       else c.copy(mid).lerp(high, smoothstep(0.5, 1, h + jitter));
-      if (shape === 'sky') {
-        // cloud below, meadow on the islands
-        c.copy(mid).lerp(high, smoothstep(-0.2, 0.4, big + jitter));
-      } else if (shape === 'desert') desertBand(heights[i] + big * 0.25 + jitter * 1.2, c);
+      if (shape === 'desert') desertBand(heights[i] + big * 0.25 + jitter * 1.2, c);
       // painted dabs of brighter grass
       c.lerp(dab, smoothstep(0.25, 0.55, big) * 0.35 * smoothstep(0.6, 0.3, h));
       for (const t of this.tints) { const a = angleBetween(d, t.dir) * this.R; if (a < t.r + 6) c.lerp(t.color, smoothstep(t.r + 6, t.r - 2, a) * t.k); }
       const rocky = smoothstep(0.86, 0.6, flat);
       const rk = rock.clone().lerp(moss, smoothstep(0.62, 0.8, flat) * 0.55 * (peaks ? 1 : 0.3));
       c.lerp(rk, rocky * (shape === 'desert' ? 0.12 : 0.9)); // the desert's cliffs keep their painted bands
-      if (shape === 'sky') {
-        // the cloud sea: white, with lilac-blue shade in the hollows between the billows
-        const rel = heights[i] - this.skyCloud(Math.acos(clamp(d.y, -1, 1)) * 180 / Math.PI);
-        c.lerp(cloudShade.copy(low).lerp(cloudHollow, smoothstep(0.5, 0.0, rel) * 0.35), smoothstep(1.5, 0.9, rel));
-      }
       const rdist = rd[i];
       const bankK = smoothstep(this.cfg.riverWidth + this.cfg.bankWidth + 1.5, this.cfg.riverWidth, rdist);
       c.lerp(bank, bankK * 0.6);
@@ -373,6 +370,7 @@ export class Planet {
   }
 
   buildRiverGeometry(): THREE.BufferGeometry {
+    if (this.cfg.shape === 'sky') return buildSkyRiver(this);
     const across = 7;
     const P = this.path;
     const verts: number[] = [], uvs: number[] = [], idx: number[] = [];
@@ -471,12 +469,16 @@ export function toonRamp(): THREE.DataTexture {
 /** Latitude where the glacier ends for a given snowpack (0..1). More snow, longer ice. */
 export function glacierEdgeLat(snowpack: number): number { return 4 + snowpack * 35; }
 
-/** The Sky Isles' river starts this high above its base bed, and drops at each step: [t along the river, metres]. */
-export const SKY_LIFT = 7.5;
+/**
+ * The Sky Isles' river starts this high above its base bed (Landing Isle's level, layout.ts RIVER_TOPS), and
+ * drops down a short cascade near each river island's downstream lip: [t along the river, metres].
+ */
+export const SKY_LIFT = 21.9;
+/** Half the length of each cascade, in t (about 2.5 m of river). */
+export const SKY_STEP_HALF = 0.0135;
 /** How far the Sky Isles' cloud floor lies below the island tops beside the river. */
 export const SKY_CLOUD_BELOW = 2.8;
-const cloudShade = new THREE.Color(), cloudHollow = new THREE.Color('#c8cff0');
-export const SKY_STEPS: [number, number][] = [[0.17, 2.5], [0.45, 2.5], [0.74, 2.0]];
+export const SKY_STEPS: [number, number][] = [[0.1225, 3.5], [0.3846, 3.5], [0.6296, 3.5]];
 
 /** The Painted Desert's layers, bottom to top: pink, coral, lilac, violet, turquoise, and round again. */
 export const DESERT_BANDS = ['#f8d2d4', '#f6a890', '#d6bcf2', '#a48ada', '#8adcd2', '#f8dcbc'].map(c => new THREE.Color(c));

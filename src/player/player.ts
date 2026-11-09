@@ -192,8 +192,8 @@ export class Player {
 
     // Collide with the ground.
     const nUp = this.pos.clone().sub(planet.center).normalize();
-    const ground = planet.surfaceRadius(nUp);
     const nr = this.pos.distanceTo(planet.center);
+    const ground = planet.groundBelow(nUp, nr);
     if (nr <= ground + 0.02) {
       if (!this.grounded && vU < -4) {
         this.squash = Math.min(0.35, -vU * 0.025); this.onLand?.(-vU);
