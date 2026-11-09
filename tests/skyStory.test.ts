@@ -7,7 +7,7 @@ describe('Sky Isles story spine', () => {
     const f = new Set<string>();
     expect(skyStep(f)).toBe(null);
     f.add('sky:arrived'); expect(skyStep(f)).toBe('larkTown'); expect(skyPerson(f)).toBe('lark');
-    f.add('sky:quest-kite'); expect(skyDetail(f)).toMatch(/Windmill Isle.*\(0 of 3\)/);
+    f.add('sky:quest-kite'); expect(skyDetail(f)).toMatch(/windmill.*\(0 of 3\)/);
     f.add('sky:part-frame'); expect(skyDetail(f)).toMatch(/sailcloth.*\(1 of 3\)/); expect(skyPerson(f)).toBe('mender');
     f.add('sky:part-cloth'); f.add('sky:part-string'); expect(skyStep(f)).toBe('build');
     f.add('sky:kite-built'); expect(skyStep(f)).toBe('qualify'); expect(skyDots(f)).toBe(1);

@@ -33,6 +33,10 @@ export const SKY_SCRIPTS: Record<string, Script> = {
               { type: 'say', text: 'Now you need a ribbon, or they won\'t let you race. The qualifier is in the Chime Garden.' },
               { type: 'say', text: 'Fly through the golden rings. Every one plays a note. Zephy will be showing off there.' },
             ], else: [
+              { type: 'branch', ifFlag: 'sky:parts-all', then: [
+                { type: 'say', text: 'The frame! The cloth! The string! You found them all!' },
+                { type: 'say', text: 'GRAN WREN! Come quick! We are building a kite!' },
+              ], else: [
               { type: 'branch', ifFlag: 'sky:quest-kite', then: [
                 { type: 'say', text: 'The frame is up on Windmill Isle. Sailcloth from the sail-mender. String from the chime-maker.' },
                 { type: 'say', text: 'Bring all three here, and Gran Wren and I will help you put it together.' },
@@ -53,6 +57,7 @@ export const SKY_SCRIPTS: Record<string, Script> = {
             ] },
           ] },
         ] },
+      ] },
       ] },
     ],
     after: ['See you up there!'],
@@ -119,6 +124,11 @@ export const SKY_SCRIPTS: Record<string, Script> = {
       { type: 'branch', ifFlag: 'sky:part-cloth', then: [
         { type: 'say', text: 'That cloth will hold. I sewed it twice. I sew everything twice.' },
       ], else: [
+        { type: 'branch', ifFlag: 'sky:laundry', then: [
+          { type: 'say', text: 'My shirt! My sock! My good sheet! Not a speck of cloud on any of it.' },
+          { type: 'say', text: 'A bargain is a bargain. My best sailcloth. Sewn twice round the edges.' },
+          { type: 'give', items: ['sky:part-cloth'] },
+        ], else: [
         { type: 'branch', ifFlag: 'sky:quest-cloth', then: [
           { type: 'say', text: 'My washing is still blowing about. Catch it before it reaches the clouds.' },
         ], else: [
@@ -128,6 +138,7 @@ export const SKY_SCRIPTS: Record<string, Script> = {
           { type: 'say', text: 'Catch my laundry before it blows off the island, and the best cloth I have is yours.' },
           { type: 'give', items: ['sky:quest-cloth'] },
         ] },
+      ] },
       ] },
     ],
     after: ['Twice. Always sew it twice.'],
@@ -140,6 +151,11 @@ export const SKY_SCRIPTS: Record<string, Script> = {
       { type: 'branch', ifFlag: 'sky:part-string', then: [
         { type: 'say', text: 'Listen. Every ring in the garden in tune. That\'s you, that is.' },
       ], else: [
+        { type: 'branch', ifFlag: 'sky:chime-tuned', then: [
+          { type: 'say', text: 'I heard it from inside! True as a bird. You have good ears, little one.' },
+          { type: 'say', text: 'A whole spool, as promised. Waxed, three-ply. It will never snap.' },
+          { type: 'give', items: ['sky:part-string'] },
+        ], else: [
         { type: 'branch', ifFlag: 'sky:quest-string', then: [
           { type: 'say', text: 'The sour chime hangs by the workshop door. Turn the weight until it sings true.' },
         ], else: [
@@ -148,6 +164,7 @@ export const SKY_SCRIPTS: Record<string, Script> = {
           { type: 'say', text: 'Retune my sour chime for me, and you can have a whole spool.' },
           { type: 'give', items: ['sky:quest-string'] },
         ] },
+      ] },
       ] },
     ],
     after: ['Every chime has one true note. Most people only have one, too.'],

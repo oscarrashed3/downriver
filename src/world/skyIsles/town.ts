@@ -195,6 +195,9 @@ export function dressIsles(w: SkyWorld): Dressing {
   };
 
   /** A race ring (a golden ring chime on its tall pole), its ring centre `ring` metres up, facing along `yaw`. */
+  /** The race rings in RINGS order (the story's qualifier and race fly through them). */
+  const rings: THREE.Object3D[] = [];
+  refs.rings = rings as unknown as THREE.Object3D;
   const ring = (d: Dresser, x: number, z: number, yaw: number, ringH: number, seed: number) => {
     const g = d.put(raceGate({ seed, height: ringH }), x, z, yaw, -0.05);
     d.solid(g, 0.35, ringH + 3);
@@ -493,7 +496,7 @@ export function dressIsles(w: SkyWorld): Dressing {
       }
       // rings face along the qualifier's loop (round the garden's centre)
       const tang = Math.atan2(q.x, -q.z);
-      ring(d, q.x, q.z, tang, rg.ring, 10 + i);
+      rings[RINGS.indexOf(rg)] = ring(d, q.x, q.z, tang, rg.ring, 10 + i);
       d.claim(q.x, q.z, 1.5);
     }
     // the chime-maker's workshop: a cottage, its awning, chimes hanging all round
@@ -553,7 +556,7 @@ export function dressIsles(w: SkyWorld): Dressing {
       for (let k = 1; k < 40; k++) { const a = k * 2.4, r = 0.6 * k; const q2 = { x: q.x + Math.cos(a) * r, z: q.z + Math.sin(a) * r }; if (d.free(q2.x, q2.z, 1.0, 7, 1.6)) { q = q2; break; } }
     }
     const out = Math.atan2(q.z, q.x);
-    ring(d, q.x, q.z, Math.atan2(-Math.sin(out), Math.cos(out)), rg.ring, 20 + i);
+    rings[RINGS.indexOf(rg)] = ring(d, q.x, q.z, Math.atan2(-Math.sin(out), Math.cos(out)), rg.ring, 20 + i);
     d.claim(q.x, q.z, 1.5);
   }
 

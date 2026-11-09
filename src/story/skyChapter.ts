@@ -16,7 +16,7 @@ import { SKY_WOW, SKY_POSTMAN, SKY_NOTE, SKY_PROMPT, SKY_VIEWPOINTS, SKY_LETTER 
 import { makeWindfolk, Crowd, type CrowdSpot } from '../world/skyIsles/windfolk';
 import { KiteParade } from '../world/skyIsles/kites';
 import { SkyWhale } from '../world/skyIsles/whale';
-import { SPOTS, RINGS } from '../world/skyIsles/layout';
+import { SPOTS } from '../world/skyIsles/layout';
 import { onIsle, skySpotProblem } from '../world/skyIsles/terrain';
 import { safeSpot } from '../world/spots';
 import { makePostman, type Postman } from '../world/postman';
@@ -26,6 +26,10 @@ import { orientTo, anyTangent } from '../world/sphere';
 import { clamp, lerp, smoothstep } from '../world/noise';
 import * as Props from '../world/props';
 import { skyStep, skyDetail, skyDots, nextPart, SKY_HOMES as HOMES } from './skyQuests';
+import { SkyParts } from './skyParts';
+import { SkyRace } from './skyRace';
+import { SkyFinish } from './skyFinish';
+import { SKY_RACE_WORDS } from '../data/skyStory';
 
 type LatOff = readonly [number, number];
 
@@ -47,6 +51,9 @@ export class SkyChapter {
   splash: THREE.Mesh;
   private active = false;
   private postmanDue = false;
+  parts!: SkyParts;
+  race!: SkyRace;
+  finish!: SkyFinish;
 
   constructor(private g: Game, world: number) {
     this.p = g.planets[world];
@@ -129,6 +136,10 @@ export class SkyChapter {
     this.postman = Object.assign(pm, { balloon });
 
     this.register();
+    this.parts = new SkyParts(g, this);
+    this.race = new SkyRace(g, this);
+    this.finish = new SkyFinish(g, this);
+    if (g.skyMove) g.skyMove.onSailTop = () => this.parts.onSailTop();
     this.setActive(false);
   }
 
@@ -198,14 +209,35 @@ export class SkyChapter {
       label: () => (g.sketches.some(sk => sk.id === vp.id) ? SKY_PROMPT.sketchAgain : SKY_PROMPT.sketch),
       act: () => g.cut(this.sketchBeats(vp)),
     }));
+    // the qualifier's start, by the first golden ring; the race's, at the gate in Sailtown
+    add({
+      id: 'skyQualStart', world, pos: this.at([96, 2]), radius: 3.4,
+      label: () => (this.has('sky:kite-built') && !this.has('sky:ribbon') && !this.race.active ? SKY_RACE_WORDS.qualPrompt : null),
+      act: () => this.race.startQualifier(),
+    });
+    add({
+      id: 'skyRaceStart', world, pos: this.at([66.5, 12]), radius: 3.6,
+      label: () => (this.has('sky:ribbon') && !this.has('sky:won') && !this.race.active ? SKY_RACE_WORDS.racePrompt : null),
+      act: () => this.race.startRace(),
+    });
   }
 
   restore() {
-    for (const n of Object.keys(HOMES)) this.sendHome(this.npc(n));
+    for (const [id, h] of Object.entries(HOMES)) {
+      // homes may have moved to Whale's Rest after the race: put them back where they live first
+      const d = safeSpot(this.p, this.dir(h.at), this.c.avoid, 6), pos = this.p.surfacePoint(d, -0.05);
+      this.home[id] = { pos: pos.clone(), up: d.clone(), fwd: this.at(h.face).sub(pos).projectOnPlane(d).normalize() };
+      this.sendHome(this.npc(id));
+    }
     this.postman.root.visible = false;
+    if (this.race.active) this.race.end(null);
+    this.parts.restore();
+    this.finish.restore();
   }
 
-  afterTalk(_id: string) {}
+  afterTalk(id: string) { this.parts.afterTalk(id); }
+
+  finishBeats() { return this.finish.finishBeats(); }
 
   // ------------------------------------------------------------------ the goal line
   goal(): string | null { return skyDetail(this.g.flags); }
@@ -223,10 +255,13 @@ export class SkyChapter {
       case 'parts': {
         const part = nextPart(f)!;
         if (part.id === 'frame') return this.at([SPOTS.windmillTop.lat, SPOTS.windmillTop.off]);
+        // the errand itself (the laundry round Fenn's island, the sour chime) until it is done, then the person
+        if (part.id === 'cloth' && f.has('sky:quest-cloth') && !f.has('sky:laundry')) return this.parts.laundry.find(l => l.caught === 0)?.obj.position.clone() ?? npcAt('mender');
+        if (part.id === 'string' && f.has('sky:quest-string') && !f.has('sky:chime-tuned')) return this.parts.chime.root.position.clone();
         return npcAt(part.id === 'cloth' ? 'mender' : 'chimer');
       }
-      case 'qualify': { const r = RINGS[0]; return this.at([r.lat, r.off]); }
-      case 'race': return npcAt('zephy');
+      case 'qualify': return this.at([96, 2]);
+      case 'race': return this.at([66.5, 12]);
       case 'goodbye': case 'whale': return this.at([SPOTS.whalesRest.lat, SPOTS.whalesRest.off]);
       default: return null;
     }
@@ -235,12 +270,15 @@ export class SkyChapter {
   // ------------------------------------------------------------------ per frame
   update(dt: number) {
     const g = this.g, pl = g.player, t = g.time;
+    this.parts.update(dt);
+    this.race.update(dt);
+    this.finish.update(dt);
     this.parade.update(dt, t);
     this.updateWhales(dt, t);
     const nearGate = this.npc('zephy').root.position.distanceTo(pl.pos) < 16;
     this.crowd.update(dt, t, nearGate ? 0.35 + 0.65 * Math.max(0, Math.sin(t * 0.9)) : 0.15 + 0.2 * Math.max(0, Math.sin(t * 0.4)));
     // the beam
-    const target = g.mode === 'play' ? this.guideTarget() : null;
+    const target = g.mode === 'play' && !this.race.active ? this.guideTarget() : null;
     const u = (this.beam.material as THREE.ShaderMaterial).uniforms;
     u.uT.value += dt;
     const near = target ? target.distanceTo(pl.pos) : 0;
@@ -273,6 +311,29 @@ export class SkyChapter {
   }
 
   // ------------------------------------------------------------------ scenes
+  /** The least gap (metres, at most 9) between a camera's sight line and any building or wall it would look through. */
+  sightGap(pos: THREE.Vector3, look: THREE.Vector3): number {
+    let best = 9;
+    const seg = look.clone().sub(pos), q = new THREE.Vector3();
+    for (const s of this.p.solids) {
+      const r = s.shape.kind === 'circle' ? s.shape.r : Math.hypot(s.shape.hw, s.shape.hd);
+      const c = s.obj.position, t = Math.max(0, Math.min(1, c.clone().sub(pos).dot(seg) / Math.max(1e-6, seg.lengthSq())));
+      best = Math.min(best, q.copy(pos).addScaledVector(seg, t).distanceTo(c) - r);
+    }
+    return best;
+  }
+
+  /** Of a few turns of a camera sweep, the first whose every sample sees clear (else the clearest). */
+  clearTurn(sample: (turn: number) => { pos: THREE.Vector3; look: THREE.Vector3 }[]): number {
+    let bestT = 0, bestG = -Infinity;
+    for (const t of [0, 0.4, -0.4, 0.8, -0.8, 1.3, -1.3, 1.9, -1.9, Math.PI]) {
+      const gap = Math.min(...sample(t).map(c => this.sightGap(c.pos, c.look)));
+      if (gap > 1.2) return t;
+      if (gap > bestG) { bestG = gap; bestT = t; }
+    }
+    return bestT;
+  }
+
   orbit(center: THREE.Vector3, r: number, h: number, a: number): CamPose {
     const up = center.clone().sub(this.p.center).normalize();
     const t1 = anyTangent(up), t2 = new THREE.Vector3().crossVectors(up, t1);

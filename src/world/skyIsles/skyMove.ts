@@ -130,6 +130,8 @@ export class SkyMove {
   private sail: { phase: 'climb' | 'grab' | 'ride'; t: number; from: THREE.Vector3; stock: number; peak: number; rising: boolean } | null = null;
   /** Story hook: Nilo let go at the top of the windmill's sail. */
   onSailTop: (() => void) | null = null;
+  /** Extra lift added everywhere (the race's festival wind keeps you near the course's height); may be negative. */
+  extraLift: ((pos: THREE.Vector3) => number) | null = null;
   /** Story hook: a fall into the cloud sea ended (he is back on an island). */
   onRescued: (() => void) | null = null;
 
@@ -166,7 +168,7 @@ export class SkyMove {
       if (dist > d.rad) continue;
       k = Math.max(k, sstep(d.rad, d.rad * 0.35, dist) * sstep(d.r1 + 5, d.r1 - 3, r) * sstep(d.r0 - 2, d.r0 + 2, r));
     }
-    return k;
+    return this.extraLift ? k + this.extraLift(pos) : k;
   };
 
   private collide = (pl: Player) => {

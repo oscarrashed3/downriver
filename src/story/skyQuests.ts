@@ -26,8 +26,21 @@ export function skyStep(f: Set<string>): SkyStepId | null {
   return 'whale';
 }
 
-/** The next part to fetch (the first one not yet in hand). */
-export function nextPart(f: Set<string>) { return SKY_PARTS.find(p => !has(f, p.flag)) ?? null; }
+/** A part's errand is under way (asked for, not yet in hand). */
+const begun = (f: Set<string>, id: string) => (id === 'cloth' && has(f, 'sky:quest-cloth')) || (id === 'string' && has(f, 'sky:quest-string'));
+
+/** The next part to fetch: one already begun first, else the first one not yet in hand. */
+export function nextPart(f: Set<string>) {
+  const left = SKY_PARTS.filter(p => !has(f, p.flag));
+  return left.find(p => begun(f, p.id)) ?? left[0] ?? null;
+}
+
+/** What to do for a part right now. */
+function partGoal(f: Set<string>, id: string): string {
+  if (id === 'cloth' && has(f, 'sky:quest-cloth')) return has(f, 'sky:laundry') ? SKY_GOAL.laundryBack : SKY_GOAL.laundry;
+  if (id === 'string' && has(f, 'sky:quest-string')) return has(f, 'sky:chime-tuned') ? SKY_GOAL.chimeBack : SKY_GOAL.chime;
+  return SKY_PARTS.find(p => p.id === id)!.goal;
+}
 
 /** The one goal line for right now. */
 export function skyDetail(f: Set<string>): string | null {
@@ -35,7 +48,7 @@ export function skyDetail(f: Set<string>): string | null {
   switch (s) {
     case null: return null;
     case 'larkTown': return SKY_GOAL.larkTown;
-    case 'parts': return `${nextPart(f)!.goal} (${partsHeld(f)} of 3)`;
+    case 'parts': return `${partGoal(f, nextPart(f)!.id)} (${partsHeld(f)} of 3)`;
     default: return SKY_GOAL[s];
   }
 }

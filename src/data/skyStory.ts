@@ -24,9 +24,13 @@ export const SKY_POSTMAN = {
 export const SKY_GOAL = {
   lark: 'Talk to the girl in the yellow scarf by the pool.',
   larkTown: 'Find Lark in Sailtown, across the aqueduct.',
-  frame: 'Climb to the top of Windmill Isle for the kite frame',
+  frame: "Ride the big windmill's sail to the top for the frame",
   cloth: "Ask the sail-mender on his island for sailcloth",
+  laundry: "Catch Old Fenn's laundry before it blows away",
+  laundryBack: 'Bring the washing back to Old Fenn',
   string: 'Ask the chime-maker in the Chime Garden for string',
+  chime: "Turn the sour chime's weight until it sings true",
+  chimeBack: 'Tell Pell the chime sings true',
   build: 'Bring the three kite parts to Lark in Sailtown.',
   qualify: 'Fly the qualifier through the golden rings of the Chime Garden.',
   race: 'Meet the racers at the gate in Sailtown, and win.',
@@ -83,3 +87,70 @@ export const SKY_TRADES: { npc: string; want: string; give: string; line: string
   { npc: 'granwren', want: 'item:chime', give: 'item:streamer', line: 'A chime for my cane! Now they will hear me coming. Have my old streamer.' },
   { npc: 'lark', want: 'item:streamer', give: 'item:pastry', line: "Gran Wren's streamer? From when she won? I'll swap you my pastry for it!" },
 ];
+
+/** Phase 4: the kite parts (frame, sailcloth, string), Fold's wing, the fox, the kite put together. */
+export const SKY_PARTS_WORDS = {
+  frameGot: 'At the very top, tied to the windmill cap: a kite frame. Nilo pulls it free.',
+  foldWing: 'Fold rustles, and opens. Not a kite this time. A wing, just big enough for one.',
+  glideTeach: 'Fold is a wing now. <b>Hold Space</b> to glide, <b>C</b> to dive, let go to land.',
+  partGot: (n: number) => n >= 3 ? 'All three kite parts! <i>Take them to Lark in Sailtown.</i>' : `A kite part, ${n} of 3.`,
+  caught: (name: string, n: number) => `Caught: <b>${name}</b>. <i>${n} of 3.</i>`,
+  laundryDone: "That's all of Old Fenn's washing. <i>Take it back to him.</i>",
+  chimePrompt: "Turn the sour chime's weight",
+  chimeSour: [
+    'The chime rings, a little sour. The golden ring answers, true. <i>Closer.</i>',
+    'Closer. The two notes almost hum together.',
+  ],
+  chimeTrue: 'The chime and the ring sing the same note, and the whole garden hums. <i>Tell Pell.</i>',
+  fox1: 'Look, on the little island! A fox, all tangled in somebody\'s kite string!',
+  fox2: "Bounce across on the cloud pads. Be gentle with her. I'll watch from here.",
+  build: [
+    { who: 'Gran Wren', text: 'Frame first. Spine straight, spar square. Good.' },
+    { who: 'Lark', text: "Now the cloth. Pull it tight as a drum. Fenn's cloth never tears." },
+    { who: 'Lark', text: "And Pell's string, with three knots. One for luck, two for luck, three for luck." },
+    { who: 'Gran Wren', text: "There. Not a toy, little one. A wing. Fly it like you mean it." },
+  ],
+  built: 'Fold slips into the new frame, and the kite is Fold, and Fold is the kite.',
+};
+
+/** Phases 5 and 6: the qualifier rings and the Sky Race. */
+export const SKY_RACE_WORDS = {
+  qualTitle: 'Qualifier',
+  raceTitle: 'Sky Race',
+  qualPrompt: 'Fly the qualifier',
+  racePrompt: 'Line up for the Sky Race',
+  missed: 'A ring flown past. <i>That note is lost, but keep going.</i>',
+  qualAgain: (n: number) => `${n} of 5 rings. <i>Three, at least, to win a ribbon. Try again!</i>`,
+  qualClean: 'Five rings, five notes: the whole festival song, ringing round the garden.',
+  qualDone: (n: number) => `${n} of 5 rings. Enough for a racer's ribbon!`,
+  ribbonZephy: "Not bad. For a beginner. Here, a racer's ribbon. See you at the gate.",
+  showoff1: "Watch. This is how a champion does it. Don't blink.",
+  showoff2: 'Five rings, five notes. Your turn. Try not to fall in the clouds.',
+  start1: 'Racers! One loop, all six islands, every ring on the way. The gate is the finish.',
+  start2: "Good luck, beginner. You'll need all of it.",
+  go: 'Three... two... one... FLY!',
+  shortcut: 'Through the waterfall! The spray throws you forward.',
+  gust: 'The last gust, from below! It lifts you and flings you on.',
+  lost: "Zephy's red scarf crosses the line first. Again.",
+  wren1: "Ha! You were close, little one. Closer than anyone's been in three years.",
+  wren2: 'The waterfall, remember. And be low when the last gust comes. Again!',
+  again: 'Line up at the gate to race again, whenever you like.',
+};
+
+/** Phase 7: the finish, the goodbye at Whale's Rest, and the whale ride down. */
+export const SKY_FINISH_WORDS = {
+  chimes: 'Every chime on every island rings at once. Streamers fly from every roof.',
+  zephyLost: "...You beat me. Nobody beats me. ...Fine. That was a good race.",
+  larkWon: "You WON! The whale is coming up at Whale's Rest. Come on!",
+  toRest: "<i>Go to Whale's Rest. Everyone is waiting.</i>",
+  whaleRises: 'Beside the lip of the island, slow as a cloud, a whale comes up out of the white.',
+  zephy1: 'Here. Shake. ...Champion.',
+  zephy2: "Next year I'm winning. But that was the best race I ever lost.",
+  wren1: 'One tip for the road, little one. When you fall, fall forward.',
+  wren2: 'And come back to see an old woman. The races are always on.',
+  lark1: "I'll miss you. You and Fold and the fox. And how you laugh when you fall.",
+  lark2: 'Take my scarf. So you remember the wind up here. Wave when you fly past!',
+  kept: "Kept from the Sky Isles: Lark's yellow scarf, the skill of gliding, and a friend.",
+  wave: 'Everyone on the island is waving. Lark waves with both arms.',
+  dive: 'The whale dives, down through the clouds, toward the green lands below.',
+};

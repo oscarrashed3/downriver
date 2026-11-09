@@ -22,6 +22,8 @@ export const ITEMS: Record<string, ItemDef> = {
   'item:feather': { id: 'item:feather', name: 'Gull feather', text: "Old Fenn's best quill. Long and white and very soft.", icon: 'feather' },
   'item:chime': { id: 'item:chime', name: 'Little chime', text: "One of Pell's. It rings when you walk, very quietly.", icon: 'chime' },
   'item:streamer': { id: 'item:streamer', name: 'Festival streamer', text: "Gran Wren's, from the year she won. Faded, and still bright.", icon: 'streamer' },
+  'item:racer-ribbon': { id: 'item:racer-ribbon', name: "Racer's ribbon", text: 'Blue and gold. It says you may race in the Sky Races. Zephy tied it on, scowling.', icon: 'ribbon' },
+  'item:scarf': { id: 'item:scarf', name: "Lark's yellow scarf", text: 'It still smells of wind and honey pastry. Kept from the Sky Isles.', icon: 'scarf' },
   'item:frost': { id: 'item:frost', name: "Hollo's frost", text: 'A snowflake that does not melt. It fell from Hollo\'s cloud onto your hood. Kept from the Spring Peaks.', icon: 'frost' },
 };
 
@@ -38,6 +40,7 @@ export const TRADES: Trade[] = [
 /** What you keep from each world: one object, one skill, one friend. */
 export const KEPT: { world: string; flag: string; object: string; skill: string; friend: string }[] = [
   { world: 'The Spring Peaks', flag: 'peaks-healed', object: "Hollo's frost", skill: 'Skyreading', friend: 'Hollo, the cloud over the peaks' },
+  { world: 'The Sky Isles', flag: 'chapter2-complete', object: "Lark's yellow scarf", skill: 'Gliding', friend: 'Lark, who flies the yellow kite' },
 ];
 
 export interface SkillDef { flag: string; name: string; key: string; text: string }
@@ -120,6 +123,7 @@ const ICONS: Record<string, string> = {
   bell: '<path d="M14 34 Q14 14 24 12 Q34 14 34 34 Z" fill="#d8a84a" stroke="#2e2230" stroke-width="2"/><circle cx="24" cy="37" r="3" fill="#2e2230"/>',
   ribbon: '<path d="M10 14 Q22 20 18 30 Q14 40 30 38 Q40 36 38 44" fill="none" stroke="#c8443a" stroke-width="5" stroke-linecap="round"/>',
   card: '<rect x="10" y="12" width="28" height="24" rx="2" fill="#f4ead2" stroke="#2e2230" stroke-width="2"/><path d="M14 19 H32 M14 24 H30 M14 29 H26" stroke="#7a7aa8" stroke-width="2"/>',
+  scarf: '<path d="M10 14 Q24 8 38 14 L36 22 Q24 17 12 22 Z" fill="#f2c24a" stroke="#2e2230" stroke-width="2"/><path d="M30 20 L34 42 L28 41 L25 21 M20 21 L18 40 L13 38 L16 21" fill="#f2c24a" stroke="#2e2230" stroke-width="2"/>',
   pastry: '<path d="M8 32 Q12 16 24 14 Q36 16 40 32 Z" fill="#e8b45a" stroke="#2e2230" stroke-width="2"/><path d="M14 28 Q18 20 22 26 M24 26 Q28 18 32 26" fill="none" stroke="#b8783a" stroke-width="2"/><path d="M8 32 H40" stroke="#2e2230" stroke-width="2"/>',
   feather: '<path d="M12 40 Q14 18 36 8 Q34 30 12 40 Z" fill="#f4f2ec" stroke="#2e2230" stroke-width="2"/><path d="M12 40 L32 14" stroke="#9a948a" stroke-width="2"/>',
   chime: '<path d="M24 6 V12" stroke="#2e2230" stroke-width="2"/><rect x="18" y="12" width="12" height="4" rx="1" fill="#c8a050" stroke="#2e2230" stroke-width="2"/><path d="M20 16 V36 M24 16 V40 M28 16 V34" stroke="#d8b860" stroke-width="3" stroke-linecap="round"/>',

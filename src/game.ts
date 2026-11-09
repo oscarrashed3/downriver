@@ -53,7 +53,7 @@ import { BackpackView, ITEMS, bagAdd, doTrade } from './systems/backpack';
 import { foldMood } from './player/fold';
 import { Fox } from './world/fox';
 import type { SkyWorld } from './world/skyIsles/world';
-import { skyFlowers, onIsle, rockClear } from './world/skyIsles/terrain';
+import { skyFlowers, onIsle, isleAt, rockClear } from './world/skyIsles/terrain';
 import { SkyMove } from './world/skyIsles/skyMove';
 import { SKY_MOVE } from './data/skyWords';
 import { CHAPTERS, MAIN_QUEST, NOT_YET, OPENING, WORLD_TASKS } from './data/story';
@@ -371,10 +371,10 @@ export class Game {
     this.fox.place(isles, isles.dirRiver(FOX_SPOT.lat, FOX_SPOT.lon));
     this.contents[FOX_WORLD].interactables.push({
       id: 'fox', world: FOX_WORLD, get pos() { return game.fox.f.root.position; }, radius: 3.5, hold: 3,
-      label: () => (game.flags.has('fox-joined') ? null : 'Kneel, and hold out your hand to the fox'),
+      label: () => (game.flags.has('fox-joined') ? null : 'Hold E: untangle the kite string from the fox'),
       act: () => {
         game.give('fox-joined'); game.sound.sfxPlay('chime');
-        game.hud.notify('The fox sniffs your fingers for a long time. Then she trots past you, stops, and looks back. <i>She is coming.</i>');
+        game.hud.notify('Strand by strand, the kite string comes away. The fox shakes herself, sniffs your fingers, trots past you, and looks back. <i>She is coming.</i>');
         game.save();
       },
     } as any);
@@ -699,7 +699,20 @@ export class Game {
    * Whether the river may carry you on out of world i (the raft, the edge, the river's end). The Sky Isles are
    * only ever left on the whale's back after the goodbye, so there every other way on stays shut.
    */
-  mayLeave(i: number) { return WORLDS[i].id !== 'sky'; }
+  mayLeave(i: number) { return WORLDS[i].id !== 'sky' || this.flags.has('chapter2-complete'); }
+
+  /** The whale has carried Nilo down through the clouds: on to the next world (under the cream fade). */
+  leaveSky() {
+    const to = FOX_WORLD + 1, pl = this.planets[to];
+    this.enterWorld(to);
+    this.player.placeAt(pl, this.arrivalDir(to));
+    this.player.facing.copy(pl.surfacePoint(pl.pathPoint(0.08)).sub(this.player.pos).projectOnPlane(this.player.up).normalize());
+    this.player.glider = null; this.player.forceOpen = false;
+    this.rig.faceDir(this.player.up, this.player.facing); this.rig.smoothUp.copy(this.player.up); this.rig.snap();
+    if (this.flags.has('fox-joined')) { this.foxWorld = to; this.fox.place(pl, this.player.up.clone()); }
+    if (!this.worldReady(to)) this.hud.notify(NOTE.unbuilt(WORLDS[to].name));
+    this.save();
+  }
 
   /** Worlds whose story is written. The rest are a quiet bank to rest on, with the way home. */
   worldReady(i: number) { return i === 0 || (this.isSky(i) && !!this.ch2); }
@@ -1143,6 +1156,11 @@ export class Game {
     if (!fx.f.root.visible) return;
     const p = this.planet;
     if (joined && this.foxWorld !== this.cur) { this.foxWorld = this.cur; fx.place(p, this.player.up.clone()); }
+    if (joined && this.isSky() && (!this.player.grounded || this.mode !== 'play')) { fx.t += dt; (fx as any).pose(dt); return; }
+    if (joined && this.isSky() && (!onIsle(p, fx.dir) || fx.f.root.position.distanceTo(this.player.pos) > 14 || isleAt(p, fx.dir) !== isleAt(p, this.player.up))) {
+      // she can't fly: she finds her own way across and turns up just behind you
+      fx.place(p, this.player.pos.clone().addScaledVector(this.player.facing, -1.6).sub(p.center).normalize());
+    }
     if (joined) {
       const step = currentStep(this.questCtx());
       fx.update(dt, p, this.player.pos, this.player.facing, { happy: this.fold.happy > 0.05, poi: this.cur === 0 && step ? this.ch1.guideTarget() : null });
@@ -1466,7 +1484,9 @@ export class Game {
       const d = it.pos.distanceTo(pl.pos);
       if (d < it.radius && (!best || d < best.d)) { const l = it.label(); if (l) best = { label: l, act: this.walkFirst(it), hold: it.hold, d, key: it.id }; }
     }
-    if (!best && (this.cur > 0 || this.flags.has('peaks-healed'))) {
+    // in the Sky Isles only standing by the river on an island (never in the air, on a bridge or in the race)
+    const skyOk = !this.isSky() || (pl.grounded && !pl.onDeck && !pl.glider?.open && !this.ch2?.race.active && onIsle(this.planet, pl.up, 1));
+    if (!best && skyOk && (this.cur > 0 || this.flags.has('peaks-healed'))) {
       const near = this.planet.riverNearest(pl.up);
       if (near.dist < this.planet.cfg.riverWidth * this.planet.flowWidth + 2.2 && near.t < 0.985) best = { label: PROMPT.raft, act: () => this.boardRaft(), d: 99, key: 'raft' };
     }
