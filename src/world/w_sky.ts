@@ -200,7 +200,7 @@ export function populateSky(k: Kit) {
   scatter(10, () => streamerPole(3.6 + P.rand() * 1.5), [40, 170], 6, onIsland);
   scatter(70, () => P.cloudWisp(), [6, 174], 8, onCloud);
   // big soft banks of cloud just off the first island, piled against its cliffs, so the landing feels high up
-  for (const [lat, m, s] of [[19, -15, 1.8], [24, -13, 1.4], [30, 13, 1.6], [21, 13, 1.3], [36, -12, 1.5], [44, 12, 1.7]] as const) {
+  for (const [lat, m, s] of [[19, -15, 1.8], [24, -13, 1.4], [30, 13, 1.6], [36, -12, 1.5], [44, 12, 1.7]] as const) {
     const w = put(P.cloudWisp(), lat, lonM(p, lat, m), 0.4, undefined, 0);
     w.scale.setScalar(s);
   }

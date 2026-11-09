@@ -12,7 +12,7 @@ export default async ({ page, shot, ev }) => {
         const pos = p.center.clone().addScaledVector(a, p.R + ${lift}).addScaledVector(p.dirRiver(${lat} - 30, 0).sub(a).normalize(), ${back});
         g.rig.override = { pos, look, up }; })()`);
       await page.waitForTimeout(3500);
-      await shot(`world${w}-high-${lat}`);
+      await shot(`w${w + 1}-${await ev(`__game.planets[${w}].cfg.id`)}-high-${lat}`);
     }
   }
   await ev(`__game.rig.override = null`);
