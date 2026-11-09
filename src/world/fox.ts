@@ -5,7 +5,7 @@ import { orientTo } from './sphere';
 import type { Planet } from './planet';
 
 /**
- * The fox: an ordinary fox, no magic, who decides on her own to walk with Nilo from the Ember Pines on.
+ * The fox: an ordinary fox, no magic, who decides on her own to walk with Nilo from the Sky Isles on.
  * She never talks. She trots behind, sits when you stop, points her nose at things that matter,
  * flattens her ears near danger, and wags when she is pleased.
  */

@@ -5,10 +5,24 @@ export const LETTER = 'Nilo. Follow the water. It always finds its way home. But
 
 export const CHAPTERS = [
   { n: 'Chapter One', title: 'Where the Water Begins' },
-  { n: 'Chapter Two', title: 'The Ember Pines' },
-  { n: 'Chapter Three', title: 'The Endless Sea' },
-  { n: 'Chapter Four', title: 'The Glass Desert' },
+  { n: 'Chapter Two', title: 'The Sky Isles' },
+  { n: 'Chapter Three', title: 'The Overgrown Garden' },
+  { n: 'Chapter Four', title: 'The Endless Sea' },
+  { n: 'Chapter Five', title: 'The Painted Desert' },
+  { n: 'Chapter Six', title: 'Lantern Town' },
 ];
+
+/**
+ * One simple thing to do in each world after the first (the goal line there), by world id. Sketches for now:
+ * each world's builder writes the real quest.
+ */
+export const WORLD_TASKS: Record<string, string> = {
+  sky: 'Find the Wind Keeper by the Chime Spire, on the second island.',
+  garden: 'Find the gardener by the fallen watering can.',
+  sea: 'Find Maren, the Salt Keeper, among the stilt houses.',
+  desert: 'Find Sefa in Sahra, the wandering town, across the river.',
+  lantern: 'Follow the canals down to the harbour, and the lighthouse.',
+};
 
 export const MAIN_QUEST = 'Go home, to the light below the clouds.';
 
@@ -83,7 +97,7 @@ export const POSTMAN = {
   hand: 'He bows, hands you a letter, and checks your name against nothing at all.',
   letter: [
     'You woke him. I knew you would.',
-    'The water goes down now, and so do you. The pines below are thirsty, and they are afraid of fire.',
+    'The water goes down now, and so do you. The islands below are windy. Someone there is waiting.',
     'I am always one valley ahead. Do not try to catch me. Just follow the water.',
   ],
   sign: '— the one who keeps the light',

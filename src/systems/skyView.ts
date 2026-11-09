@@ -67,7 +67,7 @@ export class SkyView {
 
   skyPose(): CamPose {
     const a = 0.75 + this.orbit;
-    // close enough that the column of four worlds (y 0 to -1020) fills most of the frame, from a little above
+    // close enough that the column of six worlds (y 0 to -1700) fills most of the frame, from a little above
     const off = new THREE.Vector3(Math.cos(a), 0.42, Math.sin(a)).normalize().multiplyScalar(SKY_DIST);
     return { pos: this.center.clone().add(off), look: this.center.clone().add(new THREE.Vector3(0, -20, 0)), up: new THREE.Vector3(0, 1, 0) };
   }

@@ -2,7 +2,7 @@
 
 ## 2026-11-05 · Chapter One: Where the Water Begins
 
-**The story frame.** Rill is far from home and making his way back. Each world is a chapter of his life; the tone is gentle and hopeful, closer to a fable than an adventure. One main quest ("Go home, to the light below the clouds") is shown as a single next step in the corner, never a list. The home light is the lighthouse on the dunes of the Glass Desert, where the river ends, a real light you can see from the opening and from the sky view.
+**The story frame.** Rill is far from home and making his way back. Each world is a chapter of his life; the tone is gentle and hopeful, closer to a fable than an adventure. One main quest ("Go home, to the light below the clouds") is shown as a single next step in the corner, never a list. The home light is the lighthouse at the harbour of Lantern Town, the last world, where the river ends, a real light you can see from the opening and from the sky view.
 
 **The first three minutes are scripted, then hands-off.** Title over the cloud sea, five quiet seconds of waking, the letter, "Look down", the chapter card, one beat of the journal. Everything after that is walking. All words live in `src/data/story.ts` and `src/data/scripts.ts`.
 
@@ -46,7 +46,7 @@
 
 **Two solutions to the Spring Peaks puzzle.** Snow fences only work on windward ridges, so Skyreading is how you know where to build (two decoy sites in sheltered hollows barely help). Ice towers work near the spring without Skyreading but borrow Bram's winter water. Mixing works too. Tested in `tests/systems.test.ts`.
 
-**Visible ripple.** Snowpack sets the spring's flow; flow sets river width and color in all four worlds and the thickness of every falling stream. The glacier color, snowline and a new carved stone show the change in the Peaks itself.
+**Visible ripple.** Snowpack sets the spring's flow; flow sets river width and color in all six worlds and the thickness of every falling stream. The glacier color, snowline and a new carved stone show the change in the Peaks itself.
 
 **Originality check.** No names, characters, creatures, items or layouts from existing games. Tiny walkable planets are a general idea; we avoided anything distinctive from other games (no stars, no hats, no stamina wheel, no triangle relics).
 
@@ -61,3 +61,5 @@
 8. Music is generative and pleasant but not yet composed per moment.
 9. No settings menu (volume, mouse sensitivity, reduced motion).
 10. Only English so far; text is all in data files ready for French, Spanish and German.
+
+**Six worlds, one day (Nov 2026).** The journey grows from four worlds to six, in a locked order: the Spring Peaks (morning, unchanged), the Sky Isles (midday, wind; the fox joins here, and the kite from World 1 comes into its own), the Overgrown Garden (afternoon; Nilo tiny among giants), the Endless Sea (open day, unchanged), the Painted Desert (sunset; striped dunes and mesas in pink, coral, lilac, violet and turquoise, a salt flat that mirrors the sky) and Lantern Town (night; canals, lanterns, and the home light at the harbour). The Ember Pines are gone. Each world after the first keeps its own hour (WorldConfig.hour): the sun is held at that height above Nilo's own horizon wherever he walks, so a sunset world is sunset everywhere on its small sphere. Save format v5 carries v4 (and v3) saves over.

@@ -1,7 +1,7 @@
 import { PEAKS } from '../render/palette';
 import * as THREE from 'three';
 
-export type Shape = 'peaks' | 'pines' | 'desert' | 'sea';
+export type Shape = 'peaks' | 'sky' | 'garden' | 'sea' | 'desert' | 'lantern';
 
 export interface WorldConfig {
   id: string;
@@ -26,11 +26,19 @@ export interface WorldConfig {
     low: string; mid: string; high: string; rock: string; bank?: string; moss?: string; dab?: string; path?: string;
     snow?: string; ice?: string; water: string; waterDeep: string;
     light: string; ambient: string; fog: string; skyTop: string; skyHorizon: string;
+    /** Only for a world that keeps the night (Lantern Town): its own moonlit ambient, fog and moon strength. */
+    night?: { ambient: string; fog: string; moon: number };
   };
-  music: 'bells' | 'woodwind' | 'pluck' | 'strings';
+  music: 'bells' | 'woodwind' | 'marimba' | 'pluck' | 'lyre' | 'strings';
+  /**
+   * The hour this world keeps (every world but the first). The journey reads as one day: morning in the
+   * Spring Peaks, then midday, afternoon, open day, sunset and night. `elev` is the sun's height above
+   * Nilo's own horizon (-1..1); it stays there wherever he walks on this small world.
+   */
+  hour?: { elev: number };
 }
 
-/** Four worlds hang in the cloud sea in a slow descending spiral. Each south pole pours into the next north pole. */
+/** Six worlds hang in the cloud sea in a slow descending spiral. Each south pole pours into the next north pole. */
 function placeAt(i: number): THREE.Vector3 {
   const a = i * 1.15;
   return new THREE.Vector3(Math.cos(a) * 240, -i * 340, Math.sin(a) * 240);
@@ -50,36 +58,63 @@ export const WORLDS: WorldConfig[] = [
     music: 'bells',
   },
   {
-    id: 'pines', name: 'The Ember Pines', subtitle: 'a young forest, still learning to burn well', shape: 'pines',
-    center: placeAt(1), radius: 56, seed: 23, detail: 56, amplitude: 9,
-    riverStartLat: 4, meander: 22, meanderWaves: 2.5, riverWidth: 2.8, riverBed: 0.6, bankWidth: 4, waterDepth: 0.55,
+    id: 'sky', name: 'The Sky Isles', subtitle: 'where the river learns to fly', shape: 'sky',
+    center: placeAt(1), radius: 58, seed: 29, detail: 60, amplitude: 10,
+    riverStartLat: 4, meander: 18, meanderWaves: 2, riverWidth: 2.4, riverBed: 1.0, bankWidth: 3, waterDepth: 0.5,
     palette: {
-      low: '#5f8a48', mid: '#7a8448', high: '#4a4034', rock: '#5a4a40', bank: '#a8935e',
-      water: '#9ad7d6', waterDeep: '#2f6b74',
-      light: '#ffc28a', ambient: '#8a6a6a', fog: '#e7b48c', skyTop: '#6a5a9a', skyHorizon: '#ffb070',
+      low: '#f6f3fa', mid: '#a9d98a', high: '#d2eaa0', rock: '#ece2d2', bank: '#e9e2c8', dab: '#c4ec96', path: '#efe6cc',
+      water: '#a8e6f4', waterDeep: '#4fa3c8',
+      // pastel blue all the way down to the horizon (a white horizon washed World 2 out to grey)
+      light: '#fff4d6', ambient: '#a8c8ee', fog: '#cfe6fa', skyTop: '#5f9ee8', skyHorizon: '#b8dcf8',
     },
-    music: 'woodwind',
+    music: 'lyre', hour: { elev: 0.93 },
+  },
+  {
+    id: 'garden', name: 'The Overgrown Garden', subtitle: 'where small things grow tall', shape: 'garden',
+    center: placeAt(2), radius: 54, seed: 37, detail: 56, amplitude: 4,
+    riverStartLat: 4, meander: 26, meanderWaves: 3, riverWidth: 2.2, riverBed: 0.7, bankWidth: 3, waterDepth: 0.5,
+    palette: {
+      low: '#6cc25e', mid: '#8fd66c', high: '#b4e070', rock: '#a89a86', bank: '#d8d0a0', dab: '#a8e88a', path: '#e2d2a8',
+      water: '#a6e8d8', waterDeep: '#3f9a8a',
+      light: '#ffe2a8', ambient: '#c0a8b8', fog: '#f6e2c8', skyTop: '#86b4e0', skyHorizon: '#ffe6c4',
+    },
+    music: 'marimba', hour: { elev: 0.45 },
   },
   {
     id: 'sea', name: 'The Endless Sea', subtitle: 'many shores, one river', shape: 'sea',
-    center: placeAt(2), radius: 76, seed: 67, detail: 50, amplitude: 6, ocean: 1.6,
+    center: placeAt(3), radius: 76, seed: 67, detail: 50, amplitude: 6, ocean: 1.6,
     riverStartLat: 4, meander: 10, meanderWaves: 2, riverWidth: 3.0, riverBed: 1.2, bankWidth: 3, waterDepth: 0.6,
     palette: {
       low: '#e9dcc0', mid: '#cfe0a8', high: '#7fae7a', rock: '#c8a890', bank: '#f2e6cc',
       water: '#7fe0e0', waterDeep: '#1f7a9a',
       light: '#ffe6cc', ambient: '#7aa0c0', fog: '#cfe8ee', skyTop: '#4a7ab8', skyHorizon: '#ffd8c0',
     },
-    music: 'strings',
+    music: 'strings', hour: { elev: 0.78 },
   },
   {
-    id: 'desert', name: 'The Glass Desert', subtitle: 'where the river rests in the sand', shape: 'desert',
-    center: placeAt(3), radius: 60, seed: 41, detail: 56, amplitude: 8,
-    riverStartLat: 4, meander: 30, meanderWaves: 2, riverWidth: 2.2, riverBed: 0.5, bankWidth: 3, waterDepth: 0.55,
+    id: 'desert', name: 'The Painted Desert', subtitle: 'where the colours lie down to rest', shape: 'desert',
+    center: placeAt(4), radius: 60, seed: 41, detail: 60, amplitude: 9,
+    riverStartLat: 4, meander: 30, meanderWaves: 2, riverWidth: 2.2, riverBed: 0.5, bankWidth: 3, waterDepth: 0.5,
     palette: {
-      low: '#f1dcc0', mid: '#e8b98a', high: '#d99a7a', rock: '#c48a6a', bank: '#efe8df',
-      water: '#8fd0e0', waterDeep: '#3d8aa0',
-      light: '#ffd9a8', ambient: '#b48a9a', fog: '#f4d2c0', skyTop: '#6a6ab0', skyHorizon: '#ffc8a0',
+      // the dunes and mesas are banded by height (planet.ts DESERT_BANDS); these colour the flats and the banks
+      low: '#f8d6cc', mid: '#f4b4a0', high: '#c8b0e8', rock: '#d8a0b0', bank: '#f8ece6', path: '#faf0ea',
+      water: '#9fe0e0', waterDeep: '#3f8aa8',
+      light: '#ffd2b0', ambient: '#a8a8e0', fog: '#f0c0c0', skyTop: '#5a5aa8', skyHorizon: '#ffb08a',
     },
-    music: 'pluck',
+    music: 'pluck', hour: { elev: 0.16 },
+  },
+  {
+    id: 'lantern', name: 'Lantern Town', subtitle: 'where the river comes home', shape: 'lantern',
+    center: placeAt(5), radius: 58, seed: 53, detail: 60, amplitude: 3,
+    riverStartLat: 4, meander: 20, meanderWaves: 2, riverWidth: 2.6, riverBed: 0.6, bankWidth: 3, waterDepth: 0.55,
+    palette: {
+      // warm old cobbles, so the moonlit town never reads as snow
+      low: '#a08a78', mid: '#a8927e', high: '#b09a84', rock: '#8a7a88', bank: '#b49c80', path: '#c8aa88',
+      water: '#5a8ab8', waterDeep: '#1a2f5a',
+      light: '#ffd8a0', ambient: '#5a6aa8', fog: '#2a3060', skyTop: '#141a44', skyHorizon: '#4a3a6a',
+      // a festival night: a bright moon, lilac-blue shadows, a warm haze from all the lanterns
+      night: { ambient: '#6a78c8', fog: '#4a4a80', moon: 1.5 },
+    },
+    music: 'woodwind', hour: { elev: -0.6 },
   },
 ];

@@ -111,7 +111,7 @@ export const PROMPT = {
   pebble: 'Speak softly to the little goat',
   pebbleLost: 'A little goat, far from the others',
   goodbye: 'Say goodbye, and let the river carry you',
-  ride: 'Ride the falling stream down to the Ember Pines',
+  ride: 'Ride the falling stream down to the Sky Isles',
   edge: 'Look over the edge',
   fencePosts: "Old fence posts. <i>Somebody's rails used to hang here.</i>",
   fence: 'Rail the old posts into a snow fence',

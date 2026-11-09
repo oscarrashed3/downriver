@@ -3,7 +3,11 @@ import { PAINT } from './paint';
 import { LIGHT } from './palette';
 import { clamp, smoothstep } from '../world/noise';
 
-export interface DayPalette { fog: string; skyTop: string; skyHorizon: string; light: string; ambient: string }
+export interface DayPalette {
+  fog: string; skyTop: string; skyHorizon: string; light: string; ambient: string;
+  /** A world that lives at night (Lantern Town) can light its own night: brighter ambient and fog, a stronger moon. */
+  night?: { ambient: string; fog: string; moon: number };
+}
 
 /**
  * A full day passes in about twelve minutes. On a world this small, time also depends on where you
@@ -49,9 +53,24 @@ export class DayCycle {
     this.t = best; this.computeSun();
   }
 
+  /**
+   * A world that keeps one hour (all but the first): the sun's height above the traveller's own horizon, held
+   * wherever he walks, so a sunset world is sunset everywhere and a night world is night everywhere. null = the clock.
+   */
+  pin: number | null = null;
+  private pinDir = new THREE.Vector3();
+
   update(dt: number, up: THREE.Vector3) {
     if (!this.frozen) this.t = (this.t + dt / this.length) % 1;
-    this.computeSun();
+    if (this.pin !== null) {
+      // keep the sun's bearing from frame to frame (carried along as he walks), and set its height
+      const h = this.pinDir.copy(this.sun).addScaledVector(up, -this.sun.dot(up));
+      if (h.lengthSq() < 1e-6) h.copy(this.L).addScaledVector(up, -this.L.dot(up));
+      if (h.lengthSq() < 1e-6) h.set(1, 0, 0).addScaledVector(up, -up.x);
+      h.normalize();
+      const e = this.pin;
+      this.sun.copy(up).multiplyScalar(e).addScaledVector(h, Math.sqrt(Math.max(0, 1 - e * e))).normalize();
+    } else this.computeSun();
     this.elevation = this.sun.dot(up);
     this.day = smoothstep(-0.22, 0.22, this.elevation);
     this.dusk = smoothstep(0.42, 0.04, Math.abs(this.elevation - 0.06));
@@ -68,10 +87,10 @@ export class DayCycle {
     sunLight.color.set(p.light).lerp(warm, clamp(dusk * 0.85));
     moonLight.position.copy(this.sun).multiplyScalar(-400).add(center);
     moonLight.target.position.copy(center);
-    moonLight.intensity = smoothstep(0.08, -0.25, e) * 0.9;
+    moonLight.intensity = smoothstep(0.08, -0.25, e) * (p.night?.moon ?? 0.9);
 
     const ambDay = new THREE.Color(p.ambient);
-    const ambNight = new THREE.Color(LIGHT.nightAmbient);
+    const ambNight = new THREE.Color(p.night?.ambient ?? LIGHT.nightAmbient);
     const ambDusk = new THREE.Color(LIGHT.duskAmbient);
     const sky = ambNight.clone().lerp(ambDay, day).lerp(ambDusk, dusk * 0.45);
     PAINT.uAmbSky.value.copy(sky).multiplyScalar(0.62);
@@ -82,6 +101,6 @@ export class DayCycle {
     PAINT.uCenter.value.copy(center);
 
     const fogDay = new THREE.Color(p.fog);
-    fog.color.set(LIGHT.nightFog).lerp(fogDay, day).lerp(new THREE.Color(LIGHT.duskFog), dusk * 0.4);
+    fog.color.set(p.night?.fog ?? LIGHT.nightFog).lerp(fogDay, day).lerp(new THREE.Color(LIGHT.duskFog), dusk * 0.4);
   }
 }

@@ -231,23 +231,27 @@ interface Moon {
 /** Where a world hangs: which world, elevation and azimuth (degrees, azimuth from fwd toward right), angular size, distance, haze. */
 export interface Spot { world: number; el: number; az: number; size: number; dist: number; haze: number }
 
-/** "Look up.": the three later worlds as one receding chain, the nearest lowest and largest. */
+/** "Look up.": the five later worlds as one receding chain, the nearest lowest and largest, the home light's world last. */
 export const LOOKUP_LAYOUT: Spot[] = [
-  { world: 1, el: 38, az: -15, size: 15.5, dist: 2400, haze: 0.2 },
-  { world: 2, el: 50, az: 12, size: 9.5, dist: 3000, haze: 0.35 },
-  { world: 3, el: 59, az: -3, size: 6, dist: 3700, haze: 0.55 },
+  { world: 1, el: 35, az: -17, size: 14.5, dist: 2400, haze: 0.18 },
+  { world: 2, el: 45, az: 7, size: 10, dist: 2900, haze: 0.3 },
+  { world: 3, el: 53, az: 23, size: 7.5, dist: 3400, haze: 0.42 },
+  { world: 4, el: 59, az: 5, size: 5.5, dist: 3900, haze: 0.52 },
+  { world: 5, el: 64, az: -9, size: 4.4, dist: 4400, haze: 0.6 },
 ];
-/** The title: all four worlds round the words, the first one near and large, the home light far and low by the clouds. */
+/** The title: all six worlds round the words, the first one near and large, the home light far and low by the clouds. */
 export const TITLE_LAYOUT: Spot[] = [
   { world: 0, el: 9, az: -31, size: 17, dist: 2000, haze: 0.06 },
-  { world: 1, el: 17, az: 29, size: 9.5, dist: 2600, haze: 0.22 },
-  { world: 2, el: 3, az: 33, size: 6.5, dist: 3200, haze: 0.38 },
-  { world: 3, el: -4, az: 26, size: 5, dist: 3900, haze: 0.38 },
+  { world: 1, el: 20, az: 25, size: 9, dist: 2600, haze: 0.2 },
+  { world: 2, el: 12.5, az: 35, size: 7, dist: 3000, haze: 0.26 },
+  { world: 3, el: 7.5, az: 29, size: 5.8, dist: 3400, haze: 0.26 },
+  { world: 4, el: 3, az: 34, size: 4.8, dist: 3800, haze: 0.2 },
+  { world: 5, el: 0.8, az: 28.5, size: 4.4, dist: 4200, haze: 0.16 },
 ];
 
 const islandVert = /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
 const islandFrag = /* glsl */ `
-  uniform sampler2D map; uniform vec3 uHaze, uRimCol, uMistCol; uniform float uHazeK, uOpacity, uMist, uFlip, uFrac;
+  uniform sampler2D map; uniform vec3 uHaze, uRimCol, uMistCol; uniform float uHazeK, uOpacity, uMist, uFlip, uFrac, uNight;
   varying vec2 vUv;
   void main(){
     // the picture is lit from the right; mirrored when the sun is on the left of the shot
@@ -260,13 +264,18 @@ const islandFrag = /* glsl */ `
     float r1 = min(rr, 1.0);
     float rim = pow(1.0 - sqrt(1.0 - r1 * r1), 1.6);
     float sunward = dot(p / max(rr, 1e-3), normalize(vec2(uFlip, 0.65)));
+    // a world that keeps the night (Lantern Town) is a dusky blue disc, its lanterns still glowing warm
+    float warmth = smoothstep(0.25, 0.6, c.r - c.b) * smoothstep(0.55, 0.85, c.r);
+    vec3 nightC = c * vec3(0.3, 0.36, 0.7) + vec3(1.0, 0.72, 0.38) * warmth * 0.75;
+    c = mix(c, nightC, uNight);
+    float hk = uHazeK * (1.0 - 0.55 * uNight);
     // aerial perspective: the farther the world, the more it pales and cools into the sky
     float l = dot(c, vec3(0.3, 0.59, 0.11));
-    c = mix(c, vec3(l), uHazeK * 0.45);
-    c = mix(c, uHaze * t.a, uHazeK);
-    // its own air at the limb, and a warm rim of light on the sun side
-    c = mix(c, uHaze * t.a, rim * 0.5);
-    c += uRimCol * t.a * rim * smoothstep(-0.15, 0.85, sunward) * 0.8;
+    c = mix(c, vec3(l), hk * 0.45);
+    c = mix(c, uHaze * t.a, hk);
+    // its own air at the limb, and a warm rim of light on the sun side (a cool moonlit rim at night)
+    c = mix(c, uHaze * t.a, rim * 0.5 * (1.0 - 0.5 * uNight));
+    c += mix(uRimCol, vec3(0.55, 0.62, 0.95), uNight) * t.a * rim * smoothstep(-0.15, 0.85, sunward) * 0.8 * (1.0 - 0.4 * uNight);
     // lit from far away: a touch lifted
     c = c * 1.05 + vec3(0.025, 0.02, 0.03) * t.a;
     // the lower part sinks into cloud
@@ -323,7 +332,7 @@ export class SkyIslands {
         uniforms: {
           map: { value: null }, uHaze: { value: new THREE.Color('#9fc3ee') }, uHazeK: { value: 0.1 }, uOpacity: { value: 0 },
           uMist: { value: 0.2 }, uMistCol: { value: new THREE.Color('#f6eef0') }, uRimCol: { value: new THREE.Color('#ffe2b4') },
-          uFlip: { value: 1 }, uFrac: { value: 0.8 },
+          uFlip: { value: 1 }, uFrac: { value: 0.8 }, uNight: { value: (p.cfg.hour?.elev ?? 1) < 0 ? 1 : 0 },
         },
         vertexShader: islandVert, fragmentShader: islandFrag,
         transparent: true, depthWrite: false, premultipliedAlpha: true, fog: false,
@@ -475,9 +484,12 @@ export class SkyIslands {
     if (side !== this.sunSide) { this.sunSide = side; this.configure(this.kind); }
   }
 
+  /** On a narrow screen (4:3, portrait) the moons draw in toward the middle so none falls off the edge. */
+  azScale = 1;
+
   /** A direction in the sky frame from elevation and azimuth in degrees. */
   skyDir(el: number, az: number, out = new THREE.Vector3()) {
-    const e = THREE.MathUtils.degToRad(el), a = THREE.MathUtils.degToRad(az);
+    const e = THREE.MathUtils.degToRad(el), a = THREE.MathUtils.degToRad(az * this.azScale);
     return out.copy(this.fwd).multiplyScalar(Math.cos(e) * Math.cos(a)).addScaledVector(this.right, Math.cos(e) * Math.sin(a)).addScaledVector(this.up, Math.sin(e)).normalize();
   }
 
@@ -491,11 +503,15 @@ export class SkyIslands {
   update(camera: THREE.Camera, t: number, show: number, reveal: number, light: number, veil = 0, birds = true, bloom = 1) {
     this.group.visible = show > 0.001 && this.baked;
     if (!this.group.visible) return;
+    const aspect = (camera as THREE.PerspectiveCamera).aspect ?? 16 / 9;
+    this.azScale = Math.min(1, aspect / (this.kind === 'title' ? 1.7 : 1.2));
     const camQ = camera.quaternion;
     const dir = new THREE.Vector3();
     const used = new Set(this.layout.map(L => L.world));
     this.moons.forEach((m, i) => { if (!used.has(i)) { m.disc.visible = false; m.halo.visible = false; } });
     (this.beacon.material as THREE.SpriteMaterial).opacity = 0; (this.beaconGlow.material as THREE.SpriteMaterial).opacity = 0;
+    // the worlds appear one after another, nearest first; the last one is fully there when reveal reaches 1
+    const stagger = Math.min(0.22, 0.5 / Math.max(1, this.layout.length - 1));
     this.layout.forEach((L, k) => {
       const m = this.moons[L.world];
       m.disc.visible = m.halo.visible = true;
@@ -505,7 +521,7 @@ export class SkyIslands {
       const w = 2 * L.dist * Math.tan(THREE.MathUtils.degToRad(L.size / 2)) / m.frac;
       m.disc.position.copy(pos); m.disc.quaternion.copy(camQ); m.disc.scale.set(w, w, 1);
       m.halo.position.copy(pos).addScaledVector(dir, 5); m.halo.scale.setScalar(w * m.frac * 1.42);
-      const rk = smoothstep(k * 0.22, k * 0.22 + 0.5, reveal) * (1 - veil * 0.85);
+      const rk = smoothstep(k * stagger, k * stagger + 0.5, reveal) * (1 - veil * 0.85);
       const u = (m.disc.material as THREE.ShaderMaterial).uniforms;
       u.uOpacity.value = show * rk;
       u.uHazeK.value = Math.min(0.85, L.haze + (1 - rk) * 0.4);
@@ -535,7 +551,7 @@ export class SkyIslands {
         const d = L.dist * c.dist;
         c.s.position.copy(this.origin).addScaledVector(dir, d);
         w = 2 * d * Math.tan(THREE.MathUtils.degToRad(L.size / 2)) * c.w * 1.6;
-        const rk = smoothstep(c.spot * 0.22, c.spot * 0.22 + 0.5, reveal);
+        const rk = smoothstep(c.spot * stagger, c.spot * stagger + 0.5, reveal);
         (c.s.material as THREE.SpriteMaterial).opacity = c.o * show * Math.max(0.35 + 0.65 * rk, veil);
       } else {
         this.skyDir(c.el + veil * 4, (c.az + t * c.drift * 0.6) * this.flip, dir);

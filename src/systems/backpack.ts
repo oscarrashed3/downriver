@@ -47,7 +47,7 @@ export const LETTERS: LetterDef[] = [
   { id: 'letter:0', from: 'Found in your bag after the storm', lines: ['Nilo. Follow the water. It always finds its way home. But someone up here needs you first.'], replies: [] },
   {
     id: 'letter:1', from: 'Brought by the postman, at the bridge',
-    lines: ['You woke him. I knew you would.', 'The water goes down now, and so do you. The pines below are thirsty, and they are afraid of fire.', 'I am always one valley ahead. Do not try to catch me. Just follow the water.'],
+    lines: ['You woke him. I knew you would.', 'The water goes down now, and so do you. The islands below are windy. Someone there is waiting.', 'I am always one valley ahead. Do not try to catch me. Just follow the water.'],
     replies: ['Who are you?', 'Hollo says hello.', 'I will follow the water.'],
   },
 ];

@@ -14,9 +14,11 @@ export const PIECES: MapPiece[] = [
   { id: 'map:pasture', world: 'peaks', label: 'The goat terraces and the west cliffs', lat: [26, 80], lon: [-120, -25] },
   { id: 'map:ridge', world: 'peaks', label: 'Kite Ridge', lat: [30, 70], lon: [20, 75] },
   { id: 'map:bridge', world: 'peaks', label: 'The old bridge and the way down to the edge', lat: [60, 180], lon: [-40, 40] },
-  { id: 'map:pines', world: 'pines', label: 'The Ember Pines', lat: [0, 180], lon: [-70, 70] },
+  { id: 'map:sky', world: 'sky', label: 'The Sky Isles', lat: [0, 180], lon: [-70, 70] },
+  { id: 'map:garden', world: 'garden', label: 'The Overgrown Garden', lat: [0, 180], lon: [-70, 70] },
   { id: 'map:sea', world: 'sea', label: 'The Endless Sea', lat: [0, 180], lon: [-70, 70] },
-  { id: 'map:desert', world: 'desert', label: 'The Glass Desert', lat: [0, 180], lon: [-70, 70] },
+  { id: 'map:desert', world: 'desert', label: 'The Painted Desert', lat: [0, 180], lon: [-70, 70] },
+  { id: 'map:lantern', world: 'lantern', label: 'Lantern Town', lat: [0, 180], lon: [-70, 70] },
 ];
 
 /** The fog grid: 2 degree cells over latitude 0..180 and longitude offset -180..180. */
@@ -593,7 +595,7 @@ export class MapView {
       mid.divideScalar(wsum);
       let spread = 0;
       for (const g of mine) spread = Math.max(spread, g.c.distanceTo(mid) + g.r);
-      // giants (the Ember Pines' great trees, the desert's arches) are brought down to model height, so the
+      // giants (the garden's flowers, the desert's arches) are brought down to model height, so the
       // little world keeps its round shape; small things are drawn a little larger, as on a model village
       let top = 0;
       for (const g of mine) top = Math.max(top, g.c.length() + g.r - p.surfaceRadius(g.c.clone().normalize()));
