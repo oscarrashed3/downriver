@@ -304,7 +304,6 @@ canvas#game { display: block; width: 100vw; height: 100vh; }
 .compass .carrow.on { opacity: 1; }
 .compass .carrow.left { right: calc(100% + 6px); }
 .compass .carrow.right { left: calc(100% + 6px); }
-<<<<<<< HEAD
 .gm.pin .gl.task { white-space: normal; width: 210px; line-height: 1.25; }
 
 /* ---- Settings: a gear beside the paper boat, Esc, or the title screen ---- */
@@ -367,6 +366,4 @@ canvas#game { display: block; width: 100vw; height: 100vh; }
 .menustrip button { padding: 8px 16px; }
 .overlay.ontitle { backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
 .menusheet.settings:not(.ontitle) .sx { display: none; }
-=======
 .gm.pin .gl.task { color: #5a3a08; }
->>>>>>> real-map
