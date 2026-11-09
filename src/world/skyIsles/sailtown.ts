@@ -1,7 +1,8 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import {
   Kit, T, rng, pick, type Rnd, uvMetres, boxM, archShape, archRing, archTop, ropeGeo, sagLine, clothGrid, wobble, tint, townMat,
-  CELL, WALL_TILE, STONE_TILE, WOOD_TILE,
+  patAttr, type ClothPattern, CELL, WALL_TILE, STONE_TILE, WOOD_TILE, LINEN_TILE,
 } from './sailtownKit';
 import { Cards, headCard, plantGeo, PETALS, type FlowerKind } from './sailtownFlora';
 import { addLeafMass, addHydrangeaBush, addRoses, addIvy, climbPath, HYDRANGEA, type WallPoint } from './sailtownGreen';
@@ -26,7 +27,7 @@ import { addLeafMass, addHydrangeaBush, addRoses, addIvy, climbPath, HYDRANGEA, 
 // ---------------------------------------------------------------- palette
 
 export const SAIL = {
-  wall: '#f4e8d0', wallWarm: '#f1dfc0', stone: '#e8dbc0', stoneDark: '#cdbb9b',
+  wall: '#f6e9cf', wallWarm: '#f3dfbc', stone: '#ecdcbc', stoneDark: '#c8b08a',
   slate: ['#4e6a94', '#47618a', '#5a759c', '#425a82', '#617ba3', '#536d96', '#3c5480'],
   timber: '#7a5434', timberDark: '#5a3c26', weathered: '#9a7a58', plank: '#a87a4e',
   door: ['#8a5a34', '#7a4e2e', '#94643a'], shutters: ['#c8794a', '#b8693c', '#5d84b4', '#7fa36a'],
@@ -36,7 +37,7 @@ export const SAIL = {
   box: ['#e8475e', '#f07aa0', '#ffffff', '#f2c53d', '#b48ae0'],
   green: ['#5c8c3e', '#4f7f38', '#6b9a46', '#46733a'],
   /** Flagstones: warm sand and ochre, a step darker than the walls. */
-  flag: ['#dcc49a', '#d2b386', '#e0cba4', '#c9a676', '#d8bc8c', '#cdb48e', '#c4a272'],
+  flag: ['#e3d8c2', '#d9ccb4', '#e8dfcb', '#d0c2a8', '#ddd1ba', '#d5c6ac', '#cbbca2', '#e0d3b6'],
   terracotta: '#c8693f',
 };
 
@@ -47,14 +48,14 @@ export const SAIL = {
  */
 export const SAILTOWN_LIGHT = {
   day: {
-    sun: '#ffefd6', sunIntensity: 2.75, sunDir: [0.5, 0.66, 0.36] as [number, number, number],
-    ambSky: '#b4c4dc', ambSkyK: 0.66, ambGround: '#b8a27e', ambGroundK: 0.42, rim: '#ffe2b0',
-    fog: '#e4e2d6', fogDensity: 0.0062, skyTop: '#7ea6dc', skyHorizon: '#f2ead8',
+    sun: '#fff0d0', sunIntensity: 3.05, sunDir: [0.42, 0.74, 0.44] as [number, number, number],
+    ambSky: '#a8c6f2', ambSkyK: 0.74, ambGround: '#c8b084', ambGroundK: 0.4, rim: '#ffe8bc',
+    fog: '#a6c6ec', fogDensity: 0.0026, skyTop: '#3d84dc', skyHorizon: '#cfe6f8',
   },
   golden: {
     sun: '#ffc68a', sunIntensity: 2.5, sunDir: [0.75, 0.2, -0.62] as [number, number, number],
     ambSky: '#c6b4b0', ambSkyK: 0.62, ambGround: '#b89474', ambGroundK: 0.44, rim: '#ffcf90',
-    fog: '#f0d8b6', fogDensity: 0.006, skyTop: '#76a0dc', skyHorizon: '#ffdcac',
+    fog: '#f0d8b6', fogDensity: 0.0042, skyTop: '#76a0dc', skyHorizon: '#ffdcac',
   },
 };
 
@@ -314,11 +315,14 @@ function slateCone(kit: Kit, o: ConeRoof) {
     const sp = speed(sB);
     for (let j = 0; j < nT; j++) {
       const th0 = ((j + off) / nT) * Math.PI * 2 + gap, th1 = ((j + 1 + off) / nT) * Math.PI * 2 - gap;
-      const c = pal[Math.floor(r() * pal.length)].clone().multiplyScalar(0.88 + r() * 0.2);
+      // each slate its own shade, close in value; a rare paler or lichened one, low in contrast, so the roof never checkers
+      const c = pal[Math.floor(r() * pal.length)].clone().multiplyScalar(0.93 + r() * 0.1);
       const roll = r();
-      if (roll < 0.05) c.lerp(lichen, 0.4);           // lichen
-      else if (roll < 0.1) c.lerp(pale, 0.38);        // a weathered, paler slate
-      else if (roll < 0.13 && i < 4) c.lerp(moss, 0.3);
+      if (roll < 0.02) c.lerp(lichen, 0.22);
+      else if (roll < 0.045) c.lerp(pale, 0.16);
+      else if (roll < 0.06 && i < 3) c.lerp(moss, 0.18);
+      // the eave course darker and heavier, like the pictures' deep blue eave line
+      if (i === 0) c.multiplyScalar(0.78);
       const lipC = c.clone().multiplyScalar(0.55);
       const liftJ = r() * 0.01, dropJ = (r() - 0.5) * 0.016;
       const tilt = (r() - 0.5) * 0.24;
@@ -418,7 +422,7 @@ function addWindow(kit: Kit, m: THREE.Matrix4, r: Rnd, o: WinOpts) {
       kit.with(T(0, -fw - 0.08 - bh / 2, 0.16), () => {
         kit.add(boxM(bw, bh, bd, WOOD_TILE), 'wood', SAIL.timber, T(0, 0, 0));
         kit.add(boxM(bw + 0.04, 0.04, bd + 0.04, WOOD_TILE), 'wood', SAIL.timberDark, T(0, bh / 2, 0));
-        for (const s of [-1, 1]) kit.add(new THREE.BoxGeometry(0.04, 0.16, 0.18), 'plain', SAIL.iron, T(s * bw * 0.35, -bh / 2 - 0.05, -0.06, 0.6, 0, 0));
+        for (const s of [-1, 1]) kit.add(new THREE.BoxGeometry(0.025, 0.1, 0.12), 'plain', SAIL.iron, T(s * bw * 0.35, -bh / 2 - 0.03, -0.05, 0.6, 0, 0));
         addBloomMound(kit, T(0, bh / 2 - 0.02, 0), r, bw - 0.04, bd, 0.16, o.box!, Math.round(bw * 22), 3);
       });
     }
@@ -473,13 +477,23 @@ function addDoor(kit: Kit, m: THREE.Matrix4, r: Rnd, o: { w: number; h: number; 
     kit.add(new THREE.ExtrudeGeometry(archRing(ww + 0.06, wh + 0.03, ww, wh, 8), { depth: 0.03, bevelEnabled: false }), 'wood', dc.clone().multiplyScalar(0.7), T(0, wy - 0.015, 0.04));
     kit.add(new THREE.BoxGeometry(0.02, wh, 0.02), 'wood', dc.clone().multiplyScalar(0.7), T(0, wy + wh / 2, 0.06));
     kit.add(new THREE.BoxGeometry(ww, 0.02, 0.02), 'wood', dc.clone().multiplyScalar(0.7), T(0, wy + wh * 0.45, 0.06));
-    // steps: a worn half-round slab and a wider one below
-    const s1 = new THREE.CylinderGeometry(w * 0.85, w * 0.88, 0.15, 18, 1, false, -Math.PI / 2, Math.PI);
-    uvMetres(s1, 1, 1, STONE_TILE * 0.5);
-    kit.add(s1, 'stone', SAIL.stoneDark, T(0, -0.08, 0.1));
-    const s2 = new THREE.CylinderGeometry(w * 1.15, w * 1.2, 0.15, 20, 1, false, -Math.PI / 2, Math.PI);
-    uvMetres(s2, 1, 1, STONE_TILE * 0.5);
-    kit.add(s2, 'stone', SAIL.stoneDark, T(0, -0.23, 0.12));
+    // the doorstep: one big worn stone, a rounded front with a carved bevel, its middle dished by feet
+    {
+      const sw = w * 1.25, sd = 0.62, sh = new THREE.Shape();
+      sh.moveTo(-sw / 2, 0); sh.lineTo(sw / 2, 0); sh.lineTo(sw / 2, sd * 0.45);
+      sh.bezierCurveTo(sw / 2, sd * 1.02, -sw / 2, sd * 1.02, -sw / 2, sd * 0.45); sh.lineTo(-sw / 2, 0);
+      const sg = new THREE.ExtrudeGeometry(sh, { depth: 0.3, bevelEnabled: true, bevelSize: 0.035, bevelThickness: 0.03, bevelSegments: 3, curveSegments: 16 });
+      sg.rotateX(Math.PI / 2);
+      const sp = sg.attributes.position as THREE.BufferAttribute;
+      for (let i = 0; i < sp.count; i++) {
+        const x = sp.getX(i), z = sp.getZ(i), y = sp.getY(i);
+        // worn: dished in the middle where feet fall, a little uneven
+        if (y > 0.015) sp.setY(i, y - Math.exp(-((x / (w * 0.4)) ** 2) - (((z - 0.25) / 0.25) ** 2)) * 0.025 + Math.sin(x * 9 + z * 7) * 0.004);
+      }
+      sg.computeVertexNormals();
+      uvMetres(sg, 1, 1, 1.2);
+      kit.add(sg, 'rough', '#d6c6a6', T(0, 0.0, -0.02));
+    }
   });
 }
 
@@ -528,7 +542,7 @@ export function roundCottage(opts: CottageOpts = {}): THREE.Group {
   const R = opts.radius ?? 2.3, H = opts.wallHeight ?? R * 1.62, taper = 0.93, Rt = R * taper;
   const over = opts.overhang ?? 0.55 + R * 0.14;
   const eaveR = Rt + over;
-  const roofH = opts.roofHeight ?? eaveR * 1.02;
+  const roofH = opts.roofHeight ?? eaveR * 0.8;
   const lean = Math.atan2(R - Rt, H);
   const rAt = (y: number) => R + (Rt - R) * (y / H);
   const wallAt = (a: number, y: number, out = 0): WallPoint => ({ p: new THREE.Vector3(Math.sin(a) * (rAt(y) + out), y, Math.cos(a) * (rAt(y) + out)), n: new THREE.Vector3(Math.sin(a), 0, Math.cos(a)) });
@@ -538,12 +552,13 @@ export function roundCottage(opts: CottageOpts = {}): THREE.Group {
   // walls: a lathe with many rows, nudged by noise so it reads hand-built, with the doorway cut out at +Z
   const dw = 0.98, dh = 2.1;
   const prof: [number, number][] = [];
-  for (let i = 0; i <= 16; i++) { const y = 0.3 + (H - 0.3) * (i / 16); prof.push([rAt(y), y]); }
+  for (let i = 0; i <= 16; i++) { const y = 0.5 + (H - 0.5) * (i / 16); prof.push([rAt(y), y]); }
   const doorCut = (a: number, y: number) => { const x = Math.sin(a) * R; return Math.cos(a) > 0 && Math.abs(x) < dw / 2 + 0.05 && y - 0.3 < archTop(dw + 0.1, dh + 0.05, x); };
   const wall = wobble(lathe(prof, 64, WALL_TILE, true, 0, Math.PI * 2, doorCut), 0.022, 2.1, seed);
   kit.add(wall, 'wall', new THREE.Color(opts.wall ?? SAIL.wall).multiplyScalar(0.97 + r() * 0.05));
   // stone footing, flared, and a string course at the upper floor
-  kit.add(wobble(lathe([[R + 0.16, -0.1], [R + 0.12, 0.2], [R + 0.04, 0.42]], 40, STONE_TILE), 0.02, 3, seed + 1), 'stone', SAIL.stoneDark);
+  // the base course: a taller plinth of darker coursed stone, battered out at the foot
+  kit.add(wobble(lathe([[R + 0.17, -0.1], [R + 0.14, 0.3], [R + 0.11, 0.56], [R + 0.03, 0.64]], 48, STONE_TILE, true, 0, Math.PI * 2, (a) => Math.cos(a) > 0 && Math.abs(Math.sin(a) * R) < dw / 2 + 0.16), 0.018, 3, seed + 1), 'stone', SAIL.stoneDark);
   const ySc = H * 0.5;
   kit.add(lathe([[rAt(ySc) + 0.01, ySc - 0.07], [rAt(ySc) + 0.06, ySc - 0.03], [rAt(ySc) + 0.06, ySc + 0.03], [rAt(ySc) + 0.01, ySc + 0.07]], 48, STONE_TILE), 'stone', SAIL.stone);
 
@@ -563,7 +578,9 @@ export function roundCottage(opts: CottageOpts = {}): THREE.Group {
     kit.add(boxM(0.08, 0.1, len, WOOD_TILE), 'wood', '#9a7352',
       T(Math.sin(a) * (r0 + r1) / 2, (y0 + y1) / 2, Math.cos(a) * (r0 + r1) / 2, 0, a, 0).multiply(T(0, 0, 0, Math.atan2(y0 - y1, r1 - r0), 0, 0)));
   }
-  kit.add(lathe([[eaveR - 0.03, roofY0 - 0.12], [eaveR - 0.01, roofY0 + 0.02]], 56, WOOD_TILE), 'wood', SAIL.timber);
+  // a deep, dark fascia board and a rolled slate-blue drip edge: the heavy eave line of picture 2
+  kit.add(lathe([[eaveR - 0.05, roofY0 - 0.26], [eaveR - 0.01, roofY0 - 0.24], [eaveR + 0.005, roofY0 + 0.02]], 56, WOOD_TILE), 'wood', SAIL.timberDark);
+  kit.add(lathe([[eaveR - 0.03, roofY0 - 0.25], [eaveR + 0.02, roofY0 - 0.22], [eaveR + 0.025, roofY0 - 0.15], [eaveR + 0.01, roofY0 - 0.1]], 56, 1), 'plain', '#3c4c6a');
   // finial: a turned wooden knob and a brass ball
   kit.add(postGeo(0.04, 0.07, 0.35), 'wood', SAIL.timberDark, T(0, roof.apex + 0.12, 0));
   kit.add(new THREE.SphereGeometry(0.08, 10, 8), 'brass', SAIL.brass, T(0, roof.apex + 0.34, 0));
@@ -611,7 +628,7 @@ export function roundCottage(opts: CottageOpts = {}): THREE.Group {
   if (opts.roses !== false) {
     const side = roseSide, pts: WallPoint[] = [];
     const a0 = side * (dw / 2 + 0.3) / R;
-    for (let y = 0.45; y < dh + 0.1; y += 0.3) pts.push({ ...wallAt(a0 + Math.sin(y * 2.3) * 0.04, y, 0.02), s: 1.0 + (y < 1 ? 0.15 : 0) });
+    for (let y = 0.45; y < dh + 0.1; y += 0.26) pts.push({ ...wallAt(a0 + Math.sin(y * 3.1) * 0.07, y, 0.02), s: 0.75 + (y < 1 ? 0.15 : 0) });
     // round the arch: from the rose side over the top to the far shoulder
     for (let k = 0; k <= 6; k++) {
       const t = k / 6, ang = side > 0 ? t * Math.PI * 0.9 : Math.PI - t * Math.PI * 0.9;
@@ -621,18 +638,25 @@ export function roundCottage(opts: CottageOpts = {}): THREE.Group {
     // up to the eave beside the door, then spreading along the wall top under the eave
     const yTop = Math.min(H - 0.35, roofY0 + 0.55);
     for (let y = dh + 0.4; y < yTop; y += 0.26) pts.push({ ...wallAt(a0 + 0.03 * side, y, 0.02), s: 0.95 });
-    for (let k = 1; k <= 6; k++) {
-      if (r() < k * 0.07) continue;
-      for (const dir of [1, -0.7]) pts.push({ ...wallAt(a0 + side * dir * k * 0.15, yTop - 0.12 - r() * 0.35 * (k / 6), 0.02), s: 0.95 - k * 0.07 });
-    }
-    // draped over the eave's edge where the climber meets it: masses laid on the slates, leaning out
-    for (let k = -2; k <= 3; k++) {
-      const a = a0 + side * k * 0.17, s = 0.02 + r() * 0.05;
-      const p = new THREE.Vector3(Math.sin(a) * roof.rad(s), roof.yy(s) + 0.02, Math.cos(a) * roof.rad(s));
-      const n = roof.normalAt(a, s, new THREE.Vector3()).lerp(new THREE.Vector3(Math.sin(a), -0.1, Math.cos(a)), 0.55).normalize();
-      pts.push({ p, n, s: 0.8 });
+    for (let k = 1; k <= 4; k++) {
+      if (r() < k * 0.1) continue;
+      for (const dir of [1, -0.7]) pts.push({ ...wallAt(a0 + side * dir * k * 0.15, yTop - 0.12 - r() * 0.3 * (k / 4), 0.02), s: 0.8 - k * 0.08 });
     }
     addRoses(kit, pts, r, { palette: opts.rosePalette, blooms: 9 });
+    // strands of rose and ivy hanging from the eave's edge where the climber meets it: thin trailing lines of
+    // leaves with a bloom here and there, never blobs
+    const strands: WallPoint[] = [];
+    for (let k = -3; k <= 4; k++) {
+      const a = a0 + side * k * 0.13 + (r() - 0.5) * 0.05, len = 0.35 + r() * (k > -2 && k < 3 ? 0.9 : 0.45);
+      const re = roof.rad(0.03) - 0.06, y0 = roof.yy(0.03) - 0.1;
+      for (let y = 0; y < len; y += 0.075) {
+        const sway = Math.sin(y * 5 + k) * 0.02;
+        strands.push({ p: new THREE.Vector3(Math.sin(a + sway) * (re - y * 0.12), y0 - y, Math.cos(a + sway) * (re - y * 0.12)), n: new THREE.Vector3(Math.sin(a), 0.15, Math.cos(a)).normalize(), s: 0.42 - (y / len) * 0.18 });
+      }
+    }
+    addIvy(kit, strands, r, { colors: ['#4f7f38', '#5a8a40', '#466f34', '#62904a'], perPoint: 2, spread: 0.35 });
+    const bl: WallPoint[] = strands.filter(() => r() < 0.14).map(w => ({ ...w, s: 0.5 }));
+    addRoses(kit, bl, r, { palette: opts.rosePalette, blooms: 3, leaves: false });
   }
   // ivy climbing the back and one side
   if (opts.ivy !== false) {
@@ -658,11 +682,14 @@ export function roundCottage(opts: CottageOpts = {}): THREE.Group {
     const ca = -roseSide * (dw / 2 + 0.55) / R, cy = 2.55;   // on the side away from the roses
     const rr = rAt(cy);
     const bm = T(Math.sin(ca) * rr, cy, Math.cos(ca) * rr, 0, ca, 0);
+    // a clean wrought-iron bracket: a round wall plate, one arm curving out with a scroll under it, the hook at the end
     kit.with(bm, () => {
-      kit.add(new THREE.BoxGeometry(0.04, 0.04, 0.55), 'plain', SAIL.iron, T(0, 0, 0.27));
-      kit.add(new THREE.BoxGeometry(0.035, 0.38, 0.035), 'plain', SAIL.iron, T(0, -0.15, 0.06, -0.75, 0, 0));
-      kit.add(new THREE.TorusGeometry(0.06, 0.01, 4, 10), 'plain', SAIL.iron, T(0, 0.0, 0.42, 0, Math.PI / 2, 0));
-      kit.add(new THREE.BoxGeometry(0.14, 0.24, 0.03), 'plain', SAIL.iron, T(0, 0, 0.0));
+      kit.add(new THREE.CylinderGeometry(0.07, 0.07, 0.025, 12).rotateX(Math.PI / 2), 'plain', SAIL.iron, T(0, 0, 0.01));
+      kit.add(ropeGeo([new THREE.Vector3(0, 0, 0.02), new THREE.Vector3(0, 0.03, 0.22), new THREE.Vector3(0, 0.02, 0.42), new THREE.Vector3(0, -0.01, 0.52)], 0.016, 6), 'plain', SAIL.iron);
+      const sc: THREE.Vector3[] = [];
+      for (let k = 0; k <= 18; k++) { const a = (k / 18) * Math.PI * 2.4, rr = 0.085 * (1 - k / 26); sc.push(new THREE.Vector3(0, -0.095 + Math.cos(a) * rr, 0.17 - Math.sin(a) * rr)); }
+      kit.add(ropeGeo(sc, 0.009, 5), 'plain', SAIL.iron);
+      kit.add(new THREE.TorusGeometry(0.03, 0.007, 4, 10, Math.PI * 1.6), 'plain', SAIL.iron, T(0, -0.035, 0.5, 0, Math.PI / 2, 0));
     });
     const chimes = doorChimes({ seed: seed + 5, tubes: 7, size: 1.5 });
     chimes.position.set(Math.sin(ca) * (rr + 0.5), cy - 0.02, Math.cos(ca) * (rr + 0.5));
@@ -740,8 +767,10 @@ export class Chime {
   private swing: number;
 
   /** calm scales the idle sway in the breeze; swing scales how far a ring throws the tubes. */
-  constructor(root: THREE.Group, body: THREE.Group, tubes: THREE.InstancedMesh | [THREE.InstancedMesh, number][], attach: THREE.Vector3[], len: number[], seed: number, calm = 1, swing = 1) {
-    this.root = root; this.body = body; this.n = attach.length; this.attach = attach; this.len = len; this.calm = calm; this.swing = swing;
+  private bodySway: boolean;
+  /** bodySway: the whole set swings on its hook (door chimes); off for tubes hung from a fixed frame (the gate). */
+  constructor(root: THREE.Group, body: THREE.Group, tubes: THREE.InstancedMesh | [THREE.InstancedMesh, number][], attach: THREE.Vector3[], len: number[], seed: number, calm = 1, swing = 1, bodySway = true) {
+    this.root = root; this.body = body; this.n = attach.length; this.attach = attach; this.len = len; this.calm = calm; this.swing = swing; this.bodySway = bodySway;
     this.slots = Array.isArray(tubes) ? tubes : attach.map((_, i) => [tubes, i] as [THREE.InstancedMesh, number]);
     const r = rng(seed);
     for (let i = 0; i < this.n; i++) { this.phase.push(r() * 6.28); this.nextStrike.push(0); }
@@ -752,8 +781,10 @@ export class Chime {
     this.energy *= Math.exp(-dt * 0.9);
     const E = Math.min(this.energy, 2) * this.swing, k = this.calm;
     // the whole set sways on its hook
-    this.body.rotation.x = (Math.sin(t * 1.3 + this.phase[0]) * 0.05 + 0.04) * k + E * 0.12 * Math.sin(t * 5.1);
-    this.body.rotation.z = Math.sin(t * 0.9 + this.phase[1]) * 0.04 * k + E * 0.1 * Math.sin(t * 4.3 + 1);
+    if (this.bodySway) {
+      this.body.rotation.x = (Math.sin(t * 1.3 + this.phase[0]) * 0.05 + 0.04) * k + E * 0.12 * Math.sin(t * 5.1);
+      this.body.rotation.z = Math.sin(t * 0.9 + this.phase[1]) * 0.04 * k + E * 0.1 * Math.sin(t * 4.3 + 1);
+    }
     for (let i = 0; i < this.n; i++) {
       const ph = this.phase[i], w = 2.2 / Math.sqrt(this.len[i] / 0.3);
       const ax = (Math.sin(t * w + ph) * 0.06 + 0.05) * k + E * 0.22 * Math.sin(t * w * 2.6 + ph);
@@ -780,8 +811,8 @@ function chimeTubeGeo(thick = 1) {
   if (hit) return hit;
   const k = thick;
   const cord = tint(new THREE.CylinderGeometry(0.003 * Math.sqrt(k), 0.003 * Math.sqrt(k), 0.05, 3).translate(0, -0.025, 0), '#3a3238');
-  const tube = tint(new THREE.CylinderGeometry(0.014 * k, 0.014 * k, 0.25, 10, 1).translate(0, -0.05 - 0.125, 0), '#ffffff');
-  const cap = tint(new THREE.CylinderGeometry(0.016 * k, 0.016 * k, 0.008, 10).translate(0, -0.05, 0), '#c9c0b0');
+  const tube = tint(new THREE.CylinderGeometry(0.021 * k, 0.021 * k, 0.25, 14, 1).translate(0, -0.05 - 0.125, 0), '#ffffff');
+  const cap = tint(new THREE.CylinderGeometry(0.023 * k, 0.023 * k, 0.008, 14).translate(0, -0.05, 0), '#8a8478');
   for (const x of [cord, tube, cap]) x.deleteAttribute('uv');
   const merged = new THREE.BufferGeometry();
   const parts = [cord, tube, cap].map(p => p.index ? p.toNonIndexed() : p);
@@ -806,10 +837,12 @@ export function doorChimes(opts: ChimeOpts = {}): THREE.Group {
   const g = new THREE.Group(); g.name = 'doorChimes';
   const body = new THREE.Group(); g.add(body);
   const kit = new Kit();
-  const discY = -0.16 * S, discR = 0.1 * S;
-  kit.add(new THREE.CylinderGeometry(0.004, 0.004, -discY, 3), 'plain', '#3a3238', T(0, discY / 2, 0));
-  kit.add(new THREE.CylinderGeometry(discR, discR * 1.05, 0.035 * S, 14), 'wood', SAIL.timber, T(0, discY, 0));
-  kit.add(new THREE.ConeGeometry(discR * 0.6, 0.06 * S, 12), 'wood', SAIL.timberDark, T(0, discY + 0.045 * S, 0));
+  // the top: a clear round disc of turned wood with a brass rim, hung on three cords from a ring
+  const discY = -0.16 * S, discR = 0.135 * S;
+  kit.add(new THREE.TorusGeometry(0.018 * S, 0.004 * S, 4, 10), 'brass', SAIL.brass, T(0, -0.01, 0));
+  for (let k = 0; k < 3; k++) { const a = k / 3 * Math.PI * 2; kit.add(ropeGeo([new THREE.Vector3(0, -0.02, 0), new THREE.Vector3(Math.cos(a) * discR * 0.8, discY + 0.02 * S, Math.sin(a) * discR * 0.8)], 0.0025, 3), 'plain', '#3a3238'); }
+  kit.add(lathe([[0.01, discY + 0.025 * S], [discR * 0.92, discY + 0.02 * S], [discR, discY + 0.005 * S], [discR, discY - 0.015 * S], [discR * 0.94, discY - 0.022 * S], [0.01, discY - 0.022 * S]], 20, WOOD_TILE), 'wood', '#8a5a34');
+  kit.add(new THREE.TorusGeometry(discR, 0.006 * S, 4, 24).rotateX(Math.PI / 2), 'brass', SAIL.brass, T(0, discY - 0.005 * S, 0));
   // clapper and wind sail on a long cord through the middle
   const clY = discY - 0.26 * S;
   kit.add(new THREE.CylinderGeometry(0.004, 0.004, 0.72 * S, 3), 'plain', '#3a3238', T(0, discY - 0.36 * S, 0));
@@ -825,16 +858,16 @@ export function doorChimes(opts: ChimeOpts = {}): THREE.Group {
   kit.build(body, { outline: false });
   // tubes
   const metal = opts.metal ?? 'silver';
-  const mat = townMat(metal);
+  const mat = townMat(metal === 'silver' ? 'chrome' : 'brass');
   const tubes = new THREE.InstancedMesh(chimeTubeGeo(S), mat, n);
   tubes.castShadow = true; tubes.frustumCulled = false;
   const tcol = new THREE.Color(metal === 'brass' ? SAIL.brass : SAIL.silver);
   const attach: THREE.Vector3[] = [], len: number[] = [];
   for (let i = 0; i < n; i++) {
     const a = (i / n) * Math.PI * 2;
-    attach.push(new THREE.Vector3(Math.cos(a) * discR * 0.75, discY - 0.02 * S, Math.sin(a) * discR * 0.75));
+    attach.push(new THREE.Vector3(Math.cos(a) * discR * 0.72, discY - 0.022 * S, Math.sin(a) * discR * 0.72));
     len.push((0.22 + 0.3 * (i / Math.max(1, n - 1)) + r() * 0.03) * S);
-    tubes.setColorAt(i, tcol.clone().multiplyScalar(0.92 + r() * 0.1));
+    tubes.setColorAt(i, (metal === 'brass' ? tcol.clone() : new THREE.Color('#a8b2be')).multiplyScalar(0.92 + r() * 0.1));
   }
   body.add(tubes);
   const chime = new Chime(g, body, tubes, attach, len, seed);
@@ -862,43 +895,48 @@ export interface WindmillOpts {
 }
 
 /**
- * Canvas for one sail: a grid of panels between the bars, bellied between each pair of bars, with seams (darker rows at
- * every bar, darker columns between the cloths) and a patch or two in an older cloth. x across the frame, y along.
+ * Canvas for one sail, as wind-cloth: one cream sail-cloth with stitched panel seams (drawn in the cloth shader), an
+ * older patch or two, and a real belly: it billows out between every pair of sail bars and across the frame, and
+ * breathes a little in the wind. x across the frame, y along the stock.
  */
 function sailCanvas(r: Rnd, x0: number, x1: number, y0: number, y1: number, bars: number[], patchK = 1) {
-  const pos: number[] = [], nor: number[] = [], uvs: number[] = [], cl: number[] = [], idx: number[] = [];
-  const cols = 4, rowsPer = 2;
-  const base = [new THREE.Color('#f3ead6'), new THREE.Color('#ece0c8')];
-  const patches: [number, number, number, number, THREE.Color][] = [];
+  const pos: number[] = [], uvs: number[] = [], cl: number[] = [], wv: number[] = [], dr: number[] = [], pt: number[] = [], idx: number[] = [];
+  const panels = 4, cols = panels * 3, per = (x1 - x0) / panels;
+  const base = new THREE.Color('#f4ead4');
+  const patches: [number, number, number, THREE.Color][] = [];
   for (let i = 0; i < patchK; i++) {
-    const py = y0 + r() * (y1 - y0) * 0.8, pc = Math.floor(r() * cols);
-    patches.push([pc, py, py + 0.35 + r() * 0.4, 0, new THREE.Color(pick(r, ['#ddc9a2', '#d8b48e', '#e3d3b0']))]);
+    const py = y0 + r() * (y1 - y0) * 0.75;
+    patches.push([Math.floor(r() * panels), py, py + 0.4 + r() * 0.5, new THREE.Color(pick(r, ['#e6d6b4', '#e2cba6', '#ece0c2']))]);
   }
   const ys: number[] = [y0, ...bars.filter(b => b > y0 + 0.05 && b < y1 - 0.05), y1];
-  for (let b = 0; b < ys.length - 1; b++) for (let k = 0; k < rowsPer; k++) {
-    const ya = ys[b] + (ys[b + 1] - ys[b]) * (k / rowsPer), yb = ys[b] + (ys[b + 1] - ys[b]) * ((k + 1) / rowsPer);
-    for (let c = 0; c < cols; c++) {
-      const xa = x0 + (x1 - x0) * (c / cols), xb = x0 + (x1 - x0) * ((c + 1) / cols);
-      let col = base[c % 2].clone();
-      const ym = (ya + yb) / 2;
-      for (const [pc, p0, p1, , pcol] of patches) if (pc === c && ym > p0 && ym < p1) col = pcol.clone();
-      const v = pos.length / 3;
-      for (const [x, y] of [[xa, ya], [xb, ya], [xb, yb], [xa, yb]]) {
-        const u = (x - x0) / (x1 - x0), t = (y - ys[b]) / (ys[b + 1] - ys[b]);
-        const z = 0.1 * Math.sin(u * Math.PI) * Math.pow(Math.sin(t * Math.PI), 0.6);
-        pos.push(x, y, z); nor.push(0, 0, 1); uvs.push(x, y);
-        // seams: darker at the bars and the cloth joins
-        const seam = (t < 0.02 || t > 0.98 ? 0.86 : 1) * (Math.abs(u * cols - Math.round(u * cols)) < 0.02 ? 0.88 : 1);
-        cl.push(col.r * seam, col.g * seam, col.b * seam);
-      }
-      idx.push(v, v + 1, v + 2, v, v + 2, v + 3);
-    }
+  const rowsPer = 3;
+  const P = patAttr({ kind: 'panels', period: per });
+  const rowsY: { y: number; t: number }[] = [];
+  for (let b = 0; b < ys.length - 1; b++) for (let k = 0; k < rowsPer; k++) rowsY.push({ y: ys[b] + (ys[b + 1] - ys[b]) * (k / rowsPer), t: k / rowsPer });
+  rowsY.push({ y: y1, t: 0 });
+  const W = cols + 1;
+  for (let j = 0; j < rowsY.length; j++) for (let c = 0; c <= cols; c++) {
+    const u = c / cols, x = x0 + (x1 - x0) * u, { y, t } = rowsY[j];
+    const along = (y - y0) / (y1 - y0);
+    // a belly between the bars and a deeper one across the whole frame, strongest toward the trailing edge
+    const z = 0.08 * Math.sin(u * Math.PI) * Math.sin(t * Math.PI) + 0.3 * Math.sin(Math.pow(u, 0.8) * Math.PI) * Math.sin(Math.min(1, along * 1.05) * Math.PI) ** 0.5;
+    pos.push(x, y, z); uvs.push((x - x0) / LINEN_TILE, (y - y0) / LINEN_TILE);
+    let col = base;
+    const pc = Math.floor(u * panels - 1e-6);
+    for (const [pp, p0, p1, pcol] of patches) if (pp === pc && y > p0 && y < p1 && u * panels - pc > 0.02) col = pcol;
+    // painted billow: the cloth lighter where it bellies out, darker where it is pulled taut to the frame and bars
+    const sh = 0.8 + 0.2 * Math.sin(Math.pow(u, 0.8) * Math.PI) * (0.75 + 0.25 * Math.sin(t * Math.PI));
+    cl.push(col.r * sh, col.g * sh, col.b * sh);
+    wv.push(0.035 * Math.sin(u * Math.PI) * Math.sin(along * Math.PI), r() * 0.3, 0.9); dr.push(0, 0, 1); pt.push(...P);
   }
+  for (let j = 0; j < rowsY.length - 1; j++) for (let c = 0; c < cols; c++) { const a = j * W + c; idx.push(a, a + 1, a + W + 1, a, a + W + 1, a + W); }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   g.setAttribute('color', new THREE.Float32BufferAttribute(cl, 3));
+  g.setAttribute('aWave', new THREE.Float32BufferAttribute(wv, 3));
+  g.setAttribute('aDir', new THREE.Float32BufferAttribute(dr, 3));
+  g.setAttribute('aPat', new THREE.Float32BufferAttribute(pt, 4));
   g.setIndex(idx);
   g.computeVertexNormals();
   return g;
@@ -970,9 +1008,10 @@ export function windmill(opts: WindmillOpts = {}): THREE.Group {
     for (const a0 of [-0.75, 1.4, 2.6, -2.2]) addIvy(kit, [...climbPath(r, a0, 0.4, H * (0.2 + r() * 0.22), 0.22, 0.12, at), ...climbPath(r, a0 + 0.3, 0.35, H * 0.14, 0.22, 0.14, at)], r, { perPoint: 6 });
     for (const a of [-0.6, 0.7, 2.0, -1.8]) addLeafMass(kit, T(Math.sin(a) * (R + 0.25), 0.3, Math.cos(a) * (R + 0.25), 0, a, 0), r, { radius: 0.4 + r() * 0.12, squash: 0.75, color: pick(r, SAIL.green), ao: 0.45 });
   }
-  // the onion cap
   const capR = Rt + 0.32, capY = H + 0.12;
-  const cap = slateCone(kit, { eaveR: capR, y0: capY, height: 2.6, seed: seed * 13 + 1, courseH: 0.2, tileW: 0.22, shape: 'onion', soffit: '#9a7352' });
+  // the cap: a pointed bell of the same blue-grey slate as the cottages, flaring out over a dark curb
+  const cap = slateCone(kit, { eaveR: capR + 0.12, y0: capY, height: 2.5, seed: seed * 13 + 1, courseH: 0.17, tileW: 0.2, kick: 0.85, soffit: '#9a7352' });
+  kit.add(lathe([[capR + 0.08, capY - 0.12], [capR + 0.15, capY - 0.05], [capR + 0.15, capY + 0.06]], 40, 1), 'plain', '#2f3f5e');
   kit.add(postGeo(0.03, 0.05, 0.6), 'wood', SAIL.timberDark, T(0, cap.apex + 0.2, 0));
   kit.add(new THREE.SphereGeometry(0.1, 10, 8), 'brass', SAIL.brass, T(0, cap.apex + 0.52, 0));
   kit.add(new THREE.ConeGeometry(0.05, 0.25, 8), 'brass', SAIL.brass, T(0, cap.apex + 0.72, 0));
@@ -1006,26 +1045,27 @@ export function windmill(opts: WindmillOpts = {}): THREE.Group {
   rk.add(new THREE.SphereGeometry(0.15, 10, 6), 'brass', SAIL.brass, T(0, 0, 0.25));
   const wood = new THREE.Color('#8a6748'), latt = new THREE.Color('#9c7a58');
   // how much of each sail is spread: two spread part-way, one furled, one barely spread and the rest furled
-  const spread = [0.72, 0, 0.55, 0.3];
+  const spread = [0.92, 0.35, 0.8, 0.15];
   for (let i = 0; i < 4; i++) {
     rk.with(T(0, 0, 0.1, 0, 0, i * Math.PI / 2 + 0.3), () => {
-      rk.add(boxM(0.16, L + 0.3, 0.14, WOOD_TILE, true), 'wood', wood, T(0, (L + 0.3) / 2 - 0.3, 0));
+      // the stock is a stout beam; the lattice on it is light (the sails must read as frames, not ladders)
+      rk.add(boxM(0.17, L + 0.3, 0.15, WOOD_TILE, true), 'wood', wood, T(0, (L + 0.3) / 2 - 0.3, 0));
       const x0 = -0.3, x1 = 1.08, y0 = 0.9, y1 = L - 0.05;
       // whips along the length (a narrow leading board, a middle lath, the hemlath at the trailing edge)
-      for (const [x, w] of [[x0, 0.06], [0.42, 0.05], [x1, 0.08]] as const) rk.add(boxM(w, y1 - y0, w, WOOD_TILE, true), 'wood', latt, T(x, (y0 + y1) / 2, -0.03));
+      for (const [x, w] of [[x0, 0.035], [0.42, 0.028], [x1, 0.045]] as const) rk.add(boxM(w, y1 - y0, w, WOOD_TILE, true), 'wood', latt, T(x, (y0 + y1) / 2, -0.03));
       // sail bars across, every 0.38 m
       const nb = Math.round((y1 - y0) / 0.38), bars: number[] = [];
       for (let b = 0; b <= nb; b++) {
         const y = y0 + (b / nb) * (y1 - y0); bars.push(y);
-        rk.add(boxM(x1 - x0 + 0.08, 0.06, 0.06, WOOD_TILE), 'wood', latt, T((x0 + x1) / 2, y, -0.05));
+        rk.add(boxM(x1 - x0 + 0.06, 0.032, 0.032, WOOD_TILE), 'wood', latt, T((x0 + x1) / 2, y, -0.05));
       }
       // braces near the hub
-      rk.add(boxM(0.05, 1.2, 0.05, WOOD_TILE, true), 'wood', latt, T(0.48, y0 - 0.28, -0.04, 0, 0, -0.78));
-      rk.add(boxM(0.05, 0.6, 0.05, WOOD_TILE, true), 'wood', latt, T(-0.2, y0 - 0.2, -0.04, 0, 0, 0.6));
+      rk.add(boxM(0.035, 1.2, 0.035, WOOD_TILE, true), 'wood', latt, T(0.48, y0 - 0.28, -0.04, 0, 0, -0.78));
+      rk.add(boxM(0.035, 0.6, 0.035, WOOD_TILE, true), 'wood', latt, T(-0.2, y0 - 0.2, -0.04, 0, 0, 0.6));
       const sp = spread[i];
       const cy1 = y0 + (y1 - y0) * sp;
       if (sp > 0.05) {
-        rk.add(sailCanvas(r, 0.1, x1 - 0.04, y0 + 0.04, cy1, bars, 1 + (i % 2)), 'canvas', null, T(0, 0, 0.04));
+        rk.add(sailCanvas(r, 0.1, x1 - 0.04, y0 + 0.04, cy1, bars, 1 + (i % 2)), 'cloth', null, T(0, 0, 0.04));
         // the reefing line, gathered at the end of the spread cloth
         rk.add(ropeGeo([new THREE.Vector3(0.1, cy1, 0.08), new THREE.Vector3(0.55, cy1 + 0.03, 0.12), new THREE.Vector3(x1 - 0.04, cy1, 0.08)], 0.016, 4), 'plain', '#8a6a48');
       }
@@ -1039,7 +1079,7 @@ export function windmill(opts: WindmillOpts = {}): THREE.Group {
       }
     });
   }
-  rk.build(spin, { inkWidth: 0.018 });
+  rk.build(spin, { inkWidth: 0.008 });
   g.add(rotor);
   const speed = opts.speed ?? 0.55;
   let ang = r() * 6;
@@ -1094,19 +1134,24 @@ export function laundryLine(length = 5, seed = 1): THREE.Group {
     let w = 0, h = 0, belly = 0.1, amp = 0.36, stiff = 0.45, pegs = 2, folds = 3;
     let colFn: (u: number, v: number) => THREE.Color;
     let mask: ((u: number, v: number) => boolean) | undefined;
+    let pattern: ClothPattern | undefined;
     if (kind === 'sheet') {
       w = 0.95 + r() * 0.35; h = 1.15 + r() * 0.3; belly = 0.16; amp = 0.5; stiff = 0.35; pegs = 3; folds = 4;
       const c = new THREE.Color(pick(r, whites));
       const hem = r() > 0.4 ? new THREE.Color(pick(r, ['#9ec0e8', '#f0b8c8', '#f2d27a', '#b8d8a8'])) : null;
-      const check = r() > 0.75;
-      colFn = (u, v) => check && (Math.floor(u * 8) + Math.floor(v * 9)) % 2 ? new THREE.Color('#cfe0f4') : hem && v > 0.9 ? hem : c;
+      // a gingham sheet now and then (woven in the shader), otherwise white with a coloured hem
+      if (r() > 0.7) pattern = { kind: 'gingham', accent: pick(r, ['#9fbce6', '#f0b4c4', '#b8d8a8']), period: 0.085 };
+      colFn = (_u, v) => hem && v > 0.9 ? hem : c;
     } else if (kind === 'towel') {
       w = 0.5 + r() * 0.15; h = 0.78 + r() * 0.15; belly = 0.08; amp = 0.34;
       const st = new THREE.Color(pick(r, ['#4f7fc4', '#e0473b', '#6aae5a', '#f08a32'])), wc = new THREE.Color(pick(r, whites));
-      colFn = r() > 0.5 ? (u, v) => (Math.floor(u * 7) % 2 === 0 || v > 0.88 || v < 0.06) ? st : wc : (_u, v) => (v > 0.1 && v < 0.2) || (v > 0.8 && v < 0.9) ? st : wc;
+      if (r() > 0.5) { pattern = { kind: 'stripes', accent: st, period: 0.11 }; colFn = (_u, v) => (v > 0.9 || v < 0.06) ? st : wc; }
+      else if (r() > 0.4) { pattern = { kind: 'plaid', accent: st, period: 0.16 }; colFn = () => wc; }
+      else colFn = (_u, v) => (v > 0.1 && v < 0.2) || (v > 0.8 && v < 0.9) ? st : wc;
     } else if (kind === 'shirt') {
       w = 0.9; h = 0.78; belly = 0.12; amp = 0.3; stiff = 0.5;
       const c = new THREE.Color(pick(r, ['#fbf8f0', '#cfe0f4', '#f6e7b8', '#e8c8b0', '#a8c8e8']));
+      if (r() > 0.6) pattern = { kind: 'stripes', accent: c.clone().multiplyScalar(0.72), period: 0.05 };
       colFn = (u, v) => (v > 0.94 ? c.clone().multiplyScalar(0.9) : c);
       // body, sloped shoulders, sleeves hanging down and out, a collar notch
       mask = (u, v) => {
@@ -1134,7 +1179,7 @@ export function laundryLine(length = 5, seed = 1): THREE.Group {
     const nx = Math.max(4, Math.round(w / 0.09)), ny = Math.max(5, Math.round(h / 0.09));
     const ph = r() * 6;
     const cg = clothGrid(w, h, nx, ny, colFn, {
-      mask, phase: ph, stiff,
+      mask, phase: ph, stiff, pattern,
       // free to swing far at the hem and the free corners, a little belly in the middle
       weight: (u, v) => amp * Math.pow(v, 1.05) * (0.85 + 0.3 * Math.abs(u - 0.5) * 2) + 0.06 * Math.sin(u * Math.PI) * v,
     });
@@ -1153,7 +1198,7 @@ export function laundryLine(length = 5, seed = 1): THREE.Group {
     kit.add(cg, 'cloth', null, T(cx, 0, 0, 0, (r() - 0.5) * 0.1, 0));
     // the scarf folds over the line: a second half hanging behind
     if (kind === 'scarf') {
-      const back = clothGrid(w, h * 0.8, nx, Math.round(ny * 0.8), colFn, { mask, phase: ph + 0.8, stiff, weight: (_u, v) => 0.5 * v });
+      const back = clothGrid(w, h * 0.8, nx, Math.round(ny * 0.8), colFn, { mask, phase: ph + 0.8, stiff, pattern, weight: (_u, v) => 0.5 * v });
       const bp = back.attributes.position as THREE.BufferAttribute;
       for (let i = 0; i < bp.count; i++) bp.setXYZ(i, bp.getX(i), bp.getY(i) + ropeY(cx + bp.getX(i)), -0.03);
       kit.add(back, 'cloth', null, T(cx, 0, 0));
@@ -1293,8 +1338,8 @@ export function awningStall(opts: { seed?: number; width?: number; stripe?: stri
   const aW = W + 0.4, back = new THREE.Vector3(0, backH + 0.05, -D / 2 - 0.1), front = new THREE.Vector3(0, frontH - 0.02, D / 2 + 0.55);
   const aLen = back.distanceTo(front), slope = Math.atan2(back.y - front.y, front.z - back.z);
   const nS = 12;
-  const aw = clothGrid(aW, aLen, nS * 2, 8, (u) => (Math.floor(u * nS) % 2 ? cream : stripe), {
-    phase: r() * 6, stiff: 0.2,
+  const aw = clothGrid(aW, aLen, nS * 2, 8, () => cream, {
+    phase: r() * 6, stiff: 0.2, pattern: { kind: 'stripes', accent: stripe, period: (aW / nS) * 2 },
     weight: (u, v) => 0.05 * v * (0.3 + Math.sin(u * Math.PI)), dir: new THREE.Vector3(0, 0, 1),
   });
   {
@@ -1486,7 +1531,10 @@ export function flowerPlanter(kind: PlanterKind = 'hydrangea', seed = 1, opts: {
     const n = Math.round(W * 9);
     for (let i = 0; i < n; i++) {
       const s = 0.8 + r() * 0.35;
-      kit.add(bakedPlant('lavender', lc.clone().multiplyScalar(0.9 + r() * 0.2)), 'flora', null, T(-W / 2 + 0.1 + r() * (W - 0.2), top, (r() - 0.5) * (D - 0.18), (r() - 0.5) * 0.25, r() * 6, (r() - 0.5) * 0.25, s, s, s));
+      const pm = T(-W / 2 + 0.1 + r() * (W - 0.2), top, (r() - 0.5) * (D - 0.18), (r() - 0.5) * 0.25, r() * 6, (r() - 0.5) * 0.25, s, s, s);
+      const lcol = lc.clone().multiplyScalar(0.9 + r() * 0.2);
+      kit.add(bakedPlant('lavender', lcol), 'flora', null, pm);
+      kit.add(bakedPlant('lavenderSpikes', lcol), 'floraSoft', null, pm.clone());
     }
   } else if (kind === 'roses') {
     const pts: WallPoint[] = [];
@@ -1506,31 +1554,53 @@ export function flowerPlanter(kind: PlanterKind = 'hydrangea', seed = 1, opts: {
 
 // ---------------------------------------------------------------- steps, walls and paving
 
-/** Rough warm stone steps rising along +Z: `count` slabs of `rise` each, `width` wide, with tufts at their ends. */
+/** A dressed stone block: a box with small rounded arrises (crisp, never puffy), UVs in metres for the relief map. */
+function blockGeo(w: number, h: number, d: number, bevel = 0.022) {
+  const g = new RoundedBoxGeometry(w, h, d, 1, Math.min(bevel, w * 0.3, h * 0.3, d * 0.3));
+  const uv = g.attributes.uv as THREE.BufferAttribute, n = g.attributes.normal as THREE.BufferAttribute;
+  for (let i = 0; i < uv.count; i++) {
+    const ax = Math.abs(n.getX(i)), ay = Math.abs(n.getY(i));
+    const su = ax > 0.5 ? d : w, sv = ay > 0.5 ? d : h;
+    uv.setXY(i, uv.getX(i) * su / 1.2, uv.getY(i) * sv / 1.2);
+  }
+  return g;
+}
+
+/**
+ * Warm stone steps rising along +Z: `count` treads of `rise` each, `width` wide, each one or two big dressed slabs of
+ * uneven width with crisp arrises and a dark recessed joint behind, worn cheeks of rubble and tufts at their ends.
+ */
 export function stoneSteps(count = 3, width = 1.6, seed = 9, rise = 0.18, tread = 0.42): THREE.Group {
   const r = rng(seed);
   const g = new THREE.Group(); g.name = 'stoneSteps';
   const kit = new Kit();
   for (let i = 0; i < count; i++) {
     const y = (i + 1) * rise;
-    const nSlab = Math.max(1, Math.round(width / 0.8));
-    for (let k = 0; k < nSlab; k++) {
-      const sw = width / nSlab - 0.03;
-      const geo = wobble(boxM(sw, rise + 0.15, tread + 0.08, STONE_TILE), 0.015, 5, i * 7 + k);
-      kit.add(geo, 'plain', new THREE.Color(pick(r, SAIL.flag)).multiplyScalar(0.95 + r() * 0.1), T(-width / 2 + (k + 0.5) * (width / nSlab), y - (rise + 0.15) / 2, i * tread + tread / 2, 0, (r() - 0.5) * 0.06, 0));
+    // the joint bed: a dark core under every tread, so the gaps between slabs read as deep mortar
+    kit.add(new THREE.BoxGeometry(width - 0.04, rise + 0.12, tread), 'plain', '#6e5e4a', T(0, y - (rise + 0.12) / 2 - 0.02, i * tread + tread / 2 + 0.03));
+    const split = width > 1.1 ? 0.35 + r() * 0.3 : 1;
+    const parts = split < 1 ? [split, 1 - split] : [1];
+    let x = -width / 2;
+    for (const f of parts) {
+      const sw = width * f - 0.03;
+      const c = new THREE.Color(pick(r, SAIL.flag)).multiplyScalar(0.93 + r() * 0.1);
+      kit.add(blockGeo(sw, rise + 0.1, tread + 0.06, 0.025), 'rough', c, T(x + sw / 2 + 0.015, y - (rise + 0.1) / 2, i * tread + tread / 2, (r() - 0.5) * 0.02, (r() - 0.5) * 0.04, (r() - 0.5) * 0.02));
+      x += width * f;
     }
   }
   for (const s of [-1, 1]) for (let i = 0; i < count; i++) {
-    kit.add(wobble(new THREE.IcosahedronGeometry(0.2, 1), 0.03, 6, i + s * 3), 'plain', pick(r, SAIL.flag), T(s * (width / 2 + 0.15), i * rise + 0.08, i * tread + 0.2, r(), r(), r(), 1, 0.75, 1.2));
-    if (r() < 0.7) addLeafMass(kit, T(s * (width / 2 + 0.22), i * rise + 0.22, i * tread + 0.15), r, { radius: 0.2 + r() * 0.08, squash: 0.7, color: pick(r, SAIL.green), ao: 0.45 });
+    const c = new THREE.Color(pick(r, SAIL.flag)).multiplyScalar(0.85 + r() * 0.1);
+    kit.add(blockGeo(0.3 + r() * 0.12, 0.2 + r() * 0.08, 0.36 + r() * 0.1, 0.04), 'rough', c, T(s * (width / 2 + 0.17), i * rise + 0.1, i * tread + 0.2, 0, (r() - 0.5) * 0.4, (r() - 0.5) * 0.1));
+    if (r() < 0.7) addLeafMass(kit, T(s * (width / 2 + 0.24), i * rise + 0.24, i * tread + 0.12), r, { radius: 0.18 + r() * 0.08, squash: 0.7, color: pick(r, SAIL.green), ao: 0.45 });
   }
-  kit.build(g, { inkWidth: 0.016 });
+  kit.build(g, { inkWidth: 0.008 });
   return g;
 }
 
 /**
- * A low dry-stone wall `length` metres along +X: courses of rough warm stones, set a little irregular, under flat
- * coping stones with moss on top, ivy here and there, and plants at the foot. heightAt(x) lets it follow the ground.
+ * A low dry-stone wall `length` metres along +X: courses of uneven height, blocks of uneven length (with small fillers
+ * stacked here and there), crisp arrises, all set into a dark recessed mortar core; flat coping stones mossy on top,
+ * ivy here and there, and plants at the foot. heightAt(x) lets it follow the ground.
  */
 export function stoneWall(length = 4, opts: { seed?: number; height?: number; depth?: number; heightAt?: (x: number) => number; ivy?: boolean } = {}): THREE.Group {
   const r = rng((opts.seed ?? 4) * 11 + 5);
@@ -1538,16 +1608,23 @@ export function stoneWall(length = 4, opts: { seed?: number; height?: number; de
   const g = new THREE.Group(); g.name = 'stoneWall';
   const kit = new Kit();
   const moss = new THREE.Color('#8a9a58');
+  const stoneCol = () => new THREE.Color(pick(r, SAIL.flag)).lerp(new THREE.Color('#efe4cc'), r() * 0.35).multiplyScalar(0.9 + r() * 0.12);
+  // the core: mortar and rubble behind the face stones, following the ground in steps
+  const nCore = Math.max(1, Math.ceil(length / 0.8));
+  for (let i = 0; i < nCore; i++) { const x0 = (i / nCore) * length, x1 = ((i + 1) / nCore) * length, xm = (x0 + x1) / 2; kit.add(new THREE.BoxGeometry(x1 - x0 + 0.02, Hh - 0.08, Dd * 0.82), 'plain', '#6a5a46', T(xm, hAt(xm) + (Hh - 0.08) / 2 - 0.02, 0)); }
   let y = 0, row = 0;
   while (y < Hh - 0.14) {
-    const ch = 0.15 + r() * 0.08;
-    let x = row % 2 ? -0.15 : 0;
+    const ch = Math.min(Hh - 0.1 - y, 0.12 + r() * 0.14);
+    if (ch < 0.06) break;
+    let x = row % 2 ? -0.12 : 0;
     while (x < length) {
-      const len = Math.min(length - x, 0.3 + r() * 0.32);
-      if (len > 0.08) {
-        const c = new THREE.Color(pick(r, SAIL.flag)).lerp(new THREE.Color('#ece0c4'), r() * 0.4).multiplyScalar(0.9 + r() * 0.14);
-        const geo = wobble(new THREE.BoxGeometry(len - 0.035, ch - 0.03, Dd * (0.88 + r() * 0.12), 2, 2, 2), 0.018, 7, row * 31 + Math.floor(x * 10));
-        kit.add(geo, 'plain', c, T(Math.max(0, x) + len / 2, hAt(x + len / 2) + y + ch / 2, (r() - 0.5) * 0.04, (r() - 0.5) * 0.06, (r() - 0.5) * 0.08, (r() - 0.5) * 0.08));
+      const len = Math.min(length - x, r() < 0.2 ? 0.16 + r() * 0.1 : 0.3 + r() * 0.36);
+      const xs = Math.max(0, x), le = x + len - xs;
+      if (le > 0.08) {
+        if (len < 0.27 && ch > 0.16) {
+          // two small fillers stacked
+          for (const [yy, hh] of [[0, ch * 0.5], [ch * 0.5, ch * 0.5]]) kit.add(blockGeo(le - 0.025, hh - 0.022, Dd * (0.9 + r() * 0.1), 0.014), 'rough', stoneCol(), T(xs + le / 2, hAt(xs + le / 2) + y + yy + hh / 2, (r() - 0.5) * 0.03, 0, (r() - 0.5) * 0.06, (r() - 0.5) * 0.05));
+        } else kit.add(blockGeo(le - 0.025, ch - 0.022, Dd * (0.9 + r() * 0.1), 0.02), 'rough', stoneCol(), T(xs + le / 2, hAt(xs + le / 2) + y + ch / 2, (r() - 0.5) * 0.03, (r() - 0.5) * 0.03, (r() - 0.5) * 0.06, (r() - 0.5) * 0.04));
       }
       x += len;
     }
@@ -1556,25 +1633,25 @@ export function stoneWall(length = 4, opts: { seed?: number; height?: number; de
   // coping: flat stones laid across, mossy on top
   for (let x = 0; x < length;) {
     const len = Math.min(length - x, 0.35 + r() * 0.25);
-    const geo = wobble(new THREE.BoxGeometry(len - 0.03, 0.12, Dd + 0.1, 2, 1, 2), 0.015, 6, Math.floor(x * 13));
-    const cg = new THREE.Color(pick(r, SAIL.flag)).multiplyScalar(0.84 + r() * 0.1);
+    const geo = blockGeo(len - 0.025, 0.11, Dd + 0.1, 0.025);
+    const cg = stoneCol().multiplyScalar(0.94);
     const pa = geo.attributes.position as THREE.BufferAttribute, cols = new Float32Array(pa.count * 3);
-    for (let i = 0; i < pa.count; i++) { const c = pa.getY(i) > 0.04 && r() < 0.75 ? cg.clone().lerp(moss, 0.4 + r() * 0.25) : cg; cols.set([c.r, c.g, c.b], i * 3); }
+    for (let i = 0; i < pa.count; i++) { const c = pa.getY(i) > 0.03 && r() < 0.7 ? cg.clone().lerp(moss, 0.3 + r() * 0.25) : cg; cols.set([c.r, c.g, c.b], i * 3); }
     geo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
-    kit.add(geo, 'plain', null, T(x + len / 2, hAt(x + len / 2) + y + 0.06, 0, 0, 0, (r() - 0.5) * 0.06));
+    kit.add(geo, 'rough', null, T(x + len / 2, hAt(x + len / 2) + y + 0.055, 0, 0, 0, (r() - 0.5) * 0.05));
     x += len;
   }
   // ivy spilling down the face and tufts at the foot
   if (opts.ivy !== false) {
     for (let k = 0; k < Math.ceil(length / 2.5); k++) {
       const x0 = r() * length, pts: WallPoint[] = [];
-      for (let i = 0; i < 4; i++) pts.push({ p: new THREE.Vector3(x0 + (r() - 0.5) * 0.4, hAt(x0) + y - 0.05 - i * 0.16, Dd / 2 + 0.02), n: new THREE.Vector3(0, 0.1, 1).normalize(), s: 1 - i * 0.15 });
+      for (let i = 0; i < 4; i++) pts.push({ p: new THREE.Vector3(x0 + (r() - 0.5) * 0.3, hAt(x0) + y - 0.05 - i * 0.15, Dd / 2 + 0.02), n: new THREE.Vector3(0, 0.1, 1).normalize(), s: 0.9 - i * 0.15 });
       addIvy(kit, pts, r, { perPoint: 5 });
     }
     for (let x = 0.3; x < length; x += 0.6 + r() * 0.9) addLeafMass(kit, T(x, hAt(x) + 0.14, Dd / 2 + 0.12), r, { radius: 0.2 + r() * 0.1, squash: 0.7, color: pick(r, SAIL.green), ao: 0.45 });
   }
-  kit.build(g, { inkWidth: 0.014 });
-  g.userData.top = y + 0.12;
+  kit.build(g, { inkWidth: 0.008 });
+  g.userData.top = y + 0.11;
   return g;
 }
 
@@ -1627,11 +1704,16 @@ export function pavedPath(points: THREE.Vector3[], width = 1.4, seed = 4, height
   };
   const ragged = (s: number, side: number) => 0.07 * (Math.sin(s * 2.1 + seed + side * 3) + 0.6 * Math.sin(s * 5.3 + side * 1.7 + seed * 2));
   // seeds: a jittered grid in (s, t), with a few left out so some stones are bigger
+  // rows of uneven length and uneven count across: long slabs where a row has few seeds, small fillers where it has many
   const nA = Math.max(2, Math.round(W / (sz * 0.92)));
   const seeds: [number, number][] = [];
-  for (let s = sz * 0.3; s < L; s += sz * (0.8 + r() * 0.35)) for (let j = 0; j < nA; j++) {
-    if (r() < 0.1) continue;
-    seeds.push([s + (r() - 0.5) * sz * 0.5, -W / 2 + (j + 0.5) * (W / nA) + (r() - 0.5) * (W / nA) * 0.55]);
+  for (let s = sz * 0.3; s < L; s += sz * (0.55 + r() * 0.75)) {
+    const na = Math.max(1, nA + Math.floor(r() * 3) - 1);
+    for (let j = 0; j < na; j++) {
+      if (r() < 0.14) continue;
+      seeds.push([s + (r() - 0.5) * sz * 0.6, -W / 2 + (j + 0.5) * (W / na) + (r() - 0.5) * (W / na) * 0.6]);
+    }
+    if (r() < 0.25) seeds.push([s + sz * 0.35, (r() - 0.5) * W * 0.8]);   // a small filler
   }
   const holes: THREE.Vector3[] = [];
   const pos: number[] = [], nor: number[] = [], cl: number[] = [], idx: number[] = [];
@@ -1644,7 +1726,7 @@ export function pavedPath(points: THREE.Vector3[], width = 1.4, seed = 4, height
     const ch: [number, number][] = [];
     for (let i = 0; i < pg.length; i++) { const a = pg[i], b = pg[(i + 1) % pg.length]; ch.push([a[0] * 0.86 + b[0] * 0.14, a[1] * 0.86 + b[1] * 0.14], [a[0] * 0.14 + b[0] * 0.86, a[1] * 0.14 + b[1] * 0.86]); }
     pg = ch;
-    const top = inset(pg, 0.03);
+    const top = inset(pg, 0.05);
     const c0 = world(cx, cy);
     const y0 = hAt(c0.x, c0.z) + 0.045 + (r() - 0.5) * 0.02;
     const tiltX = (r() - 0.5) * 0.05, tiltZ = (r() - 0.5) * 0.05;
@@ -1653,25 +1735,26 @@ export function pavedPath(points: THREE.Vector3[], width = 1.4, seed = 4, height
     const P = (st: [number, number], dy: number) => { const w = world(st[0], st[1], tmp); return [w.x, y0 + dy + (w.x - c0.x) * tiltX + (w.z - c0.z) * tiltZ, w.z]; };
     const colAt = (st: [number, number], k: number) => {
       const g2 = ((st[0] - cx) * gx + (st[1] - cy) * gy) / sz;
-      const c = base.clone().multiplyScalar(k * (1 + g2 * 0.22));
+      const c = base.clone().multiplyScalar(k * (1 + g2 * 0.12));
       return c;
     };
     const vi = pos.length / 3;
     // centre
-    const pc = P([cx, cy], 0.004); pos.push(...pc); nor.push(0, 1, 0); const cc = colAt([cx, cy], 1.03); cl.push(cc.r, cc.g, cc.b);
+    const pc = P([cx, cy], 0.0); pos.push(...pc); nor.push(0, 1, 0); const cc = colAt([cx, cy], 1.03); cl.push(cc.r, cc.g, cc.b);
     const n = pg.length;
     for (let i = 0; i < n; i++) { const p = P(top[i], 0); pos.push(...p); nor.push(0, 1, 0); const c = colAt(top[i], 1); cl.push(c.r, c.g, c.b); }
     for (let i = 0; i < n; i++) {
-      const p = P(pg[i], -0.022); pos.push(...p);
+      const p = P(pg[i], -0.016); pos.push(...p);
       const w = world(pg[i][0], pg[i][1]); const ox = w.x - c0.x, oz = w.z - c0.z, ol = Math.hypot(ox, oz) || 1;
-      const nn = new THREE.Vector3(ox / ol * 0.7, 1, oz / ol * 0.7).normalize(); nor.push(nn.x, nn.y, nn.z);
-      const c = colAt(pg[i], 0.84); if (mossy && r() < 0.6) c.lerp(mossC, 0.45); cl.push(c.r, c.g, c.b);
+      // a soft worn edge: barely tipped, barely darker, so a slab lies flat instead of puffing up
+      const nn = new THREE.Vector3(ox / ol * 0.3, 1, oz / ol * 0.3).normalize(); nor.push(nn.x, nn.y, nn.z);
+      const c = colAt(pg[i], 0.93); if (mossy && r() < 0.6) c.lerp(mossC, 0.35); cl.push(c.r, c.g, c.b);
     }
     for (let i = 0; i < n; i++) {
       const p = P(pg[i], -0.075); pos.push(...p);
       const w = world(pg[i][0], pg[i][1]); const ox = w.x - c0.x, oz = w.z - c0.z, ol = Math.hypot(ox, oz) || 1;
       nor.push(ox / ol, 0.2, oz / ol);
-      const c = colAt(pg[i], 0.62); cl.push(c.r, c.g, c.b);
+      const c = colAt(pg[i], 0.72); cl.push(c.r, c.g, c.b);
     }
     for (let i = 0; i < n; i++) {
       const j = (i + 1) % n, t0 = vi + 1 + i, t1 = vi + 1 + j, o0 = vi + 1 + n + i, o1 = vi + 1 + n + j, b0 = vi + 1 + 2 * n + i, b1 = vi + 1 + 2 * n + j;
@@ -1716,12 +1799,12 @@ export function pavedPath(points: THREE.Vector3[], width = 1.4, seed = 4, height
   // the joint bed under the stones: moss and earth
   {
     const jp: number[] = [], jc: number[] = [], ji: number[] = [];
-    const moss = new THREE.Color('#47522c'), earth = new THREE.Color('#5e4e34');
+    const moss = new THREE.Color('#4a5630'), earth = new THREE.Color('#6a5a40');
     for (let i = 0; i <= M; i++) {
       const s = (i / M) * L;
       for (const side of [-1, 1]) {
         const w = world(s, side * (W / 2 + 0.06 + Math.max(0, ragged(s, side))));
-        jp.push(w.x, hAt(w.x, w.z) + 0.012, w.z);
+        jp.push(w.x, hAt(w.x, w.z) + 0.028, w.z);
         const c = moss.clone().lerp(earth, 0.5 + 0.5 * Math.sin(s * 1.3 + side));
         jc.push(c.r, c.g, c.b);
       }
@@ -1762,123 +1845,161 @@ export function pavedPath(points: THREE.Vector3[], width = 1.4, seed = 4, height
 
 export interface GateOpts { seed?: number; height?: number; radius?: number; tubes?: number; pennants?: readonly string[] }
 
-/** A closed tube swept round a circle of radius R in the XY plane from a polygon profile [radial, z], flat-shaded per profile edge. */
-function ringSweep(R: number, profile: [number, number][], segs: number, color: THREE.Color) {
-  const pos: number[] = [], nor: number[] = [], idx: number[] = [];
+/**
+ * A ring swept round a circle of radius R in the XY plane from a smooth closed profile [radial, z] (counter-clockwise
+ * seen with +radial right and +z up), with smooth normals and UVs for the engraving: U runs round the ring in metres,
+ * V comes from `band(i)` per profile point (0.3..0.7 on engraved faces, 0.02 elsewhere).
+ */
+function ringLathe(R: number, profile: [number, number][], segs: number, band: (i: number) => number, color: THREE.Color) {
+  const pos: number[] = [], nor: number[] = [], uv: number[] = [], idx: number[] = [];
   const n = profile.length;
-  for (let e = 0; e < n; e++) {
-    const a = profile[e], b = profile[(e + 1) % n];
-    // the edge's outward normal in (radial, z)
+  const pn: [number, number][] = profile.map((_, i) => {
+    const a = profile[(i - 1 + n) % n], b = profile[(i + 1) % n];
     let nr = b[1] - a[1], nz = -(b[0] - a[0]); const l = Math.hypot(nr, nz) || 1; nr /= l; nz /= l;
-    const base = pos.length / 3;
-    for (let i = 0; i <= segs; i++) {
-      const phi = (i / segs) * Math.PI * 2, c = Math.cos(phi), s = Math.sin(phi);
-      for (const p of [a, b]) { pos.push((R + p[0]) * c, (R + p[0]) * s, p[1]); nor.push(nr * c, nr * s, nz); }
+    return [nr, nz];
+  });
+  for (let i = 0; i <= segs; i++) {
+    const phi = (i / segs) * Math.PI * 2, c = Math.cos(phi), s = Math.sin(phi);
+    for (let k = 0; k < n; k++) {
+      const [pr, pz] = profile[k], [nr, nz] = pn[k];
+      pos.push((R + pr) * c, (R + pr) * s, pz); nor.push(nr * c, nr * s, nz);
+      uv.push(phi * R / 0.9, band(k));
     }
-    for (let i = 0; i < segs; i++) { const v = base + i * 2; idx.push(v, v + 2, v + 3, v, v + 3, v + 1); }
+  }
+  for (let i = 0; i < segs; i++) for (let k = 0; k < n; k++) {
+    const a = i * n + k, b = i * n + (k + 1) % n, c = a + n, d = b + n;
+    idx.push(a, c, d, a, d, b);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.setIndex(idx);
   return tint(orient(g), color);
 }
 
 /**
- * The golden race gate of the kite-wing race (picture 3): a big, thick ring of bevelled brass with a riveted band,
- * held off the side of a tall carved wooden pole wrapped in cloth. From a short yoke inside the ring's crown hangs a
- * cluster of fat chime tubes, glass, pewter and brass by turns, as long as the ring is wide (racers ring them flying
- * through); long multi-colour streamers trail from the pole top and the ring in a travelling wave.
+ * The golden race gate of the kite-wing race (picture 3): a slender ring of satin brass, lathe-profiled (a rounded
+ * section with fine beads and grooves, a vine scroll engraved round its faces), hung like a bell from the gallows arm
+ * of a tall carved pole and steadied by a side stay. From eyelets along its lower inner rim hang seven long chime
+ * tubes, pewter and brass by turns, at staggered lengths across the ring's width (a racer flies through the open
+ * upper half and the wake sets them ringing). The pole is wrapped in a striped cloth sleeve and flies long pennants.
  * The ring faces ±Z (fly along Z through it). userData.chime rings the tubes; userData.center is the ring centre
- * (local); userData.radius its inner radius.
+ * (local); userData.radius its clear inner radius.
  */
 export function raceGate(opts: GateOpts = {}): THREE.Group {
   const seed = opts.seed ?? 1, r = rng(seed);
-  const R = opts.radius ?? 2.4, cy = opts.height ?? 8.6;
+  const R = opts.radius ?? 2.3, cy = opts.height ?? 8.4;
   const g = new THREE.Group(); g.name = 'raceGate';
   const kit = new Kit();
-  const wR = 0.42, wZ = 0.34;   // the ring's tube: half-width across (radial) and half-depth (along Z)
-  const brass = new THREE.Color(SAIL.brass), deep = new THREE.Color('#c48f34'), bright = new THREE.Color('#f6d27a');
-  // the ring: a bevelled octagonal section, then a raised band round its outer face, studded with rivets
-  const prof: [number, number][] = [[wR, -wZ * 0.55], [wR, wZ * 0.55], [wR * 0.7, wZ], [-wR * 0.7, wZ], [-wR, wZ * 0.55], [-wR, -wZ * 0.55], [-wR * 0.7, -wZ], [wR * 0.7, -wZ]];
-  kit.add(ringSweep(R, prof, 96, brass), 'brass', null, T(0, cy, 0));
-  kit.add(ringSweep(R, [[wR + 0.03, -0.12], [wR + 0.03, 0.12], [wR - 0.01, 0.14], [wR - 0.01, -0.14]], 96, deep), 'brass', null, T(0, cy, 0));
-  kit.add(ringSweep(R, [[-wR - 0.015, -0.05], [-wR - 0.015, 0.05], [-wR + 0.02, 0.07], [-wR + 0.02, -0.07]], 96, bright), 'brass', null, T(0, cy, 0));
-  const nRiv = Math.round((Math.PI * 2 * (R + wR)) / 0.32);
-  for (let i = 0; i < nRiv; i++) {
-    const a = (i / nRiv) * Math.PI * 2, c = Math.cos(a), s = Math.sin(a);
-    kit.add(new THREE.SphereGeometry(0.035, 6, 4), 'brass', bright, T((R + wR + 0.04) * c, cy + (R + wR + 0.04) * s, 0.07));
-    kit.add(new THREE.SphereGeometry(0.035, 6, 4), 'brass', bright, T((R + wR + 0.04) * c, cy + (R + wR + 0.04) * s, -0.07));
-    if (i % 2 === 0) for (const z of [wZ + 0.005, -wZ - 0.005]) kit.add(new THREE.SphereGeometry(0.04, 6, 4), 'brass', bright, T(R * c, cy + R * s, z));
+  const a = 0.15, b = 0.12;   // the ring section: half-width across (radial) and half-depth (along Z)
+  const brass = new THREE.Color('#e2b458'), deep = new THREE.Color('#b8893a'), bright = new THREE.Color('#f3d488');
+  // the section: a rounded box with a bead on each corner and a groove either side of the engraved band
+  const prof: [number, number][] = [];
+  const N = 40;
+  const band: number[] = [];
+  for (let i = 0; i < N; i++) {
+    const t = (i / N) * Math.PI * 2, c = Math.cos(t), s2 = Math.sin(t);
+    // superellipse: flat faces, round corners
+    let pr = a * Math.sign(c) * Math.pow(Math.abs(c), 0.45), pz = b * Math.sign(s2) * Math.pow(Math.abs(s2), 0.45);
+    // grooves at the shoulders, a bead proud of each corner
+    const corner = Math.abs(Math.abs(t % (Math.PI / 2) - Math.PI / 4));
+    const k = corner < 0.12 ? 1.06 : (corner > 0.42 && corner < 0.58 ? 0.94 : 1);
+    pr *= k; pz *= k;
+    prof.push([pr, pz]);
+    // engraved: the outer face (t near 0) and both broad faces (t near ±pi/2)
+    const onOuter = Math.abs(Math.atan2(s2, c)) < 0.5, onFace = Math.abs(Math.abs(Math.atan2(s2, c)) - Math.PI / 2) < 0.45;
+    band.push(onOuter ? 0.5 + Math.atan2(s2, c) / 0.5 * 0.2 : onFace ? 0.5 + (Math.abs(Math.atan2(s2, c)) - Math.PI / 2) / 0.45 * 0.2 : 0.02);
   }
-  // the pole, off the ring's side: a stone plinth, a carved and turned shaft, wrapped in two spiralling cloths
-  const px = R + wR + 0.36, poleTop = cy + R + 1.4;
-  kit.add(wobble(lathe([[1.0, 0], [1.0, 0.3], [0.78, 0.32], [0.78, 0.62], [0.5, 0.64], [0.5, 0.8], [0.34, 0.82]], 18, STONE_TILE), 0.02, 3, seed), 'stone', SAIL.stone, T(px, 0, 0));
+  kit.add(ringLathe(R, prof, 120, i => band[i], brass), 'satin', null, T(0, cy, 0));
+  // fine bright beading round both faces, and a darker fillet inside
+  for (const z of [b + 0.004, -b - 0.004]) kit.add(new THREE.TorusGeometry(R + a * 0.55, 0.011, 5, 120), 'brass', bright, T(0, cy, z));
+  kit.add(new THREE.TorusGeometry(R - a * 1.0, 0.014, 5, 120), 'brass', deep, T(0, cy, 0));
+
+  // the pole beside the ring: a stone plinth, a carved and turned shaft, brass collars
+  const px = R + a + 1.05, poleTop = cy + R + 2.0, armY = cy + R + 0.62;
+  kit.add(wobble(lathe([[0.82, 0], [0.82, 0.26], [0.64, 0.3], [0.64, 0.55], [0.42, 0.58], [0.42, 0.74], [0.3, 0.76]], 18, STONE_TILE), 0.015, 3, seed), 'stone', SAIL.stone, T(px, 0, 0));
+  const shaftR = (y: number) => 0.24 - 0.08 * ((y - 0.76) / (poleTop - 0.76));
   const pp: [number, number][] = [];
   for (let i = 0; i <= 60; i++) {
-    const y = 0.8 + (poleTop - 0.8) * (i / 60), t = (y - 0.8) / (poleTop - 0.8);
-    const base = 0.3 - 0.09 * t;
-    const bead = Math.max(0, Math.cos(((y - 0.8) % 1.35) / 1.35 * Math.PI * 2)) ** 12 * 0.045;   // carved rings every 1.35 m
-    pp.push([base + bead, y]);
+    const y = 0.76 + (poleTop - 0.76) * (i / 60);
+    const bead = Math.max(0, Math.cos(((y - 0.76) % 1.6) / 1.6 * Math.PI * 2)) ** 14 * 0.035;
+    pp.push([shaftR(y) + bead, y]);
   }
-  kit.add(lathe(pp, 12, WOOD_TILE), 'wood', '#7a5434', T(px, 0, 0));
-  const wrap = (c: THREE.Color, y0: number, y1: number, turns: number, off: number) => {
-    const pos: number[] = [], nor: number[] = [], idx: number[] = [];
-    const n = Math.round(turns * 24), bw = 0.13;
-    for (let i = 0; i <= n; i++) {
-      const t = i / n, y = y0 + (y1 - y0) * t, a = off + t * turns * Math.PI * 2;
-      const pr = 0.3 - 0.09 * ((y - 0.8) / (poleTop - 0.8)) + 0.014;
-      const ca = Math.cos(a), sa = Math.sin(a);
-      pos.push(pr * ca, y - bw / 2, pr * sa, pr * ca, y + bw / 2, pr * sa); nor.push(ca, 0, sa, ca, 0, sa);
-      if (i) { const v = (i - 1) * 2; idx.push(v, v + 2, v + 3, v, v + 3, v + 1); }
-    }
-    const gg = new THREE.BufferGeometry();
-    gg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); gg.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); gg.setIndex(idx);
-    kit.add(orient(gg), 'plain', c, T(px, 0, 0));
-  };
-  const pens = opts.pennants ?? ['#e0473b', '#f2c53d', '#3f78c8', '#f08a32'];
-  wrap(new THREE.Color(pens[0]), 1.4, cy - 1.2, 5, 0);
-  wrap(new THREE.Color(pens[2]), 1.4, cy - 1.2, 5, Math.PI);
-  for (const y of [1.3, cy - 1.3, poleTop - 0.2]) kit.add(new THREE.CylinderGeometry(0.31, 0.31, 0.14, 12), 'brass', brass, T(px, y, 0));
-  kit.add(new THREE.SphereGeometry(0.2, 12, 8), 'brass', brass, T(px, poleTop + 0.12, 0));
-  kit.add(new THREE.ConeGeometry(0.09, 0.5, 8), 'brass', brass, T(px, poleTop + 0.5, 0));
-  // brackets: two brass arms with collars, from the pole to the ring's flank
-  for (const a of [0.42, -0.42]) {
-    const rx = (R + wR) * Math.cos(a), ry = cy + (R + wR) * Math.sin(a);
-    const len = px - rx;
-    kit.add(new THREE.CylinderGeometry(0.07, 0.07, len + 0.1, 8).rotateZ(Math.PI / 2), 'brass', deep, T((px + rx) / 2, ry, 0));
-    kit.add(new THREE.TorusGeometry(0.33, 0.06, 6, 14).rotateX(Math.PI / 2), 'brass', brass, T(px, ry, 0));
-    kit.add(new THREE.BoxGeometry(0.22, 0.5, wZ * 2 + 0.1), 'brass', deep, T(rx + 0.05, ry, 0, 0, 0, a));
+  kit.add(lathe(pp, 14, WOOD_TILE), 'wood', '#7a5434', T(px, 0, 0));
+  for (const y of [1.25, cy - 1.0, armY - 0.32, armY + 0.32, poleTop - 0.15]) kit.add(lathe([[shaftR(y) + 0.01, y - 0.07], [shaftR(y) + 0.04, y - 0.04], [shaftR(y) + 0.04, y + 0.04], [shaftR(y) + 0.01, y + 0.07]], 16, 1), 'brass', brass, T(px, 0, 0));
+  kit.add(new THREE.SphereGeometry(0.16, 14, 10), 'brass', brass, T(px, poleTop + 0.1, 0));
+  kit.add(new THREE.ConeGeometry(0.06, 0.42, 10), 'brass', brass, T(px, poleTop + 0.42, 0));
+  // the gallows arm out over the ring, a curved brace under it, and a scroll at its tip
+  const armL = px + 0.25;
+  kit.add(boxM(armL, 0.16, 0.14, WOOD_TILE), 'wood', '#6e4a2e', T(px - armL / 2 + 0.12, armY, 0));
+  kit.add(boxM(armL - 0.2, 0.04, 0.16, WOOD_TILE), 'brass', deep, T(px - armL / 2 + 0.2, armY + 0.1, 0));
+  {
+    const pts: THREE.Vector3[] = [];
+    for (let k = 0; k <= 10; k++) { const t = k / 10, ang = t * Math.PI / 2; pts.push(new THREE.Vector3(px - 1.4 * Math.sin(ang), armY - 1.4 + 1.4 * (1 - Math.cos(ang)), 0)); }
+    kit.add(ropeGeo(pts, 0.05, 6), 'wood', '#6e4a2e');
+    const sc: THREE.Vector3[] = [];
+    for (let k = 0; k <= 16; k++) { const t = k / 16, ang = t * Math.PI * 2.2, rr = 0.2 * (1 - t * 0.7); sc.push(new THREE.Vector3(-0.15 - Math.sin(ang) * rr, armY - 0.2 + Math.cos(ang) * rr, 0)); }
+    kit.add(ropeGeo(sc, 0.022, 5), 'brass', brass);
   }
-  // the yoke: a brass hanger from the crown, a turned wooden disc with a little brass roof
-  const yokeY = cy + R - wR - 0.42;
-  kit.add(new THREE.CylinderGeometry(0.035, 0.035, 0.42, 6), 'brass', deep, T(0, yokeY + 0.21, 0));
-  kit.add(new THREE.CylinderGeometry(0.5, 0.52, 0.1, 18), 'wood', SAIL.timber, T(0, yokeY, 0));
-  kit.add(new THREE.ConeGeometry(0.56, 0.2, 18), 'brass', brass, T(0, yokeY + 0.15, 0));
-  kit.add(new THREE.TorusGeometry(0.51, 0.025, 4, 18).rotateX(Math.PI / 2), 'brass', bright, T(0, yokeY - 0.05, 0));
-  // the clapper and its wind-sail, hanging through the middle of the tubes
-  kit.add(new THREE.CylinderGeometry(0.008, 0.008, 2.4, 3), 'plain', SAIL.iron, T(0, yokeY - 1.2, 0));
-  kit.add(new THREE.CylinderGeometry(0.2, 0.2, 0.08, 14), 'wood', SAIL.plank, T(0, yokeY - 1.7, 0));
-  kit.build(g, { inkWidth: 0.03 });
+  // the hanger: a brass strap from the arm down to a shackle on the ring's crown
+  const crown = cy + R + a;
+  kit.add(boxM(0.06, armY - crown, 0.05, 1), 'brass', deep, T(0, (armY + crown) / 2, 0.07));
+  kit.add(boxM(0.06, armY - crown, 0.05, 1), 'brass', deep, T(0, (armY + crown) / 2, -0.07));
+  kit.add(new THREE.CylinderGeometry(0.035, 0.035, 0.22, 10).rotateX(Math.PI / 2), 'brass', bright, T(0, crown + 0.06, 0));
+  // the side stay: a brass rod from the pole to a clamp on the ring's flank
+  {
+    const sy = cy - 0.2, rx = R + a;
+    kit.add(new THREE.CylinderGeometry(0.035, 0.035, px - rx, 10).rotateZ(Math.PI / 2), 'brass', deep, T((px + rx) / 2, sy, 0));
+    kit.add(new THREE.BoxGeometry(0.12, 0.3, b * 2 + 0.06), 'brass', deep, T(rx + 0.02, sy, 0));
+    kit.add(lathe([[shaftR(sy) + 0.01, sy - 0.08], [shaftR(sy) + 0.05, sy - 0.05], [shaftR(sy) + 0.05, sy + 0.05], [shaftR(sy) + 0.01, sy + 0.08]], 16, 1), 'brass', brass, T(px, 0, 0));
+  }
+  // eyelets along the lower inner rim, where the tubes hang
+  const n = Math.max(5, Math.min(8, opts.tubes ?? 7));
+  const tubeAng: number[] = [];
+  for (let i = 0; i < n; i++) tubeAng.push(-Math.PI + Math.PI * (0.16 + 0.68 * (i / (n - 1))));
+  for (const th of tubeAng) kit.add(new THREE.TorusGeometry(0.035, 0.01, 4, 10), 'brass', bright, T((R - a) * Math.cos(th), cy + (R - a) * Math.sin(th) - 0.03, 0, 0, Math.PI / 2, 0));
+  kit.build(g, { inkWidth: 0.012 });
 
-  // streamers: long ribbons of wind-cloth from the pole top and the ring, waving along their length
+  // the striped cloth sleeve on the pole: a helix of red over cream (woven in the cloth shader), static
+  {
+    const sk = new Kit();
+    const y0 = 1.45, y1 = cy - 1.2, segs = 18, rows = 40;
+    const pos: number[] = [], uv: number[] = [], idx: number[] = [], pat: number[] = [];
+    const P = patAttr({ kind: 'stripes', accent: (opts.pennants ?? ['#e0473b'])[0], period: 0.34 });
+    for (let j = 0; j <= rows; j++) for (let i = 0; i <= segs; i++) {
+      const y = y0 + (y1 - y0) * (j / rows), ang = (i / segs) * Math.PI * 2, rr = shaftR(y) + 0.018;
+      pos.push(px + Math.cos(ang) * rr, y, Math.sin(ang) * rr);
+      // U wraps round and climbs with height, so the stripes spiral
+      uv.push((ang * 0.24 + y * 0.55) / LINEN_TILE, y / LINEN_TILE); pat.push(...P);
+    }
+    for (let j = 0; j < rows; j++) for (let i = 0; i < segs; i++) { const a0 = j * (segs + 1) + i; idx.push(a0, a0 + segs + 1, a0 + 1, a0 + 1, a0 + segs + 1, a0 + segs + 2); }
+    const sg = new THREE.BufferGeometry();
+    sg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); sg.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); sg.setAttribute('aPat', new THREE.Float32BufferAttribute(pat, 4));
+    sg.setIndex(idx); sg.computeVertexNormals();
+    sk.add(orient(sg), 'cloth', '#f6efe2');
+    // blue binding bands at both ends of the sleeve
+    for (const y of [y0, y1]) sk.add(lathe([[shaftR(y) + 0.02, y - 0.06], [shaftR(y) + 0.035, y], [shaftR(y) + 0.02, y + 0.06]], 16, 1), 'plain', (opts.pennants ?? ['', '', '#3f78c8'])[2] ?? '#3f78c8');
+    sk.build(g, { outline: false });
+  }
+
+  // pennants and streamers: long tapering flags from the pole top, ribbons from the arm, waving along their length
   const ck = new Kit();
-  const streamer = (at: THREE.Vector3, len: number, wid: number, cols: THREE.Color[], ph: number, dir: THREE.Vector3, droop: number) => {
+  const streamer = (at: THREE.Vector3, len: number, wid: number, cols: THREE.Color[], ph: number, dir: THREE.Vector3, droop: number, taper = 0.5) => {
     const pos: number[] = [], nor: number[] = [], cl: number[] = [], wv: number[] = [], dr: number[] = [], idx: number[] = [];
-    const n = 16, side = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize();
-    for (let i = 0; i <= n; i++) {
-      const t = i / n, w = wid * (1 - t * 0.5);
+    const sn = 20, side = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize();
+    for (let i = 0; i <= sn; i++) {
+      const t = i / sn, w = wid * (1 - t * taper);
       const c = at.clone().addScaledVector(dir, t * len).add(new THREE.Vector3(0, -droop * t * t * len, 0));
-      for (const s of [-1, 1]) {
-        const fork = t > 0.86 ? s * (t - 0.86) * 0.7 : 0;
-        const p = c.clone().add(new THREE.Vector3(0, s * w / 2 + fork, 0));
+      for (const sgn of [-1, 1]) {
+        const fork = taper < 0.9 && t > 0.86 ? sgn * (t - 0.86) * 0.7 : 0;
+        const p = c.clone().add(new THREE.Vector3(0, sgn * w / 2 + fork - (taper >= 0.9 ? w / 2 : 0), 0));
         pos.push(p.x, p.y, p.z); nor.push(side.x, side.y, side.z);
-        const cc = cols[Math.floor(t * n / 3) % cols.length];
+        const cc = cols[Math.floor(t * cols.length * 0.999)];
         cl.push(cc.r, cc.g, cc.b);
-        // the wave grows toward the tail and travels along it
-        wv.push(0.08 + t * 0.62, ph - t * 5.5, 0.25); dr.push(side.x, 0.35, side.z);
+        wv.push(0.06 + t * 0.55, ph - t * 5.5, 0.25); dr.push(side.x, 0.3, side.z);
       }
-      if (i < n) { const a = i * 2; idx.push(a, a + 1, a + 3, a, a + 3, a + 2); }
+      if (i < sn) { const a0 = i * 2; idx.push(a0, a0 + 1, a0 + 3, a0, a0 + 3, a0 + 2); }
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -1889,41 +2010,42 @@ export function raceGate(opts: GateOpts = {}): THREE.Group {
     geo.setIndex(idx);
     ck.add(geo, 'cloth', null);
   };
+  const pens = opts.pennants ?? ['#e0473b', '#f2c53d', '#3f78c8', '#f08a32'];
   const PC = pens.map(c => new THREE.Color(c)), cream = new THREE.Color('#f6efe2');
-  const out = new THREE.Vector3(1, 0, 0.25).normalize();
-  streamer(new THREE.Vector3(px + 0.2, poleTop - 0.15, 0), 5.6, 0.34, [PC[0], cream, PC[1]], 0, out, 0.12);
-  streamer(new THREE.Vector3(px + 0.2, poleTop - 0.5, 0.05), 4.8, 0.3, [PC[2], PC[1]], 1.7, out.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), 0.3), 0.18);
-  streamer(new THREE.Vector3(px + 0.2, poleTop - 0.85, -0.05), 4.2, 0.28, [PC[3], cream], 3.1, out.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -0.25), 0.22);
-  streamer(new THREE.Vector3(-R - wR, cy + 0.2, 0), 3.6, 0.22, [PC[1], PC[0], PC[2]], 4.4, new THREE.Vector3(-1, -0.15, 0.25).normalize(), 0.2);
-  // and a swallowtail flag on the finial
-  streamer(new THREE.Vector3(px, poleTop + 0.6, 0), 1.3, 0.5, [PC[0]], 2.2, out, 0.05);
+  const out = new THREE.Vector3(1, 0, 0.3).normalize();
+  // three long pennants, tapering to a point, from staffs near the top of the pole
+  const Y = new THREE.Vector3(0, 1, 0);
+  streamer(new THREE.Vector3(px + 0.1, poleTop - 0.25, 0), 4.6, 0.66, [PC[0], cream, PC[0]], 0, out, 0.1, 0.98);
+  streamer(new THREE.Vector3(px + 0.1, poleTop - 1.05, 0.04), 3.9, 0.56, [PC[2], PC[1]], 1.7, out.clone().applyAxisAngle(Y, 0.75).add(new THREE.Vector3(0, -0.25, 0)).normalize(), 0.12, 0.98);
+  streamer(new THREE.Vector3(px + 0.1, poleTop - 1.75, -0.04), 3.3, 0.48, [PC[3], cream, PC[1]], 3.1, out.clone().applyAxisAngle(Y, -0.7).add(new THREE.Vector3(0, -0.35, 0)).normalize(), 0.16, 0.98);
+  // a ribbon from the side stay
+  streamer(new THREE.Vector3(R + a + 0.4, cy - 0.25, 0.04), 2.2, 0.12, [PC[2], cream], 2.4, new THREE.Vector3(0.3, -1, 0.3).normalize(), 0.05, 0.4);
   ck.build(g, { outline: false });
 
-  // the chimes: fat tubes of mixed length round the yoke, glass and pewter by turns with brass
-  const n = Math.max(5, Math.min(7, opts.tubes ?? 6));
-  const metal = new THREE.InstancedMesh(chimeTubeGeo(10.5), townMat('brass'), n);
-  const glass = new THREE.InstancedMesh(chimeTubeGeo(10.5), townMat('silver'), n);
-  for (const m of [metal, glass]) { m.castShadow = true; m.frustumCulled = false; m.count = 0; }
+  // the chimes: long tubes hanging from the lower inner rim, staggered, pewter and brass by turns
+  const tubeK = 3.6;   // tube radius 0.021 x 3.6 = 7.5 cm
+  const pew = new THREE.InstancedMesh(chimeTubeGeo(tubeK), townMat('chrome'), n);
+  const bra = new THREE.InstancedMesh(chimeTubeGeo(tubeK), townMat('brass'), n);
+  for (const m of [pew, bra]) { m.castShadow = true; m.frustumCulled = false; m.count = 0; }
   const attach: THREE.Vector3[] = [], len: number[] = [], slots: [THREE.InstancedMesh, number][] = [];
-  const D = 2 * (R + wR);
+  const lens = [1.35, 1.75, 2.05, 2.3, 1.95, 1.6, 1.25, 1.05];
   for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2 + 0.3;
-    attach.push(new THREE.Vector3(Math.cos(a) * 0.38, -0.06, Math.sin(a) * 0.38));
-    len.push(D * (0.6 + 0.2 * (0.5 + 0.5 * Math.sin(i * 2.4 + 0.5))) + r() * 0.1);
-    const isBrass = i % 2 === 0;
-    const m = isBrass ? metal : glass;
-    m.setColorAt(m.count, new THREE.Color(isBrass ? '#f0c45a' : pick(r, ['#d4dee8', '#cfe6ee', '#bfc9d4'])));
+    const th = tubeAng[i];
+    attach.push(new THREE.Vector3((R - a) * Math.cos(th), (R - a) * Math.sin(th) - 0.05, 0));
+    len.push(lens[i % lens.length] * (0.95 + r() * 0.1));
+    const isBrass = i % 2 === 1, m = isBrass ? bra : pew;
+    m.setColorAt(m.count, new THREE.Color(isBrass ? '#e8bc5c' : pick(r, ['#d0d8e0', '#c8d2dc', '#d8dee4'])));
     slots.push([m, m.count++]);
   }
-  for (const m of [metal, glass]) if (m.instanceColor) m.instanceColor.needsUpdate = true;
-  const body = new THREE.Group(); body.add(metal, glass); g.add(body);
-  body.position.set(0, yokeY - 0.05, 0);
-  const chime = new Chime(g, body, slots, attach, len, seed + 9, 0.35, 0.5);
+  for (const m of [pew, bra]) if (m.instanceColor) m.instanceColor.needsUpdate = true;
+  const body = new THREE.Group(); body.add(pew, bra); g.add(body);
+  body.position.set(0, cy, 0);
+  const chime = new Chime(g, body, slots, attach, len, seed + 9, 0.3, 0.45, false);
   g.userData.chime = chime;
   g.userData.update = (dt: number, t: number) => chime.update(dt, t);
   chime.update(0, 0);
   g.userData.center = new THREE.Vector3(0, cy, 0);
-  g.userData.radius = R - wR;
+  g.userData.radius = R - a;
   g.userData.tris = kit.tris + ck.tris;
   return g;
 }

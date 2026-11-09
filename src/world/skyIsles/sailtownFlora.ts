@@ -44,6 +44,28 @@ export class Cards {
     this.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
     return this;
   }
+  /**
+   * A cupped flower head: a 3 x 3 grid over the card, its rim lifted along n by `cup` (m), so petals curve up round
+   * the eye and the head reads as a little bowl from the side instead of a flat disc.
+   */
+  cupQuad(c: V3, a: V3, b: V3, n: V3, cell: number, color: THREE.Color, tint = 1, cup = 0.02) {
+    const [u0, v0, u1, v1] = cellUV(cell);
+    const base = this.pos.length / 3;
+    const nn = n.clone().normalize();
+    for (let j = 0; j <= 2; j++) for (let i = 0; i <= 2; i++) {
+      const su = i - 1, sv = j - 1, lift = cup * (su * su + sv * sv) * 0.5;
+      this.pos.push(c.x + a.x * su + b.x * sv + nn.x * lift, c.y + a.y * su + b.y * sv + nn.y * lift, c.z + a.z * su + b.z * sv + nn.z * lift);
+      // normals splay outward with the cup, so the bowl shades round
+      const q = nn.clone().addScaledVector(a, -su * 1.2 / a.length() * 0.35).addScaledVector(b, -sv * 1.2 / b.length() * 0.35).normalize().lerp(UP, 0.25).normalize();
+      this.nor.push(q.x, q.y, q.z);
+      this.uv.push(u0 + (u1 - u0) * (i / 2), v0 + (v1 - v0) * (j / 2));
+      const k = 0.92 + 0.08 * (su * su + sv * sv) * 0.5;
+      this.col.push(color.r * k, color.g * k, color.b * k);
+      this.tnt.push(tint);
+    }
+    for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) { const q = base + j * 3 + i; this.idx.push(q, q + 1, q + 4, q, q + 4, q + 3); }
+    return this;
+  }
   get tris() { return this.idx.length / 3; }
   build() {
     const g = new THREE.BufferGeometry();
@@ -93,6 +115,16 @@ export function headCard(cs: Cards, p: V3, size: number, cell: number, color: TH
   cs.quad(p, a, b, n.clone().lerp(UP, 0.3).normalize(), cell, color, tint);
 }
 
+/** A cupped head (see Cards.cupQuad) at p, tipped `tilt` toward `dir`, spun by `spin`, `cup` as a share of its size. */
+export function cupHead(cs: Cards, p: V3, size: number, cell: number, color: THREE.Color, tint: number, tilt = 0, dir = 0, spin = 0, cup = 0.28) {
+  const n = new THREE.Vector3(Math.sin(tilt) * Math.cos(dir), Math.cos(tilt), Math.sin(tilt) * Math.sin(dir)).normalize();
+  const ref = Math.abs(n.y) > 0.95 ? new THREE.Vector3(1, 0, 0) : UP;
+  const t1 = new THREE.Vector3().crossVectors(n, ref).normalize(), t2 = new THREE.Vector3().crossVectors(n, t1);
+  const a = t1.clone().multiplyScalar(Math.cos(spin)).addScaledVector(t2, Math.sin(spin)).multiplyScalar(size / 2);
+  const b = t2.clone().multiplyScalar(Math.cos(spin)).addScaledVector(t1, -Math.sin(spin)).multiplyScalar(size / 2);
+  cs.cupQuad(p, a, b, n, cell, color, tint, size * cup);
+}
+
 /** A thin stem from a to b: two crossed strips on the solid white cell, in its own green. */
 export function stemCards(cs: Cards, a: V3, b: V3, w: number, color: THREE.Color) {
   const d = b.clone().sub(a), c = a.clone().add(b).multiplyScalar(0.5);
@@ -105,21 +137,31 @@ export function stemCards(cs: Cards, a: V3, b: V3, w: number, color: THREE.Color
 
 // ---------------------------------------------------------------- plant prototypes
 
-export type PlantKind = 'lavender' | 'coreopsis' | 'daisy' | 'cosmos' | 'buttercup' | 'alyssum' | 'grass' | 'grassTall' | 'clover' | 'sprig' | 'leafy';
+export type PlantKind = 'lavender' | 'lavenderSpikes' | 'coreopsis' | 'daisy' | 'cosmos' | 'buttercup' | 'alyssum' | 'grass' | 'grassTall' | 'clover' | 'sprig' | 'leafy';
 export type FlowerKind = 'lavender' | 'coreopsis' | 'daisy' | 'cosmos' | 'buttercup' | 'alyssum';
 /** Ground cover draws without depth (no ink, drawn late); flowers draw normally. */
 const GROUND = new Set<PlantKind>(['grass', 'grassTall', 'clover', 'sprig']);
+/** Drawn without depth too (so the finish pass never inks them), but over the grass: the lavender spikes. */
+const SOFT = new Set<PlantKind>(['lavenderSpikes']);
 
 const C = (s: string) => new THREE.Color(s);
 const WHITE = new THREE.Color(1, 1, 1);
 
-/** Heads on stems above a leafy base: the shared shape of coreopsis, daisies, cosmos and buttercups. */
-function headsOnStems(cs: Cards, r: Rnd, n: number, spread: number, h0: number, h1: number, size: [number, number], cell: number, stem: THREE.Color) {
+/**
+ * Heads on stems above a leafy base: the shared shape of coreopsis, daisies, cosmos and buttercups. Stems lean and
+ * bend (two segments), heads are cupped, of varied size, and nod in every direction (never a row of discs facing up).
+ */
+function headsOnStems(cs: Cards, r: Rnd, n: number, spread: number, h0: number, h1: number, size: [number, number], cell: number, stem: THREE.Color, cup = 0.28) {
   for (let i = 0; i < n; i++) {
     const a = r() * Math.PI * 2, d = Math.sqrt(r()) * spread;
     const hx = Math.cos(a) * d, hz = Math.sin(a) * d, hy = h0 + (h1 - h0) * Math.pow(r(), 0.8);
-    stemCards(cs, new THREE.Vector3(hx * 0.3, 0, hz * 0.3), new THREE.Vector3(hx, hy, hz), 0.012, stem);
-    headCard(cs, new THREE.Vector3(hx, hy, hz), size[0] + r() * (size[1] - size[0]), cell, WHITE, 1, 0.25 + (d / spread) * 0.6, a, r() * 6);
+    const root = new THREE.Vector3(hx * 0.25, 0, hz * 0.25), head = new THREE.Vector3(hx, hy, hz);
+    // the stem bows: its middle pushed out a little and down-wind
+    const mid = root.clone().lerp(head, 0.55).add(new THREE.Vector3(Math.cos(a) * 0.02 + (r() - 0.5) * 0.03, 0, Math.sin(a) * 0.02 + (r() - 0.5) * 0.03));
+    stemCards(cs, root, mid, 0.01, stem); stemCards(cs, mid, head, 0.009, stem);
+    const sz = size[0] + r() * (size[1] - size[0]);
+    const tilt = 0.3 + (d / spread) * 0.55 + (r() - 0.5) * 0.5;
+    cupHead(cs, head, sz, cell, WHITE, 1, tilt, a + (r() - 0.5) * 1.2, r() * 6, cup * (0.7 + r() * 0.6));
   }
 }
 
@@ -131,33 +173,37 @@ export function plantGeo(kind: PlantKind): THREE.BufferGeometry {
   const cs = new Cards(), r = rng(kind.length * 131 + kind.charCodeAt(0));
   switch (kind) {
     case 'lavender': {
-      // a grey-green cushion of narrow leaves, and soft violet spikes fanning out of it
-      crossCards(cs, 0, 0, 0.44, 0.3, CELL.narrow, C('#93a382'), 0, 3, r(), 0, 0, -0.02, 0.7);
-      crossCards(cs, 0.05, 0.03, 0.3, 0.22, CELL.narrow, C('#8a9c7a'), 0, 2, r(), 0, 0, -0.02, 0.7);
-      for (let i = 0; i < 18; i++) {
+      // the grey-green cushion of narrow leaves (the spikes are their own kind, drawn without ink)
+      crossCards(cs, 0, 0, 0.44, 0.3, CELL.narrow, C('#97a688'), 0, 3, r(), 0, 0, -0.02, 0.75);
+      crossCards(cs, 0.05, 0.03, 0.3, 0.22, CELL.narrow, C('#8c9e7e'), 0, 2, r(), 0, 0, -0.02, 0.75);
+      break;
+    }
+    case 'lavenderSpikes': {
+      // slender spikes fanning out of the cushion at many angles and heights, each a crossed pair of floret cards
+      for (let i = 0; i < 16; i++) {
         const a = r() * Math.PI * 2, d = Math.sqrt(r()) * 0.1;
-        crossCards(cs, Math.cos(a) * d, Math.sin(a) * d, 0.1, 0.55 + r() * 0.25, CELL.lavender, WHITE, 1, 2, r() * 3, 0.12 + (d / 0.09) * 0.32, a, 0, 0.92);
+        crossCards(cs, Math.cos(a) * d, Math.sin(a) * d, 0.075 + r() * 0.02, 0.45 + r() * 0.32, CELL.lavender, WHITE, 1, 2, r() * 3, 0.1 + (d / 0.1) * 0.42 + r() * 0.12, a, 0.02, 0.95);
       }
       break;
     }
     case 'coreopsis': {
       crossCards(cs, 0, 0, 0.46, 0.32, CELL.leafy, C('#6f9a48'), 0, 3, r());
-      headsOnStems(cs, r, 14, 0.2, 0.26, 0.5, [0.07, 0.09], CELL.coreopsis, C('#5f8a3e'));
+      headsOnStems(cs, r, 14, 0.2, 0.26, 0.5, [0.06, 0.085], CELL.coreopsis, C('#5f8a3e'), 0.26);
       break;
     }
     case 'daisy': {
       crossCards(cs, 0, 0, 0.4, 0.26, CELL.leafy, C('#6c9846'), 0, 3, r());
-      headsOnStems(cs, r, 11, 0.18, 0.22, 0.44, [0.085, 0.105], CELL.daisy, C('#5c873c'));
+      headsOnStems(cs, r, 11, 0.18, 0.22, 0.44, [0.055, 0.085], CELL.daisy, C('#5c873c'), 0.22);
       break;
     }
     case 'cosmos': {
       crossCards(cs, 0, 0, 0.36, 0.38, CELL.leafy, C('#729f4c'), 0, 2, r());
-      headsOnStems(cs, r, 7, 0.2, 0.44, 0.78, [0.1, 0.125], CELL.cosmos, C('#5f8c40'));
+      headsOnStems(cs, r, 7, 0.2, 0.44, 0.78, [0.075, 0.11], CELL.cosmos, C('#5f8c40'), 0.34);
       break;
     }
     case 'buttercup': {
       crossCards(cs, 0, 0, 0.3, 0.17, CELL.leafy, C('#6a9a44'), 0, 2, r());
-      headsOnStems(cs, r, 10, 0.15, 0.13, 0.32, [0.05, 0.064], CELL.buttercup, C('#5f8a3e'));
+      headsOnStems(cs, r, 10, 0.15, 0.13, 0.32, [0.045, 0.06], CELL.buttercup, C('#5f8a3e'), 0.4);
       break;
     }
     case 'alyssum': {
@@ -166,8 +212,8 @@ export function plantGeo(kind: PlantKind): THREE.BufferGeometry {
       headCard(cs, new THREE.Vector3(0, 0.12, 0), 0.34, CELL.alyssum, WHITE, 1, 0.1, 0, r() * 6);
       break;
     }
-    case 'grass': crossCards(cs, 0, 0, 0.4, 0.26, CELL.grass, WHITE, 1, 3, r(), 0, 0, -0.01, 0.94, true); break;
-    case 'grassTall': crossCards(cs, 0, 0, 0.38, 0.44, CELL.grass, WHITE, 1, 3, r(), 0, 0, -0.01, 0.92, true); break;
+    case 'grass': crossCards(cs, 0, 0, 0.32, 0.2, CELL.grass, WHITE, 1, 3, r(), 0, 0, -0.02, 0.97, true); break;
+    case 'grassTall': crossCards(cs, 0, 0, 0.32, 0.34, CELL.grass, WHITE, 1, 3, r(), 0, 0, -0.02, 0.96, true); break;
     case 'clover': {
       headCard(cs, new THREE.Vector3(0, 0.035, 0), 0.34, CELL.clover, WHITE, 1, 0.12, 0, 0);
       headCard(cs, new THREE.Vector3(0.05, 0.07, -0.03), 0.26, CELL.clover, WHITE, 1, 0.2, 2, 1.3);
@@ -189,7 +235,7 @@ export function plantGeo(kind: PlantKind): THREE.BufferGeometry {
 
 /** Petal palettes after the pictures: soft pinks, lavender, butter and gold yellows, white. */
 export const PETALS: Record<FlowerKind, string[]> = {
-  lavender: ['#a891e6', '#b8a2ee', '#9c88de', '#c2aef2'],
+  lavender: ['#9c8cc6', '#a898cc', '#9284bc', '#b2a4d4'],
   coreopsis: ['#ffc928', '#ffd23f', '#f7b81e'],
   daisy: ['#ffffff', '#fff8ee', '#fbeef4'],
   cosmos: ['#f39ab8', '#f7b6cc', '#ec84aa', '#ffffff', '#f6c6d8'],
@@ -197,7 +243,7 @@ export const PETALS: Record<FlowerKind, string[]> = {
   alyssum: ['#ffffff', '#f2e8ff', '#fbe2ee'],
 };
 /** Grass in light (warm yellow-green) to grass in the hollows (cool blue-green); muted, never lime. */
-export const GRASS = { warm: new THREE.Color('#a9bd62'), mid: new THREE.Color('#8fb05a'), cool: new THREE.Color('#6f9c66') };
+export const GRASS = { warm: new THREE.Color('#b4c65e'), mid: new THREE.Color('#96b852'), cool: new THREE.Color('#72a05a') };
 
 // ---------------------------------------------------------------- noise (CPU)
 
@@ -229,22 +275,34 @@ export class FloraField {
     this.e.set(Math.sin(tiltDir) * tilt, rotY, Math.cos(tiltDir) * tilt); this.q.setFromEuler(this.e);
     const m = new THREE.Matrix4().compose(this.p.set(x, y, z), this.q, this.s.set(scale, scale * (0.9 + ((x * 7.3 + z * 3.1) % 1 + 1) % 1 * 0.2), scale));
     (this.items.get(kind) ?? this.items.set(kind, []).get(kind)!).push({ m, c: color });
+    // a lavender bush is its cushion (inked, with depth) plus its spikes (soft, no ink)
+    if (kind === 'lavender') (this.items.get('lavenderSpikes') ?? this.items.set('lavenderSpikes', []).get('lavenderSpikes')!).push({ m, c: color });
   }
   count(kind?: PlantKind) { if (kind) return this.items.get(kind)?.length ?? 0; let n = 0; for (const v of this.items.values()) n += v.length; return n; }
 
-  build(target = new THREE.Group()): THREE.Group {
+  /**
+   * Build one InstancedMesh per kind. `sortFrom` (the main viewpoint) orders the instances back to front, so the kinds
+   * drawn without depth layer correctly from there; `fade` [near, far] metres shrinks ground cards away with distance.
+   */
+  build(target = new THREE.Group(), opts: { sortFrom?: THREE.Vector3; fade?: [number, number] } = {}): THREE.Group {
     target.name = target.name || 'floraField';
     let tris = 0;
+    const fade = opts.fade ?? [13, 26];
     for (const [kind, list] of this.items) {
       if (!list.length) continue;
+      if (opts.sortFrom) {
+        const o = opts.sortFrom, d = (it: Inst) => (it.m.elements[12] - o.x) ** 2 + (it.m.elements[14] - o.z) ** 2;
+        list.sort((p, q) => d(q) - d(p));
+      }
       const geo = plantGeo(kind);
-      const ground = GROUND.has(kind);
-      const im = new THREE.InstancedMesh(geo, floraCardMat(ground ? 0.45 : 1, ground), list.length);
+      const ground = GROUND.has(kind), soft = SOFT.has(kind);
+      const im = new THREE.InstancedMesh(geo, floraCardMat(ground ? 0.45 : 1, ground || soft, ground ? fade : undefined), list.length);
       list.forEach((it, i) => { im.setMatrixAt(i, it.m); im.setColorAt(i, it.c); });
       im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true;
       im.castShadow = false; im.receiveShadow = true;
       im.userData.noOutline = true;
       if (ground) im.renderOrder = 5;
+      if (soft) im.renderOrder = 6;
       im.computeBoundingSphere();
       im.name = kind;
       target.add(im);
@@ -303,9 +361,10 @@ export function meadow(field: FloraField, o: MeadowOpts) {
     emit(nG, (px, pz) => {
       const t = big * 0.75 + fine * 0.25;
       tmp.copy(GRASS.cool).lerp(GRASS.mid, Math.min(1, t * 1.6)).lerp(GRASS.warm, Math.max(0, t * 1.6 - 0.6));
-      const c = tmp.clone().multiplyScalar(0.9 + r() * 0.2);
+      // hue and value drift per tuft from a noise, never per-tuft confetti
+      const c = tmp.clone().offsetHSL((vnoise(px * 0.7, pz * 0.7, sd + 5) - 0.5) * 0.035, 0, (vnoise(px * 1.3, pz * 1.3, sd + 2) - 0.5) * 0.06).multiplyScalar(0.96 + r() * 0.06);
       const tall = k > 1.6 && r() < 0.3;
-      field.add(tall ? 'grassTall' : 'grass', px, hAt(px, pz) - 0.01, pz, S * (0.7 + r() * 0.6) * (0.85 + Math.min(k, 2.5) * 0.15), r() * 6.28, c);
+      field.add(tall ? 'grassTall' : 'grass', px, hAt(px, pz) - 0.01, pz, S * (0.7 + r() * 0.5) * (0.85 + Math.min(k, 2.5) * 0.15), r() * 6.28, c.multiplyScalar(1.07));
     });
     emit(nC, (px, pz) => {
       const c = tmp.copy(GRASS.mid).lerp(GRASS.warm, r() * 0.4).multiplyScalar(1.0 + r() * 0.12).clone();

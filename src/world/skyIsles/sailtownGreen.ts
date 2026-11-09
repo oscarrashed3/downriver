@@ -85,10 +85,13 @@ export function addLeafMass(kit: Kit, m: THREE.Matrix4, r: Rnd, o: LeafMassOpts)
     const dir = new THREE.Vector3(r() * 2 - 1, r() * 1.7 - 0.6, r() * 2 - 1);
     if (fl < 1) dir.z = Math.abs(dir.z) * 0.8 + 0.2;   // a wall mass shows its front
     dir.normalize();
-    const c = dir.clone().multiplyScalar(R * (0.8 + r() * 0.26)); c.y *= sq; c.z *= fl;
+    const c = dir.clone().multiplyScalar(R * (0.8 + r() * 0.2)); c.y *= sq; c.z *= fl;
     const size = (o.size ?? R * 0.6) * (0.75 + r() * 0.5);
     const nrm = dir.clone(); nrm.y /= sq; if (fl < 1) nrm.z /= Math.max(0.3, fl); nrm.normalize();
-    const [a, b] = tangents(nrm, r() * Math.PI * 2, size / 2);
+    // the card's plane is tipped off the surface at random (its shading normal stays the mass's), so on the outline
+    // cards show their face instead of standing edge-on as flat flakes
+    const pn = nrm.clone().add(new THREE.Vector3(r() - 0.5, r() - 0.5, r() - 0.5).multiplyScalar(1.3)).normalize();
+    const [a, b] = tangents(pn, r() * Math.PI * 2, size / 2);
     // light from above, shade beneath and toward the back; a little jitter per card
     const k = (0.6 + 0.5 * (dir.y * 0.5 + 0.5)) * (0.9 + r() * 0.2) * (fl < 1 ? 0.85 + 0.15 * dir.z : 1);
     const col = base.clone().multiplyScalar(k);
@@ -97,7 +100,7 @@ export function addLeafMass(kit: Kit, m: THREE.Matrix4, r: Rnd, o: LeafMassOpts)
   }
   kit.add(toGeo(A), o.cell == null ? 'leaf' : 'flora', null, m);
   if (o.core !== false) {
-    const core = wobble(new THREE.IcosahedronGeometry(R * 0.8, 1), R * 0.08, 3 / R, Math.floor(r() * 99));
+    const core = wobble(new THREE.IcosahedronGeometry(R * 0.78, 1), R * 0.07, 3 / R, Math.floor(r() * 99));
     kit.add(core, 'core', base.clone().multiplyScalar(o.ao ?? 0.5), m.clone().multiply(T(0, 0, 0, 0, 0, 0, 1, sq, fl)));
   }
 }
@@ -162,13 +165,13 @@ export interface WallPoint { p: V3; n: V3; s?: number }
  * Rambling roses along a run of wall points: clumped leaf masses pressed to the wall with dark interiors, and many
  * small layered blooms in two or three pinks and reds, with buds. Each cluster has its own leading colour.
  */
-export function addRoses(kit: Kit, pts: WallPoint[], r: Rnd, o: { palette?: readonly string[]; blooms?: number } = {}) {
+export function addRoses(kit: Kit, pts: WallPoint[], r: Rnd, o: { palette?: readonly string[]; blooms?: number; leaves?: boolean } = {}) {
   const pal = (o.palette ?? ROSES).map(c => new THREE.Color(c));
   const A = arrays();
   for (const w of pts) {
     const s = w.s ?? 1;
     const m = onNormal(w.p, w.n);
-    addLeafMass(kit, m.clone().multiply(T(0, 0, 0.06 * s, 0, 0, r() * 6)), r, { radius: (0.2 + r() * 0.1) * s, flat: 0.55, squash: 0.85, color: pick(r, ['#5a8a40', '#62904a', '#548240']), size: 0.15 * s, ao: 0.5 });
+    if (o.leaves !== false) addLeafMass(kit, m.clone().multiply(T(0, 0, 0.05 * s, 0, 0, r() * 6)).multiply(T(0, 0, 0, 0, 0, 0, 1.25, 1, 1)), r, { radius: (0.17 + r() * 0.08) * s, flat: 0.38, squash: 0.85, color: pick(r, ['#5a8a40', '#62904a', '#548240']), size: 0.13 * s, ao: 0.5 });
     const lead = pal[Math.floor(r() * pal.length)];
     const nb = Math.round((o.blooms ?? 7) * s * (0.7 + r() * 0.6));
     for (let i = 0; i < nb; i++) {
@@ -186,14 +189,15 @@ export function addRoses(kit: Kit, pts: WallPoint[], r: Rnd, o: { palette?: read
 }
 
 /** Ivy: small lobed leaves laid close against the wall along a run of points (a climbing stem). */
-export function addIvy(kit: Kit, pts: WallPoint[], r: Rnd, o: { colors?: readonly string[]; perPoint?: number } = {}) {
+export function addIvy(kit: Kit, pts: WallPoint[], r: Rnd, o: { colors?: readonly string[]; perPoint?: number; spread?: number } = {}) {
   const cols = (o.colors ?? ['#3f6b35', '#4a7a3c', '#365f30', '#56843f']).map(c => new THREE.Color(c));
   const A = arrays();
+  const sp = o.spread ?? 1;
   for (const w of pts) {
     const s = w.s ?? 1, m = onNormal(w.p, w.n);
     const n = Math.round((o.perPoint ?? 4) * (0.7 + r() * 0.6));
     for (let i = 0; i < n; i++) {
-      const p = new THREE.Vector3((r() - 0.5) * 0.32 * s, (r() - 0.5) * 0.3 * s, 0.02 + r() * 0.05).applyMatrix4(m);
+      const p = new THREE.Vector3((r() - 0.5) * 0.32 * s * sp, (r() - 0.5) * 0.3 * s, 0.02 + r() * 0.05).applyMatrix4(m);
       const nrm = w.n.clone().add(new THREE.Vector3(r() - 0.5, r() - 0.3, r() - 0.5).multiplyScalar(0.5)).normalize();
       const [ta, tb] = tangents(nrm, r() * 6.28, (0.09 + r() * 0.05) * s);
       pushCard(A, p, ta, tb, nrm, pick(r, cols).clone().multiplyScalar(0.85 + r() * 0.3), CELL.ivy, 0.2);

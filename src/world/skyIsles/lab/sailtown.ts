@@ -7,7 +7,7 @@ import {
   FloraField, meadow, flowerBed, townTree, hedge, PETALS, GRASS,
 } from '../sailtown';
 import { Kit, T, rng, pick, chainCompile } from '../sailtownKit';
-import { vnoise } from '../sailtownFlora';
+import { floatingIsle, farIsle, waterfall, CloudField, CLOUD_LIGHT, Rim, AERIAL } from '../sailtownIsle';
 
 /**
  * Sailtown lab: a vignette after picture 2. A flagstone lane climbs from the foreground past a raised cottage (stone
@@ -43,16 +43,21 @@ export default function (ctx: LabCtx): LabPiece {
     });
   }
 
-  // ---------------------------------------------------------------- the ground (lab stand-in)
-  const EDGE = (z: number) => 15.5 + Math.sin(z * 0.13) * 2.0 + Math.sin(z * 0.41 + 1) * 0.7;   // cliff edge x
-  const stream = [new THREE.Vector3(5, 0, -36), new THREE.Vector3(8.4, 0, -22), new THREE.Vector3(9.0, 0, -12), new THREE.Vector3(9.5, 0, -4.5), new THREE.Vector3(11.6, 0, 2.2), new THREE.Vector3(17, 0, 5.6)];
+  // ---------------------------------------------------------------- the isle (lab stand-in for the island builder)
+  // The village camera, first: the backdrop is composed for it (far isles and cumulus where picture 2 has them).
+  const V = new THREE.Vector3(-1.7, 3.5, 19.6), VL = new THREE.Vector3(5.2, 2.2, -6);
+  const yaw = Math.atan2(VL.x - V.x, -(VL.z - V.z));
+  /** A point seen from the village camera `deg` degrees right of the view centre, `dist` metres out, at height y. */
+  const seen = (deg: number, dist: number, y: number) => { const a = yaw + deg * Math.PI / 180; return new THREE.Vector3(V.x + Math.sin(a) * dist, y, V.z - Math.cos(a) * dist); };
+  // the stream, from the hills behind, under the bridge, to the lip of the promontory face, where it falls in view
+  const stream = [new THREE.Vector3(5, 0, -36), new THREE.Vector3(8.4, 0, -22), new THREE.Vector3(9.0, 0, -12), new THREE.Vector3(9.45, 0, -6.6), new THREE.Vector3(8.7, 0, -2.0), new THREE.Vector3(9.5, 0, 1.4), new THREE.Vector3(9.8, 0, 4.2), new THREE.Vector3(9.6, 0, 7.4)];
   const streamCurve = new THREE.CatmullRomCurve3(stream);
-  const streamPts = streamCurve.getSpacedPoints(120);
-  const distStream = (x: number, z: number) => { let d = 1e9; for (const p of streamPts) { const dd = (p.x - x) ** 2 + (p.z - z) ** 2; if (dd < d) d = dd; } return Math.sqrt(d); };
+  const streamPts = streamCurve.getSpacedPoints(160);
+  const distStream = (x: number, z: number) => { let d = 1e9; for (const p of streamPts) { const dd = (p.x - x) ** 2 + (p.z - z) ** 2; if (d > dd) d = dd; } return Math.sqrt(d); };
   const A = new THREE.Vector3(-6.4, 0, 3.4);   // the raised foreground cottage
   const TER = { r0: 3.35, r1: 3.75, h: 0.5 };
   const hills = (x: number, z: number) => Math.max(0, (-z - 17) * 0.13) + Math.max(0, (-x - 12) * 0.09) + Math.sin(x * 0.21) * Math.sin(z * 0.17) * 0.18;
-  const ground = (x: number, z: number) => {
+  const ground0 = (x: number, z: number) => {
     let h = hills(x, z);
     const dA = Math.hypot(x - A.x, z - A.z);
     if (dA < TER.r1) h += TER.h * Math.min(1, (TER.r1 - dA) / (TER.r1 - TER.r0));
@@ -60,155 +65,90 @@ export default function (ctx: LabCtx): LabPiece {
     if (ds < 1.7) h -= 0.5 * (1 - (ds / 1.7) ** 2);
     return h;
   };
-  const groundTex = (() => {
-    // painted meadow marks: blade strokes and leaf dots in soft greys, to break up the ground under the tufts
-    const S = 512, c = document.createElement('canvas'); c.width = c.height = S; const x = c.getContext('2d')!;
-    const rr = rng(3);
-    x.fillStyle = '#ececec'; x.fillRect(0, 0, S, S);
-    for (let i = 0; i < 2400; i++) { const v = 0.78 + rr() * 0.3; x.strokeStyle = `rgba(${v * 255 | 0},${v * 255 | 0},${v * 255 | 0},0.7)`; x.lineWidth = 2 + rr() * 2; const px = rr() * S, py = rr() * S; x.beginPath(); x.moveTo(px, py); x.lineTo(px + (rr() - 0.5) * 8, py - 6 - rr() * 10); x.stroke(); }
-    for (let i = 0; i < 600; i++) { const v = 0.82 + rr() * 0.25; x.fillStyle = `rgba(${v * 255 | 0},${v * 255 | 0},${v * 255 | 0},0.8)`; x.beginPath(); x.arc(rr() * S, rr() * S, 2 + rr() * 4, 0, 6.3); x.fill(); }
-    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
-    return t;
-  })();
-  {
-    const N = 150, S = 96;
-    const geo = new THREE.PlaneGeometry(S, S, N, N).rotateX(-Math.PI / 2).translate(-4, 0, -12);
-    const p = geo.attributes.position as THREE.BufferAttribute;
-    const cols = new Float32Array(p.count * 3);
-    const tmp = new THREE.Color();
-    for (let i = 0; i < p.count; i++) {
-      const x = Math.min(p.getX(i), EDGE(p.getZ(i)) + 0.4), z = p.getZ(i);
-      p.setX(i, x);
-      p.setY(i, ground(x, z) - (x > EDGE(z) ? 0.6 : 0));
-      // the ground under the grass: warm in the open, cooler in the hollows, a little earthier by paths and walls
-      const t = vnoise(x * 0.09, z * 0.09, 0.37) * 0.75 + vnoise(x * 0.5, z * 0.5, 3.37) * 0.25;
-      tmp.copy(GRASS.cool).lerp(GRASS.mid, Math.min(1, t * 1.6)).lerp(GRASS.warm, Math.max(0, t * 1.6 - 0.6)).multiplyScalar(0.97);
-      cols.set([tmp.r, tmp.g, tmp.b], i * 3);
-    }
-    geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
-    geo.computeVertexNormals();
-    const mat = paint(new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: softRamp(), map: groundTex }), { variation: 0.9 });
-    chainCompile(mat, 'labGround', (s) => {
-      // the texture in world space, two scales, so it never shows a grid
-      s.fragmentShader = s.fragmentShader.replace('#include <map_fragment>', `
-        vec4 gT = texture2D(map, vPWorld.xz / 1.7) * texture2D(map, vPWorld.xz / 6.3 + 0.37);
-        diffuseColor.rgb *= gT.rgb * 1.16;`);
-    });
-    const m = new THREE.Mesh(geo, mat);
-    m.receiveShadow = true;
-    scene.add(m);
-  }
-  // the cliff below the edge: layered cream and pale-gold rock, mossy at the lip, with bulges and ledges
-  {
-    const nz = 120, ny = 40, z0 = -48, z1 = 22, depth = 46;
-    const pos: number[] = [], cl: number[] = [], idx: number[] = [];
-    const cream = new THREE.Color('#efe2c4'), gold = new THREE.Color('#dcc08e'), shadow = new THREE.Color('#b99c76'), moss = new THREE.Color('#8aa05a');
-    for (let j = 0; j <= ny; j++) for (let i = 0; i <= nz; i++) {
-      const z = z0 + (z1 - z0) * (i / nz), t = j / ny, y = -0.4 - Math.pow(t, 1.15) * depth;
-      const bulge = (vnoise(z * 0.25, y * 0.18, 5) - 0.5) * 2.2 + (vnoise(z * 0.8, y * 0.5, 9) - 0.5) * 0.8;
-      const taper = -t * t * 9;   // the island narrows beneath
-      const x = EDGE(z) + 0.3 + bulge + taper + Math.max(0, 0.6 - t * 8) * 0.4;
-      pos.push(x, y, z);
-      const band = 0.5 + 0.5 * Math.sin(y * 1.6 + vnoise(z * 0.3, y * 0.2, 2) * 3);
-      const c = cream.clone().lerp(gold, band * 0.7).lerp(shadow, Math.max(0, vnoise(z * 1.2, y * 0.15, 4) - 0.6) * 1.6);
-      if (t < 0.05) c.lerp(moss, 0.6 - t * 10);
-      else if (vnoise(z * 0.4, y * 0.9, 8) > 0.72) c.lerp(moss, 0.45);   // green ledges
-      cl.push(c.r, c.g, c.b);
-    }
-    for (let j = 0; j < ny; j++) for (let i = 0; i < nz; i++) { const a = j * (nz + 1) + i, b = a + 1, c = a + nz + 1, d = c + 1; idx.push(a, c, b, b, c, d); }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(cl, 3)); g.setIndex(idx); g.computeVertexNormals();
-    const m = new THREE.Mesh(g, paint(new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: softRamp(), side: THREE.DoubleSide }), { variation: 0.9 }));
-    m.receiveShadow = true;
-    scene.add(m);
-  }
-  // the stream down its channel, and the fall over the edge with scrolling streaks
+  // an organic rim: the falls corner by the foreground, the promontory beyond it, the long curve round the back
+  const RIM: [number, number][] = [[17, -3], [14.6, 3], [9.6, 6.2], [4.9, 9.4], [3.3, 13], [2.6, 20], [1.0, 26], [-4, 28.5], [-12, 25], [-21, 17], [-27, 6], [-30, -8], [-28, -24], [-20, -38], [-8, -46], [4, -44], [12, -34], [15.6, -22], [17.2, -12]];
+  // where the stream meets the rim: the falls has worn a gully back into the face there
+  const rim0 = new Rim([-5, -10], RIM, 4, 0.7);
+  let aFall = 0;
+  for (const p of streamPts) if (rim0.dist(p.x, p.z) > -0.1) { aFall = rim0.angleOf(p.x, p.z); break; }
+  const isle = floatingIsle({
+    center: [-5, -10], seed: 4, depth: 46, rough: 0.7, segs: 320, rings: 64, rows: 80, vines: 1.6, spill: 3,
+    rim: RIM, top: ground0,
+    gullies: [[aFall, 0.055, 1.8]],
+    clear: [[aFall - 0.07, aFall + 0.07]],
+  });
+  scene.add(isle.group);
+  const ground = isle.height;
+  const rimD = (x: number, z: number) => isle.rim.dist(x, z);
+  // the stream down its channel to the lip, scrolling
   const fallTex = (() => {
-    const c = document.createElement('canvas'); c.width = 128; c.height = 256; const x = c.getContext('2d')!;
+    const c = document.createElement('canvas'); c.width = 256; c.height = 512; const x = c.getContext('2d')!;
     const rr = rng(5);
-    x.fillStyle = '#d8ecf6'; x.fillRect(0, 0, 128, 256);
-    for (let i = 0; i < 70; i++) { x.fillStyle = `rgba(255,255,255,${0.4 + rr() * 0.5})`; const px = rr() * 128, w = 3 + rr() * 9; x.fillRect(px, 0, w, 256); }
-    for (let i = 0; i < 30; i++) { x.fillStyle = `rgba(150,196,222,${0.3 + rr() * 0.3})`; x.fillRect(rr() * 128, 0, 2 + rr() * 3, 256); }
-    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
+    x.fillStyle = '#cfe6f2'; x.fillRect(0, 0, 256, 512);
+    x.filter = 'blur(2px)';
+    for (let i = 0; i < 90; i++) { x.fillStyle = `rgba(255,255,255,${0.35 + rr() * 0.5})`; x.fillRect(rr() * 256, 0, 4 + rr() * 14, 512); }
+    for (let i = 0; i < 40; i++) { x.fillStyle = `rgba(140,190,218,${0.25 + rr() * 0.3})`; x.fillRect(rr() * 256, 0, 3 + rr() * 6, 512); }
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
     return t;
   })();
+  let lip = new THREE.Vector3(), lipOut = new THREE.Vector3(1, 0, 0);
   {
     const pos: number[] = [], uv: number[] = [], idx: number[] = [];
-    const pts = streamCurve.getSpacedPoints(80);
+    const pts = streamCurve.getSpacedPoints(120);
+    let n = 0;
     for (let i = 0; i < pts.length; i++) {
       const p = pts[i], tg = streamCurve.getTangentAt(i / (pts.length - 1)), sd = new THREE.Vector3(-tg.z, 0, tg.x).normalize();
-      const over = p.x - EDGE(p.z);
-      if (over > 0.6) break;
-      const y = hills(p.x, p.z) - 0.28;
+      const over = rimD(p.x, p.z);
+      const y = hills(p.x, p.z) - 0.28 - Math.max(0, over + 0.6) * 0.5;
+      if (over > -0.1) { lip.set(p.x, y, p.z); lipOut.copy(tg).setY(0).normalize(); break; }
       for (const s of [-1, 1]) { const q = p.clone().addScaledVector(sd, s * 1.05); pos.push(q.x, y, q.z); uv.push(s * 0.5 + 0.5, i * 0.4); }
-      if (i) { const a = (i - 1) * 2; idx.push(a, a + 1, a + 3, a, a + 3, a + 2); }
+      if (n) { const a = (n - 1) * 2; idx.push(a, a + 1, a + 3, a, a + 3, a + 2); }
+      n++;
     }
     const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); wg.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); wg.setIndex(idx); wg.computeVertexNormals();
     const st = fallTex.clone(); st.repeat.set(1, 0.25); st.needsUpdate = true;
-    const wm = new THREE.Mesh(wg, paint(new THREE.MeshToonMaterial({ color: '#a8d6ee', map: st, emissive: '#6aa8cc', emissiveIntensity: 0.3, gradientMap: softRamp(), side: THREE.DoubleSide }), { variation: 0.3, rim: 2 }));
+    const wm = new THREE.Mesh(wg, paint(new THREE.MeshToonMaterial({ color: '#b4dcf0', map: st, emissive: '#6aa8cc', emissiveIntensity: 0.3, gradientMap: softRamp(), side: THREE.DoubleSide }), { variation: 0.3, rim: 2 }));
+    wm.userData.noOutline = true;
     scene.add(wm);
-    // the fall: a ribbon arcing out from the lip and down
-    const ez = 5.0, ex = EDGE(ez) + 0.2;
-    const fp: number[] = [], fu: number[] = [], fi: number[] = [];
-    const n = 30;
-    for (let i = 0; i <= n; i++) {
-      const t = i / n, y = -0.3 - t * 44, x = ex - 0.3 + Math.sqrt(t) * 1.4, w = 0.9 + t * 1.2;
-      for (const s of [-1, 1]) { fp.push(x, y, ez + s * w); fu.push(s * 0.5 + 0.5, t * 6); }
-      if (i) { const a = (i - 1) * 2; fi.push(a, a + 1, a + 3, a, a + 3, a + 2); }
-    }
-    const fg = new THREE.BufferGeometry(); fg.setAttribute('position', new THREE.Float32BufferAttribute(fp, 3)); fg.setAttribute('uv', new THREE.Float32BufferAttribute(fu, 2)); fg.setIndex(fi); fg.computeVertexNormals();
-    const fall = new THREE.Mesh(fg, paint(new THREE.MeshToonMaterial({ color: '#ffffff', map: fallTex, emissive: '#cfe8f4', emissiveIntensity: 0.55, gradientMap: softRamp(), side: THREE.DoubleSide }), { rim: 2, noCloud: true }));
-    scene.add(fall);
     fallTex.userData.scroll = true;
   }
-  // the cloud sea below and cumulus heaped beyond the edge (lab stand-in for the sky builder's clouds)
-  const cloudMat = paint(new THREE.MeshToonMaterial({ color: '#fdf8ee', emissive: '#e8e2da', emissiveIntensity: 0.42, gradientMap: softRamp() }), { variation: 0.15, rim: 1.6, noCloud: true });
+  // the falls: thrown out over the lip and down into the cloud sea
+  const fallDrop = 44;
+  scene.add(waterfall(lip.clone().addScaledVector(lipOut, -0.4), lipOut, 2.8, fallDrop, { speed: 3.8, seed: 2 }));
+
+  // ---------------------------------------------------------------- sky: cumulus banks, the cloud sea, far isles
+  const clouds = new CloudField(ctx.golden ? CLOUD_LIGHT.golden : CLOUD_LIGHT.day);
+  AERIAL.uAerCol.value.set(ctx.golden ? '#d8b4b4' : '#9dbde6'); AERIAL.uAerMax.value = ctx.golden ? 0.42 : 0.6;
+  const far: THREE.Group[] = [];
   {
-    const geo = new THREE.IcosahedronGeometry(1, 2);
-    const mats: THREE.Matrix4[] = [];
-    const mm = new THREE.Matrix4(), q = new THREE.Quaternion();
-    const cumulus = (cx: number, cy: number, cz: number, s: number, rr: () => number) => {
-      // a cauliflower: a flat-bottomed base of big puffs, smaller ones heaped toward the top
-      for (let k = 0; k < 16; k++) {
-        const lvl = k / 16, a = rr() * Math.PI * 2, d = (1 - lvl * 0.7) * s * 1.3 * Math.sqrt(rr());
-        const ps = s * (0.75 - lvl * 0.35) * (0.7 + rr() * 0.5);
-        mats.push(mm.compose(new THREE.Vector3(cx + Math.cos(a) * d, cy + lvl * s * 1.3 + ps * 0.25, cz + Math.sin(a) * d * 0.7), q, new THREE.Vector3(ps * 1.25, ps * 0.85, ps)).clone());
-      }
+    const cr = rng(19);
+    clouds.sea(0, -50, 0, 30, 1500, 420, 3, 1.1);
+    // towering cumulus behind the far isles on the right, a bank behind the village, a lower one to the left
+    const bank = (deg: number, dist: number, base: number, w: number, h: number, seed: number, n = 46) => { const p = seen(deg, dist, base); clouds.heap(p.x, base, p.z, w, h, seed, n); };
+    bank(20, 440, -40, 230, 170, 1, 60); bank(40, 360, -36, 200, 190, 2, 60); bank(56, 300, -30, 150, 120, 3, 40);
+    bank(-4, 560, -30, 280, 110, 4, 50); bank(-30, 480, -25, 240, 90, 5, 44); bank(8, 650, -20, 300, 80, 6, 40);
+    // banks for the wide view's background (it looks south-west)
+    clouds.heap(-320, -40, -300, 260, 150, 7, 50); clouds.heap(-120, -40, -420, 240, 120, 8, 44); clouds.heap(-420, -30, -60, 200, 100, 9, 40);
+    // mist under the falls, and heaps hugging the isle's underside
+    const mb = lip.clone().addScaledVector(lipOut, 5);
+    clouds.heap(mb.x, -48, mb.z, 26, 14, 10, 18);
+    for (let i = 0; i < 9; i++) { const a = cr() * Math.PI * 2, p = isle.rim.at(a); clouds.heap(p.x * 0.8 - 1, -46 - cr() * 4, p.z * 0.8 - 2, 22 + cr() * 18, 10 + cr() * 8, 20 + i, 12); }
+    // far isles: a big one with its village and falls right of centre, a windmill isle at the right edge, small ones
+    const isleAt = (deg: number, dist: number, y: number, o: Parameters<typeof farIsle>[0]) => {
+      const g = farIsle(o); g.position.copy(seen(deg, dist, y)); g.rotation.y = cr() * 6; scene.add(g); far.push(g); town.add(g);
+      const R = o.radius, d = o.depth ?? R * 1.4;
+      clouds.heap(g.position.x + R * 0.3, y - d * 1.05, g.position.z, R * 2.2, R * 0.6, 40 + far.length, 16);
+      return g;
     };
-    const rc = rng(11);
-    for (let i = 0; i < 26; i++) { const a = -1.3 + rc() * 2.6, d = 70 + rc() * 230; cumulus(22 + Math.cos(a) * d, -40 + rc() * 20 - d * 0.04, -12 + Math.sin(a) * d, 9 + rc() * 14, rc); }
-    for (let i = 0; i < 46; i++) { const a = -1.4 + rc() * 2.8, d = 30 + rc() * 220; cumulus(18 + Math.cos(a) * d, -52 + rc() * 6, -10 + Math.sin(a) * d, 10 + rc() * 10, rc); }
-    // towering cumulus far off beyond the edge, rising above the horizon like the pictures'
-    for (let i = 0; i < 9; i++) { const a = -0.9 + rc() * 1.9, d = 230 + rc() * 120; const s = 22 + rc() * 18; cumulus(20 + Math.cos(a) * d, -30 + rc() * 25, -10 + Math.sin(a) * d, s, rc); cumulus(20 + Math.cos(a) * d + s * 0.6, -30 + s * 1.2, -10 + Math.sin(a) * d, s * 0.75, rc); }
-    const im = new THREE.InstancedMesh(geo, cloudMat, mats.length);
-    mats.forEach((m, i) => im.setMatrixAt(i, m));
-    im.userData.noOutline = true;
-    scene.add(im);
-    // a few far islands for depth: ragged rock under a green crown with a cottage or two, faded by the haze
-    const rockM = paint(new THREE.MeshToonMaterial({ color: '#eadcbc', gradientMap: softRamp(), vertexColors: true }), { variation: 0.7 });
-    const topM = paint(new THREE.MeshToonMaterial({ color: '#9cba64', gradientMap: softRamp() }), { variation: 0.6 });
-    const wallM = paint(new THREE.MeshToonMaterial({ color: '#f4e8d0', gradientMap: softRamp() }), { variation: 0.3 });
-    const roofM = paint(new THREE.MeshToonMaterial({ color: '#56739f', gradientMap: softRamp() }), { variation: 0.3 });
-    const ri = rng(41);
-    for (const [x, y, z, s] of [[150, 6, -160, 20], [120, -10, 120, 12], [70, 18, -240, 26], [230, -2, -40, 15]] as const) {
-      const prof: THREE.Vector2[] = [];
-      for (let i = 0; i <= 10; i++) { const t = i / 10; prof.push(new THREE.Vector2(s * (0.08 + 0.92 * Math.pow(t, 0.6)) * (0.9 + ri() * 0.2), -s * 2.0 * (1 - t))); }
-      const rg = new THREE.LatheGeometry(prof, 11);
-      const rp = rg.attributes.position as THREE.BufferAttribute, rcol = new Float32Array(rp.count * 3);
-      for (let i = 0; i < rp.count; i++) { const k = 0.85 + 0.15 * Math.sin(rp.getY(i) * 0.9 / s * 6) + (ri() - 0.5) * 0.08; rcol.set([k, k * 0.97, k * 0.9], i * 3); rp.setX(i, rp.getX(i) * (0.92 + ri() * 0.16)); rp.setZ(i, rp.getZ(i) * (0.92 + ri() * 0.16)); }
-      rg.setAttribute('color', new THREE.Float32BufferAttribute(rcol, 3)); rg.computeVertexNormals();
-      const rock = new THREE.Mesh(rg, rockM); rock.position.set(x, y, z);
-      const top = new THREE.Mesh(new THREE.SphereGeometry(s * 1.0, 14, 6, 0, Math.PI * 2, 0, Math.PI * 0.5), topM); top.position.set(x, y - 0.2, z); top.scale.y = 0.16;
-      scene.add(rock, top);
-      for (let k = 0; k < 3; k++) {
-        const hx = x + (ri() - 0.5) * s * 0.9, hz = z + (ri() - 0.5) * s * 0.9, hs = s * 0.06;
-        const w = new THREE.Mesh(new THREE.CylinderGeometry(hs, hs, hs * 1.6, 8), wallM); w.position.set(hx, y + s * 0.14 + hs * 0.8, hz);
-        const rf = new THREE.Mesh(new THREE.ConeGeometry(hs * 1.4, hs * 1.4, 8), roofM); rf.position.set(hx, y + s * 0.14 + hs * 2.3, hz);
-        scene.add(w, rf);
-      }
-      for (let k = 0; k < 4; k++) { const tr = new THREE.Mesh(new THREE.IcosahedronGeometry(s * 0.09, 1), topM); tr.position.set(x + (ri() - 0.5) * s * 1.2, y + s * 0.2, z + (ri() - 0.5) * s * 1.2); tr.scale.y = 1.2; scene.add(tr); }
-      cumulus(x - s * 0.3, y - s * 2.4, z + s * 0.5, s * 0.55, rc);
-    }
+    isleAt(13, 240, 34, { radius: 21, seed: 3, cottages: 9, windmills: 2, trees: 12 });
+    isleAt(39, 170, 22, { radius: 13, seed: 5, cottages: 4, windmills: 1, trees: 6 });
+    isleAt(31, 290, 4, { radius: 9, seed: 7, cottages: 2, windmills: 0, trees: 4 });
+    isleAt(45, 220, -16, { radius: 8, seed: 9, cottages: 2, windmills: 1, trees: 3, falls: false });
+    isleAt(-22, 330, 30, { radius: 18, seed: 11, cottages: 5, windmills: 1, trees: 8 });
+    // for the wide view
+    const wf = farIsle({ radius: 22, seed: 13, cottages: 6, windmills: 1, trees: 8 }); wf.position.set(-190, 18, -230); scene.add(wf); far.push(wf); town.add(wf);
+    const wg = farIsle({ radius: 12, seed: 15, cottages: 3, windmills: 1, trees: 5 }); wg.position.set(-60, -6, -260); scene.add(wg); far.push(wg); town.add(wg);
+    scene.add(clouds.build());
   }
 
   // ---------------------------------------------------------------- the village
@@ -216,7 +156,7 @@ export default function (ctx: LabCtx): LabPiece {
   const place = (o: THREE.Object3D, x: number, z: number, ry = 0, dy = 0) => placeAt(o, x, ground(x, z) + dy, z, ry);
   const face = (from: THREE.Vector3, tx: number, tz: number) => Math.atan2(tx - from.x, tz - from.z);
   // the lanes
-  const laneMain = pavedPath([new THREE.Vector3(-1.6, 0, 12), new THREE.Vector3(-1.2, 0, 5.5), new THREE.Vector3(-0.2, 0, 0), new THREE.Vector3(0.6, 0, -5), new THREE.Vector3(0.6, 0, -10), new THREE.Vector3(-0.2, 0, -16), new THREE.Vector3(0.4, 0, -22)], 1.8, 4, ground);
+  const laneMain = pavedPath([new THREE.Vector3(-2.0, 0, 24), new THREE.Vector3(-1.6, 0, 12), new THREE.Vector3(-1.2, 0, 5.5), new THREE.Vector3(-0.2, 0, 0), new THREE.Vector3(0.6, 0, -5), new THREE.Vector3(0.6, 0, -10), new THREE.Vector3(-0.2, 0, -16), new THREE.Vector3(0.4, 0, -22)], 1.8, 4, ground);
   const laneBridge = pavedPath([new THREE.Vector3(0.5, 0, -4.2), new THREE.Vector3(4.5, 0, -5.4), new THREE.Vector3(7.4, 0, -6.4)], 1.3, 9, ground);
   const laneCliff = pavedPath([new THREE.Vector3(11.5, 0, -6.8), new THREE.Vector3(12.0, 0, -11), new THREE.Vector3(11.4, 0, -18.5)], 1.3, 12, ground);
   const lanes = [laneMain, laneBridge, laneCliff];
@@ -268,7 +208,7 @@ export default function (ctx: LabCtx): LabPiece {
   // windmills on the rise behind
   const wm1 = place(windmill({ seed: 5, height: 10 }), -7.8, -26, 0.5);
   place(windmill({ seed: 9, height: 8.6, gallery: false, speed: 0.4 }), 7.0, -30, -0.35);
-  place(windmill({ seed: 13, height: 7.5, gallery: false, speed: 0.7 }), -19, -40, 0.75);
+  place(windmill({ seed: 13, height: 7.5, gallery: false, speed: 0.7 }), -15, -35, 0.75);
   // laundry in the side yard between A and B
   place(laundryLine(5.4, 3), -10.2, -0.9, 0.22);
   // the market stall at the bend
@@ -285,11 +225,14 @@ export default function (ctx: LabCtx): LabPiece {
       place(f, x0, z0, ry);
     }
   };
-  const fenceA: [number, number][] = [[0.5, 11.5], [1.0, 5.5], [2.4, 1.4], [5.6, 0.4], [8.6, 0.6]];
+  // the fence from the foreground down to the bridge, between the lane and the stream meadow; along the cliff path;
+  // and along the top of the promontory past the falls
+  const fenceA: [number, number][] = [[0.4, 13.5], [0.9, 7.5], [2.4, 2.6], [4.9, -1.2], [6.8, -4.6]];
   fenceRun(fenceA, 2);
   const fenceB: [number, number][] = [[13.4, -5.6], [13.6, -12], [13.0, -19]];
   fenceRun(fenceB, 7);
-  fenceRun([[12.6, 3.2], [13.0, 9.5]], 11);
+  const fenceC: [number, number][] = [[12.7, 3.6], [12.9, 0.6], [14.4, -1.9]];
+  fenceRun(fenceC, 11);
   // low stone walls and hedges between the buildings
   const wall = (x0: number, z0: number, x1: number, z1: number, seed: number) => {
     const len = Math.hypot(x1 - x0, z1 - z0), w = stoneWall(len, { seed, heightAt: (x) => ground(x0 + (x1 - x0) * x / len, z0 + (z1 - z0) * x / len) - ground(x0, z0) });
@@ -348,7 +291,7 @@ export default function (ctx: LabCtx): LabPiece {
   // the doorsteps stay clear
   const doors = cottages.map(c => (c.userData.door as THREE.Vector3).clone().setZ((c.userData.door as THREE.Vector3).z - 0.25).applyMatrix4(c.matrixWorld.compose(c.position, c.quaternion, c.scale)));
   const density = (x: number, z: number) => {
-    if (x > EDGE(z) - 0.15) return 0;
+    if (rimD(x, z) > -0.25) return 0;
     if (distStream(x, z) < 1.15) return 0;
     const pd = pathDist(x, z);
     if (pd < -0.02) return 0;
@@ -364,7 +307,7 @@ export default function (ctx: LabCtx): LabPiece {
     const far = Math.hypot(x - camFocus.x, z - camFocus.z);
     return k * (far < 16 ? 1.35 : far > 26 ? Math.max(0.35, 1 - (far - 26) / 20) : 1);
   };
-  meadow(field, { bounds: [-24, -42, 16.5, 16], heightAt: ground, density, grass: 9, cover: 2.2, flowers: 0.35, seed: 5 });
+  meadow(field, { bounds: [-30, -46, 17.5, 28.5], heightAt: ground, density, grass: 6, cover: 1.6, flowers: 0.35, seed: 5 });
   // grass and clover spilling over the lane borders and filling the missing stones
   {
     const fr = rng(17);
@@ -398,8 +341,14 @@ export default function (ctx: LabCtx): LabPiece {
   flowerBed(field, { line: toV([[-2.4, -9.0], [-2.1, -12.0]]), depth: 0.9, side: -1, height: 0.8, heightAt: ground, keep: keepBed, seed: 9, density: 10 });
   flowerBed(field, { line: toV([[2.4, -4.0], [2.8, -7.8]]), depth: 0.9, side: 1, height: 0.8, heightAt: ground, keep: keepBed, seed: 10, density: 10, mix: { lavender: 2, coreopsis: 1.5 } });
   flowerBed(field, { line: toV([[12.8, -6], [13.0, -18]]), depth: 1.2, side: -1, height: 0.8, heightAt: ground, keep: keepBed, seed: 11, density: 9 });
-  flowerBed(field, { line: toV([[9.2, 0.2], [11.6, 3.4], [12.6, 8]]), depth: 1.3, side: -1, height: 0.9, heightAt: ground, keep: keepBed, seed: 12, density: 11, mix: { daisy: 2, lavender: 2, coreopsis: 1.5, cosmos: 1 } });
-  const flora = field.build();
+  flowerBed(field, { line: toV(fenceC), depth: 1.6, side: -1, height: 0.9, heightAt: ground, keep: keepBed, seed: 12, density: 11, mix: { daisy: 2, lavender: 2, coreopsis: 1.5, cosmos: 1 } });
+  // flowers crowding the lip in the foreground, as in picture 2 (lavender, daisies, cosmos tumbling to the edge)
+  {
+    const lipLine: THREE.Vector3[] = [];
+    for (let a = isle.rim.angleOf(9.6, 6.2); a < isle.rim.angleOf(1.5, 24); a += 0.012) { const p = isle.rim.at(a), c = new THREE.Vector3(isle.rim.cx, 0, isle.rim.cz); lipLine.push(p.lerp(c, 0.035)); }
+    flowerBed(field, { line: lipLine, depth: 2.6, side: 1, height: 1.0, heightAt: ground, keep: keepBed, seed: 13, density: 12, mix: { lavender: 2.5, daisy: 3, cosmos: 1.5, coreopsis: 1.2, alyssum: 1 } });
+  }
+  const flora = field.build(undefined, { sortFrom: V, fade: [14, 30] });
   scene.add(flora);
 
   // ---------------------------------------------------------------- stats
@@ -422,14 +371,15 @@ export default function (ctx: LabCtx): LabPiece {
       if (ringAt >= 0 && !rung && t > ringAt) { rung = true; for (const c of town.chimes) c.ring(2); }
       fallTex.offset.y += dt * 1.4;
       town.update(dt, t);
+      clouds.update(ctx.camera);
     },
     views: {
-      village: { pos: [-2.3, 1.85, 11.0], look: [2.4, 2.6, -6], fov: 55 },
+      village: { pos: [V.x, V.y, V.z], look: [VL.x, VL.y, VL.z], fov: 55 },
       door: { pos: doorCam(3.4, 1.55, 1.4), look: [doorPos.x + side.x * 0.2, cA.position.y + 1.5, doorPos.z + side.z * 0.2], fov: 46 },
       windmill: { pos: [wmCam.x, wmCam.y, wmCam.z], look: [wm1.position.x, wm1.position.y + 7.0, wm1.position.z], fov: 55 },
       yard: { pos: [-8.4, 1.55, -5.9], look: [-7.2, 1.35, -1.0], fov: 58 },
       wide: { pos: [27, 12, 20], look: [-1, 1, -9], fov: 50 },
-      gate: { pos: [gp.x - 9.5, gp.y + 4.5, gp.z + 9.5], look: [gp.x, gp.y + 7.5, gp.z], fov: 50 },
+      gate: { pos: [gp.x - 6.5, gp.y + 7.0, gp.z + 8.0], look: [gp.x - 0.5, gp.y + 7.2, gp.z], fov: 50 },
       stall: { pos: [stall.position.x - 3.0, stall.position.y + 1.7, stall.position.z + 4.0], look: [stall.position.x, stall.position.y + 1.0, stall.position.z], fov: 50 },
     },
   };

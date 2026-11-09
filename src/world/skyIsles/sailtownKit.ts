@@ -28,7 +28,34 @@ function canvasTex(S: number, seed: number, draw: (x: CanvasRenderingContext2D, 
   const x = c.getContext('2d')!;
   draw(x, rng(seed));
   const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4;
+  t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8;
+  t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.generateMipmaps = true;
+  return t;
+}
+/**
+ * A tangent-space normal map from a texture's brightness (light = raised): blurred first, so it gives soft stone
+ * bumps and plaster relief rather than speckle. Used on the walls and stones so they catch the sun unevenly.
+ */
+function normalFrom(src: THREE.Texture, strength: number, blur = 2): THREE.Texture {
+  const img = src.image as HTMLCanvasElement, S = img.width;
+  const c = document.createElement('canvas'); c.width = c.height = S;
+  const x = c.getContext('2d')!;
+  x.filter = `blur(${blur}px)`;
+  // draw tiled 3x3 so the blur wraps across the seams
+  for (const dx of [-S, 0, S]) for (const dy of [-S, 0, S]) x.drawImage(img, dx, dy);
+  const d = x.getImageData(0, 0, S, S).data;
+  const h = new Float32Array(S * S);
+  for (let i = 0; i < S * S; i++) h[i] = (d[i * 4] * 0.3 + d[i * 4 + 1] * 0.59 + d[i * 4 + 2] * 0.11) / 255;
+  const out = x.createImageData(S, S);
+  const at = (i: number, j: number) => h[((j + S) % S) * S + ((i + S) % S)];
+  for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
+    const nx = (at(i - 1, j) - at(i + 1, j)) * strength, ny = (at(i, j + 1) - at(i, j - 1)) * strength;
+    const l = Math.hypot(nx, ny, 1), o = (j * S + i) * 4;
+    out.data[o] = (nx / l * 0.5 + 0.5) * 255; out.data[o + 1] = (ny / l * 0.5 + 0.5) * 255; out.data[o + 2] = (1 / l * 0.5 + 0.5) * 255; out.data[o + 3] = 255;
+  }
+  x.filter = 'none'; x.putImageData(out, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.NoColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8;
   return t;
 }
 function blot(x: CanvasRenderingContext2D, cx: number, cy: number, rad: number, rgb: string, a: number) {
@@ -67,64 +94,94 @@ const onceTex = (k: string, f: () => THREE.Texture) => { let t = texCache.get(k)
 export const WALL_TILE = 2.4;
 export const wallTex = () => onceTex('wall', () => canvasTex(512, 21, (x, r) => {
   const S = 512;
-  x.fillStyle = '#fbf7ee'; x.fillRect(0, 0, S, S);
-  for (let i = 0; i < 90; i++) { const cx = r() * S, cy = r() * S, rr = 20 + r() * 60; wrapped(S, cx, cy, rr, (X, Y) => blot(x, X, Y, rr, r() > 0.5 ? '232,220,196' : '255,252,244', 0.45)); }
-  // exposed stone patches: few, warm, and close in value to the plaster so they never read as grey blotches in shade
-  for (let p = 0; p < 2; p++) {
-    const px = r() * S, py = r() * S, pr = 26 + r() * 30;
-    const stones: [number, number, number, number, number][] = [];
-    for (let i = 0; i < 11; i++) {
-      const a = r() * Math.PI * 2, d = Math.sqrt(r()) * pr;
-      stones.push([px + Math.cos(a) * d, py + Math.sin(a) * d * 0.8, 10 + r() * 12, 7 + r() * 7, 0.94 + r() * 0.06]);
+  x.fillStyle = '#fbf3e2'; x.fillRect(0, 0, S, S);
+  // trowelled lime: broad soft blots, warm and cool, so the plaster never reads as one flat grey
+  for (let i = 0; i < 110; i++) { const cx = r() * S, cy = r() * S, rr = 18 + r() * 64; wrapped(S, cx, cy, rr, (X, Y) => blot(x, X, Y, rr, r() > 0.5 ? '228,206,168' : '255,250,238', 0.5)); }
+  // exposed rubble where the plaster has fallen: irregular patches (several overlapping lobes) with flattish stones
+  // laid in rough courses inside, warm and close in value to the plaster, each lit on top and shaded at its foot
+  for (let p = 0; p < 5; p++) {
+    const px = r() * S, py = r() * S, pw = 44 + r() * 70, ph = 24 + r() * 30;
+    const lobes: [number, number, number, number][] = [];
+    for (let k = 0; k < 5; k++) lobes.push([px + (r() - 0.5) * pw, py + (r() - 0.5) * ph * 0.6, pw * (0.28 + r() * 0.3), ph * (0.38 + r() * 0.3)]);
+    const inside = (x0: number, y0: number) => lobes.some(([lx, ly, rx, ry]) => ((x0 - lx) / rx) ** 2 + ((y0 - ly) / ry) ** 2 < 1);
+    for (const [lx, ly, rx, ry] of lobes) wrapped(S, lx, ly, rx + 6, (X, Y) => { x.fillStyle = 'rgba(200,164,116,0.5)'; x.beginPath(); x.ellipse(X, Y, rx + 3, ry + 3, 0, 0, Math.PI * 2); x.fill(); });
+    for (let y0 = py - ph * 0.7; y0 < py + ph * 0.7; y0 += 9 + r() * 4) {
+      for (let x0 = px - pw * 0.8 + r() * 6; x0 < px + pw * 0.8;) {
+        const w = 11 + r() * 15, h = 6.5 + r() * 3.5;
+        if (inside(x0 + w / 2, y0)) wrapped(S, x0 + w / 2, y0, w, (X, Y) => {
+          const v = 0.9 + r() * 0.1;
+          x.fillStyle = `rgb(${Math.round(244 * v)},${Math.round(226 * v)},${Math.round(192 * v)})`;
+          x.beginPath(); x.roundRect(X - w / 2 + 1.5, Y - h / 2, w - 3, h, 3); x.fill();
+          x.fillStyle = 'rgba(255,250,234,0.6)'; x.fillRect(X - w / 2 + 3, Y - h / 2 + 0.5, w - 6, 1.6);
+          x.fillStyle = 'rgba(140,106,70,0.35)'; x.fillRect(X - w / 2 + 2.5, Y + h / 2 - 1.6, w - 5, 1.4);
+        });
+        x0 += w;
+      }
     }
-    for (const [sx, sy, rw, rh, v] of stones) wrapped(S, sx, sy, rw + 4, (X, Y) => {
-      // a warm ochre joint, then the stone face, then a light top edge
-      x.fillStyle = 'rgba(214,180,128,0.32)'; stoneShape(x, r, X, Y + 1, rw + 2, rh + 2); x.fill();
-      const c = Math.round(252 * v), c2 = Math.round(240 * v), c3 = Math.round(214 * v);
-      x.fillStyle = `rgb(${c},${c2},${c3})`; stoneShape(x, r, X, Y, rw, rh); x.fill();
-      x.fillStyle = 'rgba(255,251,240,0.6)'; stoneShape(x, r, X - rw * 0.1, Y - rh * 0.25, rw * 0.6, rh * 0.45); x.fill();
-    });
   }
-  // speckle and pits
-  for (let i = 0; i < 2600; i++) {
+  // rough render: grit, pits and tiny lumps
+  for (let i = 0; i < 5200; i++) {
     const v = r();
-    x.fillStyle = v > 0.5 ? `rgba(176,146,104,${0.1 + r() * 0.16})` : `rgba(255,255,250,${0.2 + r() * 0.3})`;
-    x.fillRect(r() * S, r() * S, 1 + r() * 2, 1 + r() * 2);
+    x.fillStyle = v > 0.55 ? `rgba(170,134,90,${0.08 + r() * 0.16})` : `rgba(255,252,242,${0.25 + r() * 0.35})`;
+    const s2 = 1 + r() * 2.5; x.fillRect(r() * S, r() * S, s2, s2);
   }
-  // weather streaks running down
-  for (let i = 0; i < 10; i++) {
-    const sx = r() * S, w = 6 + r() * 16, h = 80 + r() * 160, sy = r() * S;
-    const g = x.createLinearGradient(0, sy, 0, sy + h); g.addColorStop(0, 'rgba(190,160,112,0.14)'); g.addColorStop(1, 'rgba(190,160,112,0)');
+  // weather streaks running down from the eaves and sills
+  for (let i = 0; i < 12; i++) {
+    const sx = r() * S, w = 6 + r() * 18, h = 80 + r() * 180, sy = r() * S;
+    const g = x.createLinearGradient(0, sy, 0, sy + h); g.addColorStop(0, 'rgba(184,150,104,0.16)'); g.addColorStop(1, 'rgba(184,150,104,0)');
     x.fillStyle = g; x.fillRect(sx, sy, w, h);
   }
-  // hairline cracks
-  x.strokeStyle = 'rgba(120,96,76,0.35)'; x.lineWidth = 1;
+  x.strokeStyle = 'rgba(120,92,66,0.35)'; x.lineWidth = 1;
   for (let i = 0; i < 6; i++) { let px = r() * S, py = r() * S; x.beginPath(); x.moveTo(px, py); for (let k = 0; k < 5; k++) { px += (r() - 0.5) * 22; py += 6 + r() * 12; x.lineTo(px, py); } x.stroke(); }
 }));
+export const wallNormal = () => onceTex('wallN', () => normalFrom(wallTex(), 7, 1.5));
 
 /** Dry-laid cream stones: rounded blocks in courses with deep joints (footings, steps, bridge piers). STONE_TILE metres. */
 export const STONE_TILE = 1.6;
-export const stoneTex = () => onceTex('stone', () => canvasTex(256, 33, (x, r) => {
-  const S = 256;
-  x.fillStyle = '#8c7a66'; x.fillRect(0, 0, S, S);
-  const rows = 6, h = S / rows;
-  for (let j = 0; j < rows; j++) {
-    let cx = (j % 2) * 20 - 10;
-    while (cx < S + 20) {
-      const w = 34 + r() * 30, v = 0.78 + r() * 0.24;
-      const px = cx + w / 2, py = j * h + h / 2;
-      wrapped(S, px, py, w, (X, Y) => {
-        x.fillStyle = `rgb(${Math.round(250 * v)},${Math.round(238 * v)},${Math.round(215 * v)})`;
-        x.beginPath(); x.roundRect(X - w / 2 + 2, Y - h / 2 + 2, w - 4, h - 4, 9); x.fill();
-        x.fillStyle = 'rgba(255,252,240,0.45)'; x.beginPath(); x.roundRect(X - w / 2 + 5, Y - h / 2 + 4, w - 12, h * 0.35, 6); x.fill();
-        x.fillStyle = 'rgba(120,100,80,0.18)'; x.fillRect(X - w / 2 + 3, Y + h * 0.18, w - 6, h * 0.2);
+export const stoneTex = () => onceTex('stone', () => canvasTex(512, 33, (x, r) => {
+  const S = 512;
+  x.fillStyle = '#8a7660'; x.fillRect(0, 0, S, S);
+  // courses of uneven height; blocks of uneven length, a few small fillers
+  let y = 0;
+  while (y < S - 8) {
+    const h = Math.min(S - y, 40 + Math.floor(r() * 4) * 12);
+    let cx = r() * 40 - 40;
+    while (cx < S) {
+      const w = r() < 0.2 ? 26 + r() * 18 : 56 + r() * 70, v = 0.8 + r() * 0.2;
+      const X0 = cx, Y0 = y;
+      wrapped(S, X0 + w / 2, Y0 + h / 2, w, (X, Y) => {
+        const x0 = X - w / 2 + 3, y0 = Y - h / 2 + 3, ww = w - 6, hh = h - 6;
+        x.fillStyle = `rgb(${Math.round(244 * v)},${Math.round(230 * v)},${Math.round(204 * v)})`;
+        x.beginPath(); x.roundRect(x0, y0, ww, hh, 5); x.fill();
+        // a lit top and a shaded foot on every block: crisp, small bevels
+        x.fillStyle = 'rgba(255,250,236,0.55)'; x.fillRect(x0 + 2, y0 + 1, ww - 4, 4);
+        x.fillStyle = 'rgba(110,86,62,0.28)'; x.fillRect(x0 + 2, y0 + hh - 5, ww - 4, 4);
+        // tooling and weather on the face
+        for (let k = 0; k < 6; k++) blot(x, x0 + r() * ww, y0 + r() * hh, 6 + r() * 12, r() > 0.5 ? '200,176,140' : '255,248,232', 0.3);
       });
       cx += w;
     }
+    y += h;
   }
-  for (let i = 0; i < 900; i++) { x.fillStyle = `rgba(110,90,70,${0.1 + r() * 0.15})`; x.fillRect(r() * S, r() * S, 1 + r() * 2, 1); }
-  for (let i = 0; i < 10; i++) { const cx = r() * S, cy = r() * S; wrapped(S, cx, cy, 20, (X, Y) => blot(x, X, Y, 8 + r() * 12, '120,150,80', 0.35)); }
+  for (let i = 0; i < 1800; i++) { x.fillStyle = `rgba(110,90,70,${0.08 + r() * 0.14})`; x.fillRect(r() * S, r() * S, 1 + r() * 2, 1 + r() * 2); }
+  for (let i = 0; i < 12; i++) { const cx = r() * S, cy = r() * S; wrapped(S, cx, cy, 24, (X, Y) => blot(x, X, Y, 8 + r() * 14, '130,150,84', 0.3)); }
 }));
+/**
+ * Dressed sandstone without coursing, for single blocks (steps, wall stones, the doorstep): a warm granular face with
+ * tooling streaks, soft weather stains and pits. Near white, so vertex colours set each block's tone.
+ */
+export const slabTex = () => onceTex('slab', () => canvasTex(512, 41, (x, r) => {
+  const S = 512;
+  x.fillStyle = '#f6f0e4'; x.fillRect(0, 0, S, S);
+  for (let i = 0; i < 80; i++) { const cx = r() * S, cy = r() * S, rr = 20 + r() * 70; wrapped(S, cx, cy, rr, (X, Y) => blot(x, X, Y, rr, r() > 0.5 ? '214,196,166' : '255,252,244', 0.4)); }
+  // diagonal tooling, very faint
+  x.strokeStyle = 'rgba(150,128,96,0.08)'; x.lineWidth = 1.5;
+  for (let i = 0; i < 160; i++) { const px = r() * S, py = r() * S; x.beginPath(); x.moveTo(px, py); x.lineTo(px + 14, py + 10); x.stroke(); }
+  for (let i = 0; i < 4200; i++) { const v = r(); x.fillStyle = v > 0.5 ? `rgba(140,112,80,${0.08 + r() * 0.14})` : `rgba(255,253,246,${0.2 + r() * 0.3})`; const s2 = 1 + r() * 2.2; x.fillRect(r() * S, r() * S, s2, s2); }
+  for (let i = 0; i < 14; i++) { const cx = r() * S, cy = r() * S; wrapped(S, cx, cy, 30, (X, Y) => blot(x, X, Y, 10 + r() * 20, '150,140,96', 0.18)); }
+}));
+export const slabNormal = () => onceTex('slabN', () => normalFrom(slabTex(), 5, 1.2));
+export const stoneNormal = () => onceTex('stoneN', () => normalFrom(stoneTex(), 6, 1.2));
 
 /** Wood grain without plank joints (planks are real geometry). Grain runs along U. WOOD_TILE metres. */
 export const WOOD_TILE = 1.2;
@@ -146,13 +203,84 @@ export const grainTex = () => onceTex('grain', () => canvasTex(256, 45, (x, r) =
   }
 }));
 
-/** Linen weave: very faint threads, for sheets, sails and awnings. */
-export const linenTex = () => onceTex('linen', () => canvasTex(128, 57, (x, r) => {
-  const S = 128;
+/**
+ * Linen weave at 512 px: fine warp and weft threads with slubs, and a few soft tonal clouds. One tile covers
+ * LINEN_TILE metres (cloth UVs are in metres), so the weave stays a fine texture and never a pattern of blocks.
+ */
+export const LINEN_TILE = 0.35;
+export const linenTex = () => onceTex('linen', () => canvasTex(512, 57, (x, r) => {
+  const S = 512;
   x.fillStyle = '#ffffff'; x.fillRect(0, 0, S, S);
-  for (let i = 0; i < S; i += 2) { x.fillStyle = `rgba(150,140,120,${0.04 + r() * 0.05})`; x.fillRect(0, i, S, 1); x.fillRect(i, 0, 1, S); }
-  for (let i = 0; i < 12; i++) { const cx = r() * S, cy = r() * S; wrapped(S, cx, cy, 30, (X, Y) => blot(x, X, Y, 14 + r() * 16, '220,210,190', 0.25)); }
+  for (let i = 0; i < S; i += 3) {
+    x.fillStyle = `rgba(150,138,118,${0.05 + r() * 0.06})`; x.fillRect(0, i, S, 1);
+    x.fillStyle = `rgba(150,138,118,${0.04 + r() * 0.05})`; x.fillRect(i, 0, 1, S);
+  }
+  // slubs: short thicker threads
+  for (let i = 0; i < 260; i++) { x.fillStyle = `rgba(140,126,104,${0.06 + r() * 0.08})`; if (r() > 0.5) x.fillRect(r() * S, Math.floor(r() * S / 3) * 3, 8 + r() * 26, 1.5); else x.fillRect(Math.floor(r() * S / 3) * 3, r() * S, 1.5, 8 + r() * 26); }
+  for (let i = 0; i < 16; i++) { const cx = r() * S, cy = r() * S; wrapped(S, cx, cy, 60, (X, Y) => blot(x, X, Y, 30 + r() * 30, '226,216,196', 0.22)); }
 }));
+
+/** Fine engraving for the race gate's brass: a running scroll of vines and curls along the band (v 0.3..0.7). */
+export const engraveTex = () => onceTex('engrave', () => {
+  const W = 1024, H = 128, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d')!;
+  x.fillStyle = '#ffffff'; x.fillRect(0, 0, W, H);
+  // the band between two fine borders
+  x.fillStyle = 'rgba(196,160,96,0.5)'; x.fillRect(0, 36, W, 3); x.fillRect(0, 89, W, 3);
+  x.strokeStyle = 'rgba(150,112,52,0.75)'; x.lineWidth = 2.2; x.lineCap = 'round';
+  const per = 128;
+  x.beginPath();
+  for (let i = 0; i <= W; i += 4) { const y = 64 + Math.sin((i / per) * Math.PI * 2) * 14; if (i) x.lineTo(i, y); else x.moveTo(i, y); }
+  x.stroke();
+  for (let k = 0; k < W / per * 2; k++) {
+    const cx = k * per / 2 + per / 4, up = k % 2 ? 1 : -1, cy = 64 + up * 6;
+    x.beginPath();
+    for (let t = 0; t < 1; t += 0.04) { const a = t * Math.PI * 3.2, rr = 15 * (1 - t); const px = cx + Math.cos(a) * rr, py = cy + up * (Math.sin(a) * rr * 0.8 + 6); if (t) x.lineTo(px, py); else x.moveTo(px, py); }
+    x.stroke();
+    // a small leaf on the stalk
+    x.beginPath(); x.ellipse(cx - 20, 64 - up * 10, 7, 3, up * 0.6, 0, Math.PI * 2); x.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace; t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.ClampToEdgeWrapping; t.anisotropy = 8;
+  return t;
+});
+
+/**
+ * Sailtown's own leaf sheet: a cluster of soft, rounded leaves with painted light and a midrib, cut out by an alpha
+ * that is blurred before the cut-off, so card edges come out clean (no ragged pixel fringe for the ink to trace).
+ */
+export const leafSheetTex = () => onceTex('leafSheet', () => {
+  const S = 512, c = document.createElement('canvas'); c.width = c.height = S;
+  const x = c.getContext('2d')!;
+  const r = rng(77);
+  x.filter = 'blur(1.6px)';
+  const leaves: [number, number, number, number, number, number][] = [];
+  for (let i = 0; i < 30; i++) {
+    const a = r() * Math.PI * 2, d = Math.pow(r(), 0.8) * S * 0.3;
+    leaves.push([S / 2 + Math.cos(a) * d, S / 2 + Math.sin(a) * d, 52 + r() * 34, a + (r() - 0.5) * 1.0, 0.72 + r() * 0.28, d]);
+  }
+  leaves.sort((p, q) => q[5] - p[5]);
+  // a dense inner body so the cluster reads as a mass, leaves round its edge
+  x.fillStyle = grey(0.7); x.beginPath(); x.arc(S / 2, S / 2, S * 0.24, 0, Math.PI * 2); x.fill();
+  for (const [cx, cy, len, rot, v] of leaves) {
+    x.save(); x.translate(cx, cy); x.rotate(rot);
+    const wid = len * 0.46;
+    const g = x.createLinearGradient(0, -wid, 0, wid); g.addColorStop(0, grey(v)); g.addColorStop(1, grey(v * 0.8));
+    x.fillStyle = g; x.beginPath(); x.moveTo(-len * 0.5, 0);
+    x.bezierCurveTo(-len * 0.2, -wid, len * 0.35, -wid * 0.9, len * 0.55, 0);
+    x.bezierCurveTo(len * 0.35, wid * 0.9, -len * 0.2, wid, -len * 0.5, 0); x.fill();
+    x.restore();
+  }
+  x.filter = 'none';
+  for (const [cx, cy, len, rot, v] of leaves) {
+    x.save(); x.translate(cx, cy); x.rotate(rot);
+    x.strokeStyle = grey(Math.min(1, v + 0.15), 0.6); x.lineWidth = 2; x.beginPath(); x.moveTo(-len * 0.4, 0); x.quadraticCurveTo(0, -2, len * 0.45, 0); x.stroke();
+    x.restore();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  return t;
+});
 
 // ---------------------------------------------------------------- flora atlas
 
@@ -216,17 +344,22 @@ export const floraAtlas = () => onceTex('flora', () => {
     x.lineWidth = 3;
     for (let i = 1; i < 8; i++) { const y = 230 - i * 26; for (const s of [-1, 1]) { x.beginPath(); x.moveTo(128, y); x.quadraticCurveTo(128 + s * 40, y - 20, 128 + s * 70 * Math.sin(Math.PI * (1 - i / 9)), y - 44); x.stroke(); } }
   });
-  // lavender spike: a long green stem, and on its top third loose whorls of small florets with gaps between them
+  // lavender spike: a thin grey-green stem; on its top 45% a tapering column of tiny florets in whorls, the gaps between
+  // whorls opening toward the base, pale at the tip and deeper below (the instance colour sets the violet)
   cell(CELL.lavender, () => {
-    x.strokeStyle = '#6a8a55'; x.lineWidth = 6; x.beginPath(); x.moveTo(128, 256); x.quadraticCurveTo(124, 160, 130, 18); x.stroke();
-    for (let band = 9; band >= 0; band--) {
-      const y = 18 + band * 11, w = 7 + band * 2.2;
-      const n = 5 + band;
+    x.strokeStyle = '#7f9468'; x.lineWidth = 3.2; x.lineCap = 'round';
+    x.beginPath(); x.moveTo(128, 256); x.quadraticCurveTo(126, 170, 129, 22); x.stroke();
+    x.filter = 'blur(0.7px)';
+    for (let k = 13; k >= 0; k--) {
+      const y = 16 + k * 8 + Math.max(0, k - 7) * 3.2, w = 3 + k * 1.15;
+      const n = 3 + Math.round(k * 0.5);
       for (let i = 0; i < n; i++) {
-        const fx = 129 + (r() - 0.5) * 2 * w, fy = y + (r() - 0.5) * 6;
-        x.fillStyle = grey(0.5 + r() * 0.5); x.beginPath(); x.ellipse(fx, fy, 5 + r() * 4, 6 + r() * 4, (r() - 0.5), 0, Math.PI * 2); x.fill();
+        const fx = 129 + (r() - 0.5) * 2 * w, fy = y + (r() - 0.5) * 5;
+        x.fillStyle = grey(Math.min(1, 1.02 - k * 0.022 + (r() - 0.5) * 0.12));
+        x.beginPath(); x.ellipse(fx, fy, 3 + r() * 2.2, 3.6 + r() * 2.4, (r() - 0.5) * 0.8, 0, Math.PI * 2); x.fill();
       }
     }
+    x.filter = 'none';
   });
   // coreopsis: eight broad petals with toothed tips round a maroon eye
   cell(CELL.coreopsis, () => {
@@ -267,7 +400,7 @@ export const floraAtlas = () => onceTex('flora', () => {
   // grass tuft: blades from the root, darker ones behind
   cell(CELL.grass, () => {
     const bl: [number, number, number, number][] = [];
-    for (let i = 0; i < 24; i++) bl.push([128 + (r() - 0.5) * 70, 128 + (r() - 0.5) * 210, 14 + r() * 110, 0.76 + r() * 0.24]);
+    for (let i = 0; i < 24; i++) bl.push([128 + (r() - 0.5) * 70, 128 + (r() - 0.5) * 210, 14 + r() * 110, 0.87 + r() * 0.13]);
     bl.sort((a, b) => a[3] - b[3]);
     for (const [bx, tx, ty, v] of bl) {
       const w = 7 + r() * 6;
@@ -367,8 +500,8 @@ const floraMats = new Map<string, THREE.MeshToonMaterial>();
  * instance colour); coloured texels keep their own. `sway` bends instanced plants from the root up in the wind;
  * `noDepth` draws without writing depth, late, so dense grass and ground cover never catch the finish pass's ink.
  */
-export function floraCardMat(sway = 0, noDepth = false): THREE.MeshToonMaterial {
-  const key = sway + (noDepth ? 'n' : '');
+export function floraCardMat(sway = 0, noDepth = false, fade?: [number, number]): THREE.MeshToonMaterial {
+  const key = sway + (noDepth ? 'n' : '') + (fade ? 'f' + fade.join('_') : '');
   let m = floraMats.get(key);
   if (m) return m;
   m = paint(new THREE.MeshToonMaterial({ color: '#ffffff', map: floraAtlas(), alphaTest: 0.42, gradientMap: softRamp(), vertexColors: true, side: THREE.DoubleSide }), { variation: 0.45, rim: 0.9 });
@@ -382,6 +515,18 @@ export function floraCardMat(sway = 0, noDepth = false): THREE.MeshToonMaterial 
         #ifdef USE_INSTANCING_COLOR
           vColor.rgb *= mix(vec3(1.0), instanceColor.rgb, aTint);
         #endif`);
+    // fade: ground cards shrink into the ground with distance, so the mid and far meadow is the painted ground (no
+    // carpet of cards), and the near tufts melt into it
+    if (fade) s.vertexShader = s.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+        {
+          #ifdef USE_INSTANCING
+            vec3 fp = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+          #else
+            vec3 fp = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+          #endif
+          float fk = 1.0 - smoothstep(${fade[0].toFixed(1)}, ${fade[1].toFixed(1)}, distance(fp, cameraPosition));
+          transformed *= fk;
+        }`);
     if (sway > 0) s.vertexShader = s.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
         {
           #ifdef USE_INSTANCING
@@ -410,7 +555,7 @@ export function floraCardMat(sway = 0, noDepth = false): THREE.MeshToonMaterial 
 
 // ---------------------------------------------------------------- materials
 
-export type MatKind = 'wall' | 'stone' | 'wood' | 'plain' | 'bloom' | 'slate' | 'brass' | 'silver' | 'glass' | 'canvas' | 'cloth' | 'leaf' | 'flora' | 'core';
+export type MatKind = 'wall' | 'stone' | 'wood' | 'plain' | 'bloom' | 'slate' | 'brass' | 'silver' | 'glass' | 'canvas' | 'cloth' | 'leaf' | 'flora' | 'core' | 'satin' | 'chrome' | 'rough' | 'floraSoft';
 
 /**
  * Chain a shader patch after paint()'s own onBeforeCompile (paint must be applied first).
@@ -425,23 +570,47 @@ export function chainCompile(mat: THREE.Material, key: string, fn: (s: THREE.Web
 }
 
 /** A sharp sun glint and a sky sheen on top of the painted toon look, for brass, pewter and glass. */
-function metalSheen(mat: THREE.MeshToonMaterial, glint: number, sheen: string) {
-  return chainCompile(mat, 'metal' + glint, (s) => {
+function metalSheen(mat: THREE.MeshToonMaterial, glint: number, sheen: string, sheenK = 0.45, glintW = 0.86) {
+  return chainCompile(mat, 'metal' + glint + '_' + sheenK + '_' + glintW, (s) => {
     s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uSunCol;').replace('#include <opaque_fragment>', `
       {
         vec3 mR = reflect(-pV, pN);
-        float mG = smoothstep(0.86, 0.97, dot(mR, uSun));
+        float mG = smoothstep(${glintW.toFixed(3)}, 0.97, dot(mR, uSun));
         float mS = smoothstep(-0.2, 0.9, mR.y) * pow(1.0 - clamp(dot(pN, pV), 0.0, 1.0), 1.5);
-        outgoingLight += uSunCol * mG * ${glint.toFixed(2)} + vec3(${new THREE.Color(sheen).toArray().map(v => v.toFixed(3)).join(',')}) * mS * 0.45;
+        outgoingLight += uSunCol * mG * ${glint.toFixed(2)} + vec3(${new THREE.Color(sheen).toArray().map(v => v.toFixed(3)).join(',')}) * mS * ${sheenK.toFixed(2)};
+      }
+      #include <opaque_fragment>`);
+  });
+}
+
+/**
+ * Polished pewter for chime tubes: a bright vertical specular strip that follows the camera (the sky reflected down a
+ * cylinder), a dark band beside it, and the sun glint. Reads as metal tubes from any side, never as white sticks.
+ */
+function chromeSheen(mat: THREE.MeshToonMaterial) {
+  return chainCompile(mat, 'chrome', (s) => {
+    s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uSunCol;').replace('#include <opaque_fragment>', `
+      {
+        // the tube's normal across the view: a strip a little left of the centre line, a dark band right of it
+        vec3 cRight = normalize(cross(pV, vec3(0.0, 1.0, 0.0)));
+        float cx = dot(pN, cRight);
+        float strip = smoothstep(0.42, 0.22, abs(cx + 0.32));
+        float dark = smoothstep(0.25, 0.05, abs(cx - 0.35));
+        vec3 mR = reflect(-pV, pN);
+        float mG = smoothstep(0.9, 0.98, dot(mR, uSun));
+        outgoingLight = outgoingLight * (1.0 - dark * 0.42) + vec3(1.0, 0.99, 0.96) * strip * 0.55 + uSunCol * mG * 1.3;
       }
       #include <opaque_fragment>`);
   });
 }
 
 let leafMatRef: THREE.Material | null = null;
-/** The leaf-card material from the shared foliage code, white so vertex colours set each clump's green. */
+/**
+ * The leaf-card material: Sailtown's own soft leaf sheet, white so vertex colours set each mass's green, cut out at a
+ * high threshold from a blurred alpha so edges are clean.
+ */
 export function leafMat(): THREE.Material {
-  if (!leafMatRef) leafMatRef = (leafClump({ radius: 1, color: '#ffffff', cards: 1, core: false }).children[0] as THREE.Mesh).material as THREE.Material;
+  if (!leafMatRef) leafMatRef = paint(new THREE.MeshToonMaterial({ color: '#ffffff', map: leafSheetTex(), alphaTest: 0.55, gradientMap: softRamp(), vertexColors: true, side: THREE.DoubleSide }), { variation: 0.6, rim: 1.2 });
   return leafMatRef;
 }
 
@@ -452,8 +621,10 @@ export function townMat(kind: MatKind): THREE.Material {
   if (m) return m;
   const base = (o: THREE.MeshToonMaterialParameters = {}) => new THREE.MeshToonMaterial({ color: '#ffffff', gradientMap: softRamp(), vertexColors: true, ...o });
   switch (kind) {
-    case 'wall': m = paint(base({ map: wallTex() }), { variation: 0.5 }); break;
-    case 'stone': m = paint(base({ map: stoneTex() }), { variation: 0.6 }); break;
+    case 'wall': m = paint(base({ map: wallTex(), normalMap: wallNormal(), normalScale: new THREE.Vector2(0.9, 0.9) }), { variation: 0.5 }); break;
+    case 'stone': m = paint(base({ map: stoneTex(), normalMap: stoneNormal(), normalScale: new THREE.Vector2(0.8, 0.8) }), { variation: 0.6 }); break;
+    // untextured rough stone (steps, rubble): the stone relief without its coursing
+    case 'rough': m = paint(base({ map: slabTex(), normalMap: slabNormal(), normalScale: new THREE.Vector2(0.7, 0.7) }), { variation: 0.8 }); break;
     case 'wood': m = paint(base({ map: grainTex() }), { variation: 0.5 }); break;
     case 'plain': m = paint(base(), { variation: 0.5 }); break;
     // small flora and trinkets: never inked (a hull would swallow a 5 cm bloom), lit from both sides
@@ -462,11 +633,16 @@ export function townMat(kind: MatKind): THREE.Material {
     case 'brass': m = metalSheen(paint(base(), { variation: 0.2, rim: 1.6 }), 1.6, '#fff1c8'); break;
     case 'silver': m = metalSheen(paint(base(), { variation: 0.15, rim: 1.4 }), 1.5, '#e8f2ff'); break;
     case 'glass': m = metalSheen(paint(base(), { variation: 0.1, rim: 0.6 }), 1.2, '#cfe6ff'); break;
+    // satin brass with fine engraving (the race gate): a broad soft glint, a faint sheen, no plastic shine
+    case 'satin': m = metalSheen(paint(base({ map: engraveTex() }), { variation: 0.25, rim: 0.9 }), 0.5, '#f4dca0', 0.22, 0.6); break;
+    case 'chrome': m = chromeSheen(paint(base(), { variation: 0.1, rim: 0.8 })); break;
     case 'canvas': m = paint(base({ map: linenTex(), side: THREE.DoubleSide }), { variation: 0.3, rim: 1.2 }); break;
     case 'cloth': m = windCloth(); break;
     case 'leaf': m = leafMat(); break;
     // painted cards from the flora atlas (petals, florets, ivy, leaves): never inked, cut out by alpha
     case 'flora': m = floraCardMat(0); break;
+    // flora cards drawn without depth, after the rest (lavender spikes): the finish pass never inks them
+    case 'floraSoft': m = floraCardMat(0, true); break;
     // the dark inner ball of a leaf mass: fills the gaps between cards with shade, so only the outer edge reads
     case 'core': m = paint(base(), { variation: 0.7, rim: 0.25 }); break;
   }
@@ -484,7 +660,8 @@ export const CLOTH = { uClothAmp: { value: 1 } };
  * it is pushed (in object space). Weight 0 is pinned (the line, the pole); 1 is the free edge.
  */
 const CLOTH_GLSL = /* glsl */ `
-  attribute vec3 aWave; attribute vec3 aDir;
+  attribute vec3 aWave; attribute vec3 aDir; attribute vec4 aPat;
+  varying vec4 vPat; varying vec2 vCUv;
   uniform float uTime; uniform vec3 uWind; uniform float uClothAmp;
   float clothWave(vec3 wp, out float shade){
     float ph = aWave.y;
@@ -504,6 +681,7 @@ const CLOTH_GLSL = /* glsl */ `
 function clothDisplace(normalsToo: boolean) {
   return /* glsl */ `
     #include <begin_vertex>
+    ${normalsToo ? 'vPat = aPat; vCUv = uv;' : ''}
     {
       vec4 cwp = modelMatrix * vec4(position, 1.0);
       float cShade;
@@ -521,14 +699,49 @@ function clothDisplace(normalsToo: boolean) {
     }`;
 }
 
-/** Double-sided toon cloth, coloured by vertex colours, waving in the shader. */
+/**
+ * Woven patterns drawn in the cloth shader from the UVs (in LINEN_TILE units, so metres / LINEN_TILE), anti-aliased,
+ * so stripes and checks stay crisp and painted at any distance instead of being built from coloured quads.
+ * aPat = (accent r, g, b, code): code's whole part is the pattern, its fraction the period in metres.
+ *   0 plain, 1 gingham, 2 stripes across (vertical), 3 bands (horizontal), 4 plaid, 5 sail-cloth panels.
+ */
+export const CLOTH_PAT = { plain: 0, gingham: 1, stripes: 2, bands: 3, plaid: 4, panels: 5 } as const;
+const CLOTH_FRAG = /* glsl */ `
+  varying vec4 vPat; varying vec2 vCUv;
+  float cStripe(float t, float duty){ float w = max(fwidth(t) * 1.5, 0.04); float tri = 1.0 - abs(fract(t) - 0.5) * 2.0; return smoothstep(1.0 - duty - w, 1.0 - duty + w, tri); }
+  float cHash(float n){ return fract(sin(n * 91.7) * 43758.5453); }
+`;
+function clothPattern(s: THREE.WebGLProgramParametersWithUniforms) {
+  s.fragmentShader = s.fragmentShader
+    .replace('#include <common>', '#include <common>\n' + CLOTH_FRAG)
+    .replace('#include <color_fragment>', `#include <color_fragment>
+      {
+        float pid = floor(vPat.w + 0.002), per = max(fract(vPat.w + 0.002), 0.02);
+        vec2 cm = vCUv * ${LINEN_TILE.toFixed(3)} / per;
+        vec3 acc = vPat.rgb * diffuseColor.rgb / max(vColor.rgb, vec3(0.05));
+        float k = 0.0;
+        if (pid == 1.0) k = (cStripe(cm.x, 0.5) + cStripe(cm.y, 0.5)) * 0.5;
+        else if (pid == 2.0) k = cStripe(cm.x, 0.5);
+        else if (pid == 3.0) k = cStripe(cm.y, 0.45);
+        else if (pid == 4.0) { float a = cStripe(cm.x, 0.34), b = cStripe(cm.y, 0.34); float th = max(cStripe(cm.x + 0.5, 0.07), cStripe(cm.y + 0.5, 0.07)); k = max(a, b) * 0.5 + a * b * 0.4 + th * 0.45; }
+        if (pid > 0.5 && pid < 4.5) diffuseColor.rgb = mix(diffuseColor.rgb, acc, clamp(k, 0.0, 1.0) * 0.92);
+        if (pid == 5.0) {
+          // sail-cloth: a darker stitched seam between panels, each panel its own faint tone
+          float seam = cStripe(cm.x, 0.05);
+          diffuseColor.rgb *= (1.0 - seam * 0.2) * (0.97 + 0.06 * cHash(floor(cm.x + 0.5)));
+        }
+      }`);
+}
+
+/** Double-sided toon cloth, coloured by vertex colours, waving in the shader, with woven patterns (CLOTH_PAT). */
 export function windCloth(): THREE.MeshToonMaterial {
   const mat = paint(new THREE.MeshToonMaterial({ color: '#ffffff', map: linenTex(), gradientMap: softRamp(), vertexColors: true, side: THREE.DoubleSide }), { variation: 0.3, rim: 1.3 });
-  chainCompile(mat, 'cloth', (s) => {
+  chainCompile(mat, 'cloth2', (s) => {
     Object.assign(s.uniforms, CLOTH);
     s.vertexShader = s.vertexShader
       .replace('#include <common>', '#include <common>\n' + CLOTH_GLSL)
       .replace('#include <begin_vertex>', clothDisplace(true));
+    clothPattern(s);
   });
   return mat;
 }
@@ -591,7 +804,7 @@ export function boxM(w: number, h: number, d: number, tile: number, grainAlongY 
 interface Part { geo: THREE.BufferGeometry; kind: MatKind }
 /** Kinds that never take the ink hull: cut-out cards, cloth, glass, small trinkets, and the slates (their lips and the
  * finish pass's silhouettes draw the roof; a hull would double a roof's triangles). */
-const NO_INK = new Set<MatKind>(['leaf', 'cloth', 'glass', 'canvas', 'bloom', 'flora', 'core', 'slate']);
+const NO_INK = new Set<MatKind>(['leaf', 'cloth', 'glass', 'canvas', 'bloom', 'flora', 'floraSoft', 'core', 'slate', 'chrome']);
 
 /**
  * Collects the parts of one prop, each transformed and painted with a vertex colour, then merges them into one
@@ -614,7 +827,7 @@ export class Kit {
    */
   add(geo: THREE.BufferGeometry, kind: MatKind, color: THREE.ColorRepresentation | null, m?: THREE.Matrix4) {
     let g = geo;
-    for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv', 'color', 'aWave', 'aDir'].includes(k)) g.deleteAttribute(k);
+    for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv', 'color', 'aWave', 'aDir', 'aPat'].includes(k)) g.deleteAttribute(k);
     g.morphAttributes = {};
     const n = g.attributes.position.count;
     if (!g.attributes.normal) g.computeVertexNormals();
@@ -633,6 +846,7 @@ export class Kit {
     if (kind === 'cloth') {
       if (!g.attributes.aWave) g.setAttribute('aWave', new THREE.Float32BufferAttribute(new Float32Array(n * 3), 3));
       if (!g.attributes.aDir) g.setAttribute('aDir', new THREE.Float32BufferAttribute(new Float32Array(n * 3), 3));
+      if (!g.attributes.aPat) g.setAttribute('aPat', new THREE.Float32BufferAttribute(new Float32Array(n * 4), 4));
       // aDir is a direction in object space: rotate it with the part
       const full = m ? this.top().clone().multiply(m) : this.top();
       const nm = new THREE.Matrix3().setFromMatrix4(full);
@@ -641,6 +855,7 @@ export class Kit {
     } else {
       if (g.attributes.aWave) g.deleteAttribute('aWave');
       if (g.attributes.aDir) g.deleteAttribute('aDir');
+      if (g.attributes.aPat) g.deleteAttribute('aPat');
     }
     g.applyMatrix4(m ? this.top().clone().multiply(m) : this.top());
     if (import.meta.env.DEV) { const a = g.attributes.position.array; for (let i = 0; i < a.length; i++) if (!Number.isFinite(a[i])) { console.warn('sailtown: NaN in part', kind, new Error().stack?.split('\n').slice(2, 5).join(' | ')); break; } }
@@ -675,7 +890,8 @@ export class Kit {
       mesh.name = kind;
       if (kind === 'cloth') mesh.customDepthMaterial = windClothDepth();
       if (NO_INK.has(kind)) mesh.userData.noOutline = true;
-      if (kind === 'flora' || kind === 'leaf') mesh.castShadow = opts.shadows === true || (opts.shadows !== false && kind === 'leaf');
+      if (kind === 'flora' || kind === 'leaf' || kind === 'floraSoft') mesh.castShadow = opts.shadows === true || (opts.shadows !== false && kind === 'leaf');
+      if (kind === 'floraSoft') mesh.renderOrder = 6;
       target.add(mesh);
     }
     if (opts.outline !== false) addOutlines(target, '#3b2a30', opts.inkWidth ?? 0.022);
@@ -748,9 +964,10 @@ export function sagLine(a: THREE.Vector3, b: THREE.Vector3, sag: number, n = 12)
  * A cloth grid of w by h (top edge at y = 0, hanging down), with per-cell colours from `col(u, v)` and an optional
  * `mask(u, v)` that cuts the outline (shirts). Weight grows from the pinned top; aDir pushes along +Z.
  */
-export function clothGrid(w: number, h: number, nx: number, ny: number, col: (u: number, v: number) => THREE.Color, opts: { mask?: (u: number, v: number) => boolean; phase?: number; stiff?: number; weight?: (u: number, v: number) => number; dir?: THREE.Vector3 } = {}) {
-  const pos: number[] = [], nor: number[] = [], uv: number[] = [], cl: number[] = [], wav: number[] = [], dir: number[] = [], idx: number[] = [];
+export function clothGrid(w: number, h: number, nx: number, ny: number, col: (u: number, v: number) => THREE.Color, opts: { mask?: (u: number, v: number) => boolean; phase?: number; stiff?: number; weight?: (u: number, v: number) => number; dir?: THREE.Vector3; pattern?: ClothPattern } = {}) {
+  const pos: number[] = [], nor: number[] = [], uv: number[] = [], cl: number[] = [], wav: number[] = [], dir: number[] = [], pat: number[] = [], idx: number[] = [];
   const d = opts.dir ?? new THREE.Vector3(0, 0, 1);
+  const P = patAttr(opts.pattern);
   const W = opts.weight ?? ((_u: number, v: number) => Math.pow(v, 1.3));
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
     const u0 = i / nx, u1 = (i + 1) / nx, v0 = j / ny, v1 = (j + 1) / ny;
@@ -758,7 +975,7 @@ export function clothGrid(w: number, h: number, nx: number, ny: number, col: (u:
     const c = col((u0 + u1) / 2, (v0 + v1) / 2);
     const base = pos.length / 3;
     for (const [u, v] of [[u0, v0], [u1, v0], [u1, v1], [u0, v1]]) {
-      pos.push((u - 0.5) * w, -v * h, 0); nor.push(0, 0, 1); uv.push(u * w / 0.6, v * h / 0.6);
+      pos.push((u - 0.5) * w, -v * h, 0); nor.push(0, 0, 1); uv.push(u * w / LINEN_TILE, v * h / LINEN_TILE); pat.push(...P);
       cl.push(c.r, c.g, c.b);
       wav.push(W(u, v), opts.phase ?? 0, opts.stiff ?? 0); dir.push(d.x, d.y, d.z);
     }
@@ -771,8 +988,18 @@ export function clothGrid(w: number, h: number, nx: number, ny: number, col: (u:
   g.setAttribute('color', new THREE.Float32BufferAttribute(cl, 3));
   g.setAttribute('aWave', new THREE.Float32BufferAttribute(wav, 3));
   g.setAttribute('aDir', new THREE.Float32BufferAttribute(dir, 3));
+  g.setAttribute('aPat', new THREE.Float32BufferAttribute(pat, 4));
   g.setIndex(idx);
   return g;
+}
+
+/** A woven pattern for a cloth: kind, accent colour and period (m, < 1). */
+export interface ClothPattern { kind: keyof typeof CLOTH_PAT; accent?: THREE.ColorRepresentation; period?: number }
+/** The aPat attribute value for a pattern. */
+export function patAttr(p?: ClothPattern): [number, number, number, number] {
+  if (!p || p.kind === 'plain') return [1, 1, 1, 0];
+  const c = new THREE.Color(p.accent ?? '#ffffff');
+  return [c.r, c.g, c.b, CLOTH_PAT[p.kind] + Math.min(0.98, Math.max(0.02, p.period ?? 0.1))];
 }
 
 /** Displace a geometry's vertices radially/along normals by a little smooth noise, for a hand-made wobble. */
