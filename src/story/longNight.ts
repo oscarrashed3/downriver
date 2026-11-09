@@ -17,6 +17,10 @@ import { CAMPFIRE, WINTER_LINES, NIGHT_WORDS, WAKE_LINES } from '../data/story';
 import { passWinter, isHealed } from '../systems/snowpack';
 import { NOTE } from '../data/words';
 
+/** The rising shot's swing round the fire, and the downstream river shot [lat, lon from the river, height]. */
+const RISE_SWING = -0.3;
+const RIVER_CAM = [44, 1.5, 7];
+
 const ORDER = ['ysolde', 'bram', 'nima', 'tor', 'odo'];
 const NOTES = [62, 66, 69, 74];
 const TUNE = [0, 2, 1, 3];
@@ -387,7 +391,8 @@ export class LongNight {
       enter: () => { if (i === 3) { all().forEach(n => (n.pose = { wave: 1 })); g.sound.sfxPlay('gift'); } if (i === 2) (R.mill as THREE.Object3D).userData.fast = 5; },
       tick: k => { const c = rc.at(); g.cutCam = rc.cam ? rc.cam(k) : ch.orbit(c, rc.r, rc.h, rc.a + k * 0.25); rc.act?.(k); },
     }));
-    // 6. Hollo rises and hums; every stone answers
+    // 6. Hollo rises and hums; every stone answers. Seen across the fire, past the people, so his face shows
+    const riseLook = (k: number) => fire.clone().lerp(holloAt, 0.62).addScaledVector(this.up(fire), 3 + k * 2.5);
     beats.push({
       line: { text: WAKE_LINES[1] }, dur: 4,
       enter: () => { all().forEach(n => (n.pose = {})); },
@@ -400,27 +405,31 @@ export class LongNight {
           ch.lanterns.flash = [2.5, 2.5, 2.5, 2.5];
           ch.lanterns.stones.forEach(s => this.ring(s.position.clone(), 14, '#ffe8b0', 2.4));
         }
-        g.cutCam = ch.orbit(h.root.position, 13 - k * 1.5, 5 + k * 3, 0.2 + k * 0.4);
+        const c = ch.fireCam(fire, holloAt, 9 + k * 1.5, 2.8 + k * 1.6, RISE_SWING + k * 0.08);
+        g.cutCam = { ...c, look: riseLook(k) };
         const f = face(); all().forEach(n => (n.lookAt = f)); pl.lookAt = f;
       },
     });
-    // 7. he lets go: his coat comes apart into puffs that swirl round the fire and the people, drift out over
-    // the river and settle as a ring of clouds above the peaks; his own cloud keeps his eyes a moment, and winks
+    // 7. he lets go: his coat comes apart into soft cloud puffs that swirl round the fire and the people, drift out
+    // over the river and settle as a ring of clouds above the peaks; his own cloud keeps his eyes a moment, and winks
     const cloud = ch.holloCloud, sky = ch.skyShot();
-    const swirl = ch.at(PK.holloSwirl), sw = this.up(swirl);
-    const fireAway = fire.clone().sub(swirl).projectOnPlane(sw).normalize();
-    const fireSide = new THREE.Vector3().crossVectors(sw, fireAway);
-    const overRiver = p.surfacePoint(p.dirRiver(40, -9), 14);
+    const fUp = this.up(fire);
     const above = (v: THREE.Vector3, min: number) => { // keep the camera clear of the ground
       const d = v.clone().sub(p.center).normalize(), floor = p.surfacePoint(d, min);
       return floor.distanceTo(p.center) > v.distanceTo(p.center) ? floor : v;
     };
     const mix = (a: CamPose, b: CamPose, w: number): CamPose => ({ pos: a.pos.clone().lerp(b.pos, w), look: a.look.clone().lerp(b.look, w), up: a.up });
     let winked = false;
-    // close on his own cloud for the wink: from the side of the valley shot, so the pull back to it is a straight glide
+    // close on his own cloud for the wink, from the side of the valley shot, so the pull back to it is one straight glide
     const close = (): CamPose => {
       const big = cloud.homeCloud(), bu = this.up(big), to = sky.pos.clone().sub(big).normalize();
-      return { pos: big.clone().addScaledVector(to, 26).addScaledVector(bu, -2), look: big.clone().addScaledVector(bu, 1.5), up: bu };
+      return { pos: big.clone().addScaledVector(to, 24).addScaledVector(bu, -1), look: big.clone().addScaledVector(bu, 1.2), up: bu };
+    };
+    // looking back up the river from downstream, low over the water, as the puffs come out over it
+    const riverDown = p.surfacePoint(p.dirRiver(30, 0), 0);
+    const riverCam = (k: number): CamPose => {
+      const pos = p.surfacePoint(p.dirRiver(RIVER_CAM[0] + k * 3, RIVER_CAM[1]), RIVER_CAM[2] + k * 6);
+      return { pos, look: pos, up: this.up(pos) };
     };
     beats.push({
       line: { text: WAKE_LINES[2] }, dur: 12.5,
@@ -431,29 +440,29 @@ export class LongNight {
       },
       tick: k => {
         cloud.set(k);
-        if (k > 0.78 && !winked) { winked = true; g.sound.tone(81, 0, 'bells', 0.3, 2); g.sound.tone(86, 0.25, 'bells', 0.2, 2); }
-        const c = cloud.centroid(), eyes = cloud.eyesAt();
-        const follow = c.clone().lerp(eyes, 0.35);
-        // close on him as he loosens; then from behind the people at the fire as the puffs swirl past them;
-        // then out over the river after them; then up to his own cloud for the wink
-        const A: CamPose = { pos: ch.orbit(holloAt, 18 + k * 6, 7 + k * 8, 0.6 + k * 0.6).pos, look: holloAt.clone().addScaledVector(sw, 4).lerp(follow, smoothstep(0, 0.2, k)), up: sw };
-        const B: CamPose = { pos: swirl.clone().addScaledVector(fireAway, 16).addScaledVector(fireSide, 4).addScaledVector(sw, 5 + k * 4), look: follow, up: sw };
-        const Cc: CamPose = { pos: overRiver.clone().addScaledVector(this.up(overRiver), k * 5), look: follow, up: sw };
-        let cam = mix(A, B, smoothstep(0.12, 0.3, k));
-        cam = mix(cam, Cc, smoothstep(0.42, 0.6, k));
-        cam = mix(cam, close(), smoothstep(0.6, 0.76, k));
+        if (k > 0.79 && !winked) { winked = true; g.sound.tone(81, 0, 'bells', 0.3, 2); g.sound.tone(86, 0.25, 'bells', 0.2, 2); }
+        const follow = cloud.centroid();
+        // across the fire as he loosens and the puffs swirl over the people; pulling back and up as they climb;
+        // then from downstream over the river as they drift out above it; then up to his own cloud for the wink
+        const a0 = ch.fireCam(fire, holloAt, 10.5 + k * 22, 4.4 + k * 16, RISE_SWING + 0.08 + k * 0.3);
+        const A: CamPose = { pos: a0.pos, look: riseLook(1).lerp(follow, smoothstep(0, 0.22, k)), up: fUp };
+        const rc = riverCam(smoothstep(0.3, 0.62, k));
+        const B: CamPose = { pos: rc.pos, look: follow.clone().lerp(riverDown, 0.3), up: rc.up };
+        let cam = mix(A, B, smoothstep(0.3, 0.46, k));
+        cam = mix(cam, close(), smoothstep(0.56, 0.72, k));
         cam.pos = above(cam.pos, 2.2);
         cam.up = this.up(cam.pos);
         g.cutCam = cam;
+        cloud.eyesFace(cam.pos);
         all().forEach(n => (n.lookAt = follow)); pl.lookAt = follow;
       },
       exit: () => cloud.set(1),
     });
-    // 8. a last wide look: the ring of clouds above the healed valley at sunrise
+    // 8. a last wide look: the ring of clouds above the healed valley, the sun coming up warm behind it
     beats.push({
-      line: { text: WAKE_LINES[3] }, dur: 4.5,
+      line: { text: WAKE_LINES[3] }, dur: 5,
       tick: k => {
-        const cam = mix(close(), sky, smoothstep(0, 0.85, k));
+        const cam = mix(close(), sky, smoothstep(0, 0.8, k));
         cam.pos = above(cam.pos, 2.2); cam.up = this.up(cam.pos);
         g.cutCam = cam;
       },

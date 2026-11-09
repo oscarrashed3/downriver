@@ -2,7 +2,8 @@
 // from 'Hollo rises' on, then a few seconds of play and the look-up at his cloud from the spring.
 export default async ({ page, shot, ev }) => {
   const SHOT = Number(process.env.SHOT ?? 0.7), STEP = 0.05;
-  await page.click('button[data-a="new"]');
+  for (let i = 0; i < 120 && !(await ev(`!!document.querySelector('button[data-a="new"]') && !!window.__game`)); i++) await page.waitForTimeout(500);
+  await ev(`document.querySelector('button[data-a="new"]').click()`);
   for (let i = 0; i < 200 && (await ev('__game.mode')) !== 'play'; i++) { await page.waitForTimeout(150); await ev(`(() => { const g = __game; g.input.pressed.add(g.mode === 'letter' ? 'KeyE' : 'Space'); })()`); }
   await ev(`(() => { const g = __game; g.give('read-letter'); g.meet = null; for (const n of g.contents[0].npcs) g.flags.add('met:' + n.id); })()`);
   for (let i = 0; i < 100 && (await ev('__game.mode')) !== 'play'; i++) { await page.waitForTimeout(200); await ev(`__game.input.pressed.add('Space')`); }
@@ -24,7 +25,7 @@ export default async ({ page, shot, ev }) => {
     await shot('c' + String(k).padStart(2, '0'));
     if (m !== 'cut') break;
   }
-  for (let k = 0; k < 4; k++) { await step(per, true); await shot('play' + k); }
+  for (let k = 0; k < 2; k++) { await step(per, true); await shot("play" + k); }
   console.log('end', await ev(`JSON.stringify({ mode: __game.mode, healed: __game.flags.has('peaks-healed'), hollo: __game.ch1.hollo.root.visible, state: __game.ch1.holloCloud.state, solids: __game.planets[0].solids.filter(s => s.id?.startsWith('hollo')).map(s => s.id) })`));
   // stand where he slept and look up at him
   await ev(`(() => { const g = __game, p = g.planets[0]; g.player.placeAt(p, p.dirRiver(15.5, -2)); const it = g.contents[0].interactables.find(i => i.id === 'hollo'); console.log('prompt', it.label()); it.act(); g.seq.speed = 1; })()`);

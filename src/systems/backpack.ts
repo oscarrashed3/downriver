@@ -17,7 +17,7 @@ export const ITEMS: Record<string, ItemDef> = {
   'item:bell': { id: 'item:bell', name: 'Goat bell', text: "Bram's spare. So you can be found in fog, he says.", icon: 'bell' },
   'item:ribbon': { id: 'item:ribbon', name: 'Kite ribbon', text: "A red ribbon from Tor's kite tail. It still smells of wind.", icon: 'ribbon' },
   'item:cloudcard': { id: 'item:cloudcard', name: "Nima's cloud card", text: 'Forty cloud names in very small writing. Big Marguerite is underlined twice.', icon: 'card' },
-  'item:frost': { id: 'item:frost', name: "Hollo's frost", text: 'A snowflake that does not melt. Hollo breathed it into your hood. Kept from the Spring Peaks.', icon: 'frost' },
+  'item:frost': { id: 'item:frost', name: "Hollo's frost", text: 'A snowflake that does not melt. It fell from Hollo\'s cloud onto your hood. Kept from the Spring Peaks.', icon: 'frost' },
 };
 
 /** Swaps: give one thing, get another. Nobody sells anything in this valley. */

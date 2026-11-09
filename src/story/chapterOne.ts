@@ -28,10 +28,14 @@ import type { CamPose } from '../systems/skyView';
 
 /** Viewpoints: sit, and the view draws itself into the sketchbook. */
 export const VIEWPOINTS = [
-  { id: 'vp-spring', at: [17.4, 12.6], look: [13.2, 0], label: 'Hollo, asleep on the spring' },
+  { id: 'vp-spring', at: [17.4, 12.6], look: [13.2, 0], label: "Hollo's spring, under the peaks" },
   { id: 'vp-ridge', at: [48.2, 41.5], look: [66, 0], label: 'From Kite Ridge, the whole valley' },
   { id: 'vp-bridge', at: [79.5, 8.5], look: [70, -12], label: "Odo's bridge, and the village behind it" },
 ];
+
+/** Where the ring of Hollo's clouds turns, over the peaks above the spring; and the wide shot of it [lat, lon, height, look down]. */
+const RING = [8, 0];
+const SKY_SHOT = [50, -12, 30, 0.42];
 
 const POLE_READINGS = [{ now: 1.1, old: 2.6 }, { now: 0.9, old: 2.3 }, { now: 0.8, old: 2.1 }];
 
@@ -90,11 +94,10 @@ export class ChapterOne {
     const p = this.p;
     this.holloCloud = new HolloCloud(this.hollo, p, g.scene, () => ({
       swirl: this.at(PK.holloSwirl),
-      axis: p.dirRiver(20, 4),
-      home: p.dirRiver(31, 7),
-      river: r => p.surfacePoint(p.dirRiver(27 + r() * 12, (r() - 0.5) * 5), 9 + r() * 8),
-      viewer: this.skyShot().pos,
-    }));
+      axis: p.dirRiver(RING[0], RING[1]),
+      home: p.dirRiver(40, 0),
+      river: r => p.surfacePoint(p.dirRiver(26 + r() * 12, (r() - 0.5) * 5), 8 + r() * 8),
+    }), () => g.sky?.cloudMat);
     // the spring is ice while Hollo sleeps on it
     const water = this.R.spring.userData.water as THREE.Mesh;
     this.springMat = water.material as THREE.Material;
@@ -262,14 +265,18 @@ export class ChapterOne {
         g.sound.sfxPlay('soft'); g.fold.hop();
         if (!this.has('peaks-healed')) { g.hud.notify(NOTE.holloAsleep(lanternsLit(g.questCtx()))); return; }
         const pl = g.player;
+        // the camera cranes up and back over the treetops until his cloud fills the sky; under the old willow
+        // it backs out from under the crown first, so the leaves never sit in front of him
+        const tree = this.at(PK.tree), fromTree = pl.pos.clone().sub(tree).projectOnPlane(pl.up);
+        const back = fromTree.length() < 10 ? fromTree.normalize() : pl.pos.clone().sub(this.holloCloud.bigCloud).projectOnPlane(pl.up).normalize();
         g.cut([{
-          dur: 4,
+          dur: 4.5,
           enter: () => g.sound.melody([74, 0, 78, 0, 81], 0.5),
           tick: k => {
             const cl = this.holloCloud.bigCloud, up = pl.up.clone();
-            const back = pl.pos.clone().sub(cl).projectOnPlane(up).normalize();
-            const pos = pl.pos.clone().addScaledVector(back, 2.4).addScaledVector(up, 1.2 + k * 0.5);
-            g.cutCam = { pos, look: pl.pos.clone().addScaledVector(up, 1.6).lerp(cl, 0.4 + smoothstep(0, 1, k) * 0.5), up };
+            const e = smoothstep(0, 0.75, k);
+            const pos = pl.pos.clone().addScaledVector(back, 2.4 + e * 9).addScaledVector(up, 1.4 + e * 8);
+            g.cutCam = { pos, look: pl.pos.clone().addScaledVector(up, 1.6).lerp(cl, 0.3 + e * 0.7), up };
             pl.lookAt = cl.clone();
           },
           exit: () => { pl.lookAt = null; g.hud.notify(NOTE.holloHello); },
@@ -614,7 +621,7 @@ export class ChapterOne {
       g.hud.notify(NOTE.windSeen);
       g.save();
     }
-    if (this.has('kite-flown') && !this.has('told:stones') && g.mode === 'play') { g.flags.add('told:stones'); setTimeout(() => g.hud.notify(NOTE.stonesBegin), 4000); }
+    if (this.has('kite-flown') && !this.has('told:stones') && !this.has('peaks-healed') && g.mode === 'play') { g.flags.add('told:stones'); setTimeout(() => g.hud.notify(NOTE.stonesBegin), 4000); }
     this.lanterns.update(dt);
     if (this.has('quest:night') && !this.has('gathered') && FRIENDS.every(f => this.has('invited:' + f))) {
       g.give('gathered'); g.sound.sfxPlay('chime');
@@ -805,14 +812,16 @@ export class ChapterOne {
     ];
   }
 
-  /** A shot from the far side of a fire, looking back across it at Hollo, so the giant fills the background. */
-  /** The wide shot of the sky over the healed valley: from high above the river, looking up the valley at the peaks. */
+  /** The wide shot of the sky over the healed valley: from high above the river, looking up the valley at the ring of clouds over the peaks. */
   skyShot(): CamPose {
-    const p = this.p;
-    const pos = p.surfacePoint(p.dirRiver(54, -3), 22);
-    const look = p.center.clone().addScaledVector(p.dirRiver(24, 4), p.R + 22);
+    const p = this.p, [la, lo, h] = SKY_SHOT;
+    const pos = p.surfacePoint(p.dirRiver(la, lo), h);
+    const ring = p.center.clone().addScaledVector(p.dirRiver(RING[0], RING[1]), p.R + 30);
+    const look = ring.lerp(this.at(PK.spring), SKY_SHOT[3]);
     return { pos, look, up: pos.clone().sub(p.center).normalize() };
   }
+
+  /** A shot from the far side of a fire, looking back across it at Hollo, so the giant fills the background. */
 
   fireCam(fire: THREE.Vector3, hollo: THREE.Vector3, r: number, h: number, swing: number): CamPose {
     const up = fire.clone().sub(this.p.center).normalize();

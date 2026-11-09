@@ -6,7 +6,7 @@ export default async ({ page, shot, ev, key }) => {
   for (let i = 0; i < 160 && (await mode()) !== 'play'; i++) { await page.waitForTimeout(250); await key('Space', 20); }
   await ev(`(() => { const g = __game; g.give('read-letter'); g.seq.speed = 40; })()`);
   for (let i = 0; i < 160 && (await mode()) !== 'play'; i++) { await page.waitForTimeout(250); await key('Space', 20); }
-  await ev(`(() => { const g = __game; ['quest:hollo','kite-flown','fences-done','quest:night','invited:ysolde','invited:bram','invited:nima','invited:tor','invited:odo','gathered'].forEach(f => g.give(f)); g.ch1.restore(); g.seq.speed = 1; g.cut(g.ch1.campfireNight()); })()`);
+  await ev(`(() => { const g = __game; ['quest:hollo','kite-flown','fences-done','quest:night','invited:ysolde','invited:bram','invited:nima','invited:tor','invited:odo','gathered'].forEach(f => g.give(f)); g.ch1.restore(); g.seq.speed = 1; g.ch1.night.phase = 'wake'; g.cut(g.ch1.night.wakeBeats()); })()`);
   const line = () => ev(`(document.querySelector('.caption')?.innerText || '').slice(0, 60)`);
   let last = '', n = 0;
   for (let i = 0; i < 90 && (await mode()) === 'cut'; i++) {
