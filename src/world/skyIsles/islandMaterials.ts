@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { PAINT, NOISE_GLSL, paint, softRamp } from '../../render/paint';
+import { paintCloud } from '../skyIslands';
 
 // Materials for the floating islands of the Sky Isles. Every solid thing is a painted toon material (paint() from
 // render/paint.ts), so the islands take the same light, rim, ambient and cloud shadows as World 1. The water, mist
@@ -18,15 +19,15 @@ export function toonMat(color: string, variation = 1, rim = 1): THREE.MeshToonMa
 // ------------------------------------------------------------------ rock
 
 /**
- * The island light. uBounce: light thrown back up by the sunlit cloud sea under the islands, so undersides and
- * shaded cliffs stay pale and pearly instead of sinking into brown. uShadow: the cool lilac the limestone turns in
- * shade (a hue shift, not a darkening). uLit: how bright and warm lit faces are. One set, shared by every island;
+ * The island light. uBounce: warm light thrown back up by the sunlit cloud sea under the islands, so undersides and
+ * shaded cliffs stay luminous instead of sinking into brown. uShadow: the soft violet-taupe the limestone leans
+ * toward in shade (the shade itself is a warm sand-brown of the rock's own colour). uLit: how bright and warm lit faces are. One set, shared by every island;
  * the world can tint them at dusk.
  */
 export const ISLAND_LIGHT = {
-  uBounce: { value: new THREE.Color('#d8daf4').multiplyScalar(0.22) },
-  uShadow: { value: new THREE.Color('#a9a6cc') },
-  uLit: { value: 1.14 },
+  uBounce: { value: new THREE.Color('#f4e2cc').multiplyScalar(0.2) },
+  uShadow: { value: new THREE.Color('#b7a0a2') },
+  uLit: { value: 1.1 },
 };
 
 /**
@@ -46,8 +47,9 @@ const GRADE_GLSL = /* glsl */ `
     vec3 litC = alb * mix(vec3(1.0), sunHue, 0.3) * uLit * (1.0 + 0.12 * clamp(k - 1.0, 0.0, 1.0));
     vec3 ambHue = uAmbSky / max(dot(uAmbSky, vec3(0.3333)), 1e-3);
     float g = dot(alb, vec3(0.3333));
-    vec3 rockSh = mix(alb * vec3(0.78, 0.74, 0.76), g * uShadow * 1.04, 0.45) * mix(vec3(1.0), ambHue, 0.1);
-    vec3 grassSh = alb * vec3(0.56, 0.7, 0.7);
+    // rock in shade: its own colour, warmer and deeper (sand-brown), leaning a little toward violet-taupe
+    vec3 rockSh = mix(alb * vec3(0.8, 0.7, 0.64), g * uShadow * 0.98, 0.28) * mix(vec3(1.0), ambHue, 0.06);
+    vec3 grassSh = alb * vec3(0.6, 0.72, 0.66);
     vec3 shC = mix(grassSh, rockSh, vRock);
     float bny = dot(pN, pUp);
     shC += alb * uBounce * (smoothstep(0.3, -1.0, bny) + 0.25);
@@ -75,40 +77,62 @@ const ROCK_GLSL = /* glsl */ `#include <color_fragment>
     float ny = dot(normalize(vPNormal), upW);
     float s = uRockScale;
     vec3 rc = diffuseColor.rgb;
-    // broad patches of paler and warmer stone
-    float tone = pNoise(vec3(q.x * 0.09, q.y * 0.35, q.z * 0.09) / s);
-    rc *= 0.95 + 0.1 * tone;
+    // the strata and cracks fade out down the underside, toward its tip
+    float strat = 1.0 - smoothstep(0.25, 0.9, vUnder);
+    // broad patches of paler and warmer stone (same hue family: warm and cool shifts, not grey)
+    float tone = pNoise(vec3(q.x * 0.07, q.y * 0.25, q.z * 0.07) / s);
+    rc *= mix(vec3(0.95, 0.96, 0.98), vec3(1.04, 1.02, 0.97), tone);
     float strip = step(1.5, abs(vLedge));
-    // bold bedding lines inside thick beds, broken here and there
-    float yy = q.y + (pNoise(q * vec3(0.1, 0.02, 0.1) / s) - 0.5) * 0.5 * s;
-    float f = fract(yy / (0.62 * s));
-    float bw = 0.045 * s;
-    float bedLine = aaStep(f * 0.62 * s, bw) * step(0.45, pNoise(q * vec3(0.22, 1.0, 0.22) / s + 3.0));
-    bedLine *= step(0.22 * s, vBand.x) * step(0.18 * s, vBand.y) * (1.0 - strip);
-    // vertical joint cracks: thin wandering lines, longer where they run through several beds
-    float cn = pNoise(vec3(q.x * 0.85, q.y * 0.07, q.z * 0.85) / s + 31.0);
-    float crack = aaStep(abs(cn - 0.5), 0.02) * step(0.5, pNoise(q * vec3(0.25, 0.45, 0.25) / s + 7.0)) * (1.0 - strip);
-    rc *= 1.0 - bedLine * 0.2 - crack * 0.38;
+    // a few faint bedding lines inside the thick beds, broken here and there
+    float yy = q.y + (pNoise(q * vec3(0.1, 0.02, 0.1) / s) - 0.5) * 0.6 * s;
+    float f = fract(yy / (1.1 * s));
+    float bedLine = aaStep(f * 1.1 * s, 0.035 * s) * step(0.5, pNoise(q * vec3(0.18, 1.0, 0.18) / s + 3.0));
+    bedLine *= step(0.4 * s, vBand.x) * step(0.4 * s, vBand.y) * (1.0 - strip) * strat;
+    // vertical fracture: near-straight cracks running down through the beds, at irregular spacing along the wall,
+    // each running a few metres and stopping (arc: distance round the island, so they stay vertical on any face)
+    float arc = atan(q.z, q.x) * length(q.xz);
+    float crack = 0.0;
+    for (int k = 0; k < 2; k++) {
+      float sp = (k == 0 ? 2.3 : 0.9) * s;
+      float aw = arc + (pNoise(vec3(q.y * 0.15 / s, 3.0 + float(k), arc * 0.2 / s)) - 0.5) * 0.3 * s;
+      float cell = floor(aw / sp), fc = fract(aw / sp);
+      float hc = fract(sin(cell * 12.9898 + float(k) * 4.1) * 43758.5453);
+      float runs = step(k == 0 ? 0.42 : 0.6, pNoise(vec3(cell * 1.7, q.y * (k == 0 ? 0.09 : 0.25) / s, float(k) * 5.0)));
+      float line = aaStep(abs(fc - (0.3 + 0.4 * hc)) * sp, (k == 0 ? 0.028 : 0.016) * s) * step(k == 0 ? 0.35 : 0.72, hc) * runs;
+      crack = max(crack, line * (k == 0 ? 1.0 : 0.5));
+    }
+    crack *= (1.0 - strip) * strat;
+    rc *= 1.0 - bedLine * 0.12 - crack * 0.34;
+    // vertical water stains: soft streaks down the faces, a little deeper and cooler, crossing the beds
+    float stn = pNoise(vec3(arc * 0.35 / s, q.y * 0.03 / s, 21.0)) * 0.7 + pNoise(vec3(arc * 1.1 / s, q.y * 0.08 / s, 5.0)) * 0.3;
+    float stain = smoothstep(0.56, 0.72, stn) * (1.0 - strip) * strat;
+    rc = mix(rc, rc * vec3(0.9, 0.88, 0.9), stain * 0.7);
+    // sunlit ochre streaks washed down the top of the cliff from the soil
+    float och = smoothstep(0.55, 0.75, pNoise(vec3(q.x * 0.55, q.y * 0.03, q.z * 0.55) / s + 17.0));
+    och *= smoothstep(-9.0 * s, -0.5 * s, q.y) * (1.0 - strip) * strat;
+    rc = mix(rc, rc * vec3(1.02, 0.86, 0.62), och * 0.6);
     // the top edge of every bed catches the light: a crisp bright line (not under an overhang)
-    float hi = aaStep(vBand.x, 0.07 * s) * step(-0.05, vLedge) * (1.0 - strip);
-    rc = mix(rc, rc * 1.12 + vec3(0.05, 0.04, 0.02), hi);
-    // ledge strips: tops lit bright, undersides dark
-    rc = mix(rc, rc * 1.08 + vec3(0.03, 0.025, 0.0), strip * step(0.3, ny));
-    rc = mix(rc, rc * vec3(0.5, 0.48, 0.6), strip * step(ny, -0.25));
-    // the undercut: a dark band at the top of a bed that a bed above overhangs
-    float uc = aaStep(vBand.x, (0.1 + 0.25 * clamp(-vLedge, 0.0, 1.0)) * s) * step(vLedge, -0.05) * (1.0 - strip);
-    rc = mix(rc, rc * vec3(0.52, 0.5, 0.64), uc);
-    // a thin dark crease along the foot of every bed
-    rc *= 1.0 - aaStep(vBand.y, 0.04 * s) * 0.25 * (1.0 - strip);
-    // moss drips: streaks of green hanging down from a mossy ledge (or the turf), tapering as they go
-    float dn = pNoise(vec3(q.x * 2.6, q.y * 0.12, q.z * 2.6) / s + 11.0);
-    float dl = (0.6 + 3.2 * pNoise(vec3(q.x * 0.35, 5.0, q.z * 0.35) / s)) * s * (0.4 + 0.6 * clamp(vLedge, 0.0, 1.0));
-    float thr = 0.6 + 0.4 * clamp(vBand.x / dl, 0.0, 1.0);
-    float drip = (1.0 - aaStep(dn, thr)) * step(0.05, vLedge) * (1.0 - strip) * uMoss;
-    vec3 mossC = mix(vec3(0.42, 0.62, 0.24), vec3(0.6, 0.76, 0.32), pNoise(q * 0.6));
-    rc = mix(rc, mossC, drip * 0.95);
+    float hi = aaStep(vBand.x, 0.06 * s) * step(-0.05, vLedge) * (1.0 - strip) * strat;
+    rc = mix(rc, rc * 1.08 + vec3(0.04, 0.03, 0.01), hi);
+    // ledge strips: tops lit bright, undersides warm and dark
+    rc = mix(rc, rc * 1.06 + vec3(0.03, 0.025, 0.0), strip * step(0.3, ny));
+    rc = mix(rc, rc * vec3(0.66, 0.56, 0.52), strip * step(ny, -0.25));
+    // the undercut: a warm dark band at the top of a bed that a bed above overhangs
+    float uc = aaStep(vBand.x, (0.12 + 0.3 * clamp(-vLedge, 0.0, 1.0)) * s) * step(vLedge, -0.05) * (1.0 - strip);
+    rc = mix(rc, rc * vec3(0.7, 0.6, 0.56), uc);
+    // moss: it sits on the ledge tops and fades down the face below them, thinning in a ragged painted edge
+    float mn = pNoise(vec3(q.x * 0.9, q.y * 0.25, q.z * 0.9) / s + 11.0);
+    float mlen = (0.35 + 1.4 * pNoise(vec3(q.x * 0.25, 5.0, q.z * 0.25) / s)) * s * clamp(vLedge, 0.0, 1.0);
+    float mv = vBand.x / max(mlen, 1e-3);
+    // (in patches along the ledge, as on the ledge tops)
+    float mpatch = smoothstep(0.42, 0.62, pNoise(vec3(q.x * 0.12, q.y * 0.05, q.z * 0.12) / s + 2.0));
+    float moss = (1.0 - aaStep(0.55, mv + (mn - 0.5) * 0.9)) * step(0.05, vLedge) * (1.0 - strip) * uMoss * mpatch;
+    float mossSoft = (1.0 - smoothstep(0.0, 1.6, mv + (mn - 0.5) * 0.6)) * step(0.05, vLedge) * (1.0 - strip) * uMoss * mpatch;
+    vec3 mossC = mix(vec3(0.44, 0.58, 0.27), vec3(0.56, 0.68, 0.32), pNoise(q * 0.5));
+    rc = mix(rc, mossC, moss * 0.9);
+    rc = mix(rc, rc * vec3(0.86, 0.95, 0.74), mossSoft * (1.0 - moss) * 0.6);
     diffuseColor.rgb = mix(diffuseColor.rgb, rc, vRock);
-    gRock = vRock * (1.0 - drip * 0.9);
+    gRock = vRock * (1.0 - moss * 0.85);
   }`;
 
 const AASTEP = /* glsl */ `
@@ -145,14 +169,14 @@ export function islandRockMaterial(): THREE.MeshToonMaterial {
     sh.uniforms.uRockScale = { value: 1 };
     sh.uniforms.uMoss = { value: 1 };
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute float aRock; attribute vec2 aBand; attribute float aLedge; varying float vRock; varying vec3 vLoc; varying vec2 vBand; varying float vLedge;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRock = aRock; vLoc = position; vBand = aBand; vLedge = aLedge;');
+      .replace('#include <common>', '#include <common>\nattribute float aRock; attribute vec2 aBand; attribute float aLedge; attribute float aUnder; varying float vRock; varying vec3 vLoc; varying vec2 vBand; varying float vLedge; varying float vUnder;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRock = aRock; vLoc = position; vBand = aBand; vLedge = aLedge; vUnder = aUnder;');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying float vRock; varying vec3 vLoc; varying vec2 vBand; varying float vLedge; uniform float uRockScale; uniform float uMoss; float gRock = 1.0; ' + GRADE_UNIFORMS + AASTEP)
+      .replace('#include <common>', '#include <common>\nvarying float vRock; varying vec3 vLoc; varying vec2 vBand; varying float vLedge; varying float vUnder; uniform float uRockScale; uniform float uMoss; float gRock = 1.0; ' + GRADE_UNIFORMS + AASTEP)
       .replace('#include <opaque_fragment>', GRADE_GLSL.replace(/vRock/g, 'gRock'))
       .replace('#include <color_fragment>', ROCK_GLSL);
   };
-  m.customProgramCacheKey = () => 'skyIslandRock3';
+  m.customProgramCacheKey = () => 'skyIslandRock4';
   rockMat = m;
   return m;
 }
@@ -196,6 +220,8 @@ export function ivyMaterial(): THREE.MeshToonMaterial {
   if (ivyMat) return ivyMat;
   const m = paint(new THREE.MeshToonMaterial({
     color: '#ffffff', vertexColors: true, gradientMap: softRamp(), alphaMap: ivySheet(), alphaTest: 0.5, side: THREE.DoubleSide,
+    // no depth: the screen ink then never traces every leaf card (the meshes draw after the rock, renderOrder 1)
+    depthWrite: false,
   }), { variation: 0.5, rim: 1.2 });
   const base = m.onBeforeCompile;
   m.onBeforeCompile = (sh, r) => {
@@ -234,6 +260,9 @@ export function tuftMaterial(kind: 'grass' | 'flower'): THREE.ShaderMaterial {
   const m = new THREE.ShaderMaterial({
     fog: true,
     side: THREE.DoubleSide,
+    // grass and flowers write no depth, so the screen ink never speckles every blade (the meshes draw after the
+    // opaque things, renderOrder 1, and still test depth against them)
+    depthWrite: false,
     defines: kind === 'flower' ? { FLOWER: 1 } : {},
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uDummy: { value: 0 } }]),
     vertexShader: /* glsl */ `
@@ -255,7 +284,10 @@ export function tuftMaterial(kind: 'grass' | 'flower'): THREE.ShaderMaterial {
         float c = cos(iRS.x), s = sin(iRS.x);
         vec3 ax = t1 * c + t2 * s; vec3 az = -t1 * s + t2 * c;
         vec3 lp = position * iRS.y;
-        lp *= smoothstep(0.5, 2.4, distance(base, cameraPosition));
+        float camD = distance(base, cameraPosition);
+        // shrink away up close (so blades never fill the lens) and far off, where single blades would only speckle
+        // the screen ink; the meadow's own colour carries the grass at a distance
+        lp *= smoothstep(0.5, 2.4, camD) * (1.0 - smoothstep(95.0, 170.0, camD));
         vec3 wp = base + ax * lp.x + up * lp.y + az * lp.z;
         // weight: on a slope the long blades hang down toward the ground below
         vec3 down = normalize(uCenter - base);
@@ -286,9 +318,9 @@ export function tuftMaterial(kind: 'grass' | 'flower'): THREE.ShaderMaterial {
       ${NOISE_GLSL}
       void main(){
         float pch = pNoise(vW * 0.09) * 0.7 + pNoise(vW * 0.4) * 0.3;
-        vec3 tip = mix(vec3(0.62, 0.8, 0.3), vec3(0.84, 0.9, 0.42), pch);
+        vec3 tip = mix(vCol * 1.12, mix(vec3(0.62, 0.8, 0.3), vec3(0.84, 0.9, 0.42), pch), 0.45);
         tip = mix(tip, tip * vec3(0.86, 0.98, 1.04), smoothstep(0.6, 0.92, vVar) * 0.5);
-        vec3 base = vCol * 0.8;
+        vec3 base = vCol * 0.9;
         vec3 col = mix(base, tip, smoothstep(0.0, 1.0, vH));
         #ifdef FLOWER
           vec3 stem = vec3(0.3, 0.52, 0.22);
@@ -313,19 +345,19 @@ export function tuftMaterial(kind: 'grass' | 'flower'): THREE.ShaderMaterial {
 
 // ------------------------------------------------------------------ water
 
-let waterMats: Partial<Record<'fall' | 'stream' | 'fallDepth', THREE.ShaderMaterial>> = {};
+let waterMats: Partial<Record<'fall' | 'stream', THREE.ShaderMaterial>> = {};
 /**
  * Painted moving water. uv.x runs across the sheet from -1 to 1, uv.y along it in metres; aT is 0 at the lip and 1
  * where the fall ends. Streaks scroll down the sheet, white foam gathers at the lip and the soft ragged edges, and
  * the lower fall breaks up into spray and fades out into the mist. The stream on top uses the same water, flatter.
  */
-export function waterMaterial(kind: 'fall' | 'stream' | 'fallDepth'): THREE.ShaderMaterial {
+export function waterMaterial(kind: 'fall' | 'stream'): THREE.ShaderMaterial {
   const have = waterMats[kind];
   if (have) return have;
-  const depthOnly = kind === 'fallDepth';
+  // transparent and writing no depth, so the screen ink never draws a box round the fall
   const m = new THREE.ShaderMaterial({
-    fog: true, transparent: !depthOnly, depthWrite: depthOnly, colorWrite: !depthOnly, side: THREE.DoubleSide,
-    defines: kind === 'stream' ? { STREAM: 1 } : depthOnly ? { DEPTH_ONLY: 1 } : {},
+    fog: true, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    defines: kind === 'stream' ? { STREAM: 1 } : {},
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uDummy: { value: 0 } }]),
     vertexShader: /* glsl */ `
       #include <common>
@@ -356,49 +388,41 @@ export function waterMaterial(kind: 'fall' | 'stream' | 'fallDepth'): THREE.Shad
           float n2 = pNoise(vec3(x * 5.0 + 3.0, flow * 1.6, uTime * 0.4));
           float rip = smoothstep(0.62, 0.8, n1 * 0.5 + n2 * 0.5);
           float bank = smoothstep(0.55, 0.95, abs(x));
-          float foam = max(rip * 0.7, bank * (0.5 + 0.5 * n2));
-          foam = max(foam, smoothstep(0.8, 1.0, vT) * (0.4 + 0.6 * n2));
-          vec3 col = mix(deep * 0.92, pale, foam);
+          float foam = max(rip * 0.55, bank * (0.35 + 0.4 * n2));
+          foam = max(foam, smoothstep(0.88, 1.0, vT) * (0.3 + 0.6 * n2));
+          vec3 col = mix(vec3(0.36, 0.6, 0.82), pale, foam);
           float a = (0.82 + foam * 0.18) * smoothstep(0.0, 0.06, vT);
         #else
-          float flow = y - uTime * (8.5 + vLayer * 1.3);
-          vec3 col; float a; float aBody = 0.0;
+          // the fall: many thin white threads scrolling down, each layer at its own pace
+          float flow = y - uTime * (9.0 + vLayer * 1.7);
+          vec3 col; float a;
           {
-            // broad, long streaks and finer foam threads scrolling down, each strand at its own pace
-            float n1 = pNoise(vec3(x * 3.2 + vLayer * 11.0, flow * 0.05, 0.0));
-            float n2 = pNoise(vec3(x * 8.5 + vLayer * 5.0, flow * 0.18, 3.0));
-            float n3 = pNoise(vec3(x * 19.0 + vLayer * 2.0, flow * 0.45, 9.0));
-            float body = n1 * 0.55 + n2 * 0.3 + n3 * 0.15;
-            // near-white body; a little blue only in the troughs, mostly in the upper fall
-            float trough = 1.0 - smoothstep(0.3, 0.44, body);
-            col = mix(vec3(1.0), vec3(0.6, 0.78, 0.94), trough * 0.7 * (1.0 - smoothstep(0.45, 0.85, vT)));
-            // high-contrast white foam threads
-            col = mix(col, vec3(1.08), smoothstep(0.58, 0.68, n2 * 0.7 + n3 * 0.3) * 0.7);
-            // thick white water for the first metres under the lip
-            col = mix(col, vec3(1.04), 1.0 - smoothstep(0.5, 3.5, y));
-            // soft ragged edges that widen and fray as the water falls
-            float rag = (pNoise(vec3(x * 2.4 + vLayer, flow * 0.12, 7.0)) - 0.5) * (0.3 + 0.7 * vT);
-            float e0 = mix(0.72, 0.2, vT);
-            a = 1.0 - smoothstep(e0 + rag, 1.0 + rag * 0.25, abs(x));
-            // the solid body (for the depth pass): the strand's core, narrowing to a rounded tongue lower down
-            float brk = pNoise(vec3(x * 2.6 + vLayer * 3.0, flow * 0.035, 13.0));
-            aBody = a * (1.0 - smoothstep(0.42 + 0.32 * brk, 0.62 + 0.32 * brk, vT)) * smoothstep(0.0, 0.4, y);
-            a *= mix(0.98, 0.8, smoothstep(0.35, 1.0, vT));
-            // lower down it breaks into ropes and spray
-            float holes = smoothstep(0.4, 0.95, vT) * (1.0 - smoothstep(0.34, 0.56, body + 0.12 * (1.0 - vT)));
-            a *= 1.0 - holes;
-            a *= 1.0 - smoothstep(0.72, 1.0, vT);
-            a *= smoothstep(0.0, 0.4, y);
-            col *= 1.0 - 0.05 * mod(vLayer, 2.0);
+            float s = vT;
+            float th1 = pNoise(vec3(x * 5.5 + vLayer * 7.0, flow * 0.022, 1.0));
+            float th2 = pNoise(vec3(x * 15.0 + vLayer * 3.0, flow * 0.06, 4.0));
+            float th3 = pNoise(vec3(x * 34.0 + vLayer * 1.3, flow * 0.15, 8.0));
+            float thr = th1 * 0.45 + th2 * 0.35 + th3 * 0.2;
+            float threads = smoothstep(0.4, 0.6, thr);
+            // white threads; pale blue only in the gaps between them, mostly in the upper fall
+            col = mix(vec3(0.6, 0.77, 0.92), vec3(1.03), mix(threads, 1.0, smoothstep(0.7, 1.0, s)));
+            // thick white water for the first metre or two under the lip
+            col = mix(col, vec3(1.04), 1.0 - smoothstep(0.3, 2.5, y));
+            // soft sides that fray as the water falls (no hard edge anywhere)
+            float rag = (th1 - 0.5) * (0.35 + 0.5 * s);
+            a = 1.0 - smoothstep(0.5 + rag, 1.0, abs(x));
+            // the body is threads with air between them, opening up as it falls
+            a *= mix(0.55, 1.0, threads) * mix(1.0, smoothstep(0.32, 0.58, thr), smoothstep(0.2, 0.65, s));
+            if (vLayer > 0.5) a *= 0.7 * smoothstep(0.25, 0.6, thr);
+            // over the last 30-40% it spreads and breaks into spray, its end ragged in the alpha, never a line
+            float sp = smoothstep(0.58, 1.0, s);
+            float sn = pNoise(vec3(x * 2.6, flow * 0.04, 11.0)) * 0.6 + pNoise(vec3(x * 8.0, flow * 0.12, 3.0)) * 0.4;
+            a *= clamp(1.0 - sp * 1.5 + (sn - 0.5) * 1.2 * sp, 0.0, 1.0) * mix(1.0, 0.6, sp);
+            a *= 1.0 - smoothstep(0.86, 0.98, s);
+            a *= smoothstep(0.0, 0.3, y);
+            // seen edge-on, a part of the ribbon thins to nothing (the U keeps another part facing the eye)
+            vec3 Vv = normalize(cameraPosition - vW);
+            a *= smoothstep(-0.05, 0.22, abs(dot(normalize(vN), Vv)));
           }
-        #endif
-        #ifdef DEPTH_ONLY
-          // the opaque body of the fall writes depth, so the screen ink outlines the curtain instead of drawing the
-          // silhouettes of whatever is behind it through it
-          // (only the strands' solid cores: no holes, so the ink never draws inside the broken lower fall)
-          if (aBody < 0.6) discard;
-          gl_FragColor = vec4(0.0);
-          return;
         #endif
         vec3 N = normalize(vN);
         float lam = clamp(dot(N, uSun) * 0.5 + 0.5, 0.0, 1.0);
@@ -443,7 +467,9 @@ export function mistMaterial(): THREE.ShaderMaterial {
         float size = iData.x * (1.0 + 0.06 * sin(uTime * 0.5 + iData.y * 9.0));
         vec4 mvPosition = viewMatrix * wc;
         mvPosition.xy += position.xy * size;
-        vUv = position.xy + 0.5; vSeed = iData.y; vAlpha = iData.z;
+        vUv = position.xy + 0.5; vSeed = iData.y; vAlpha = abs(iData.z);
+        // negative alpha: spray along the fall that only shows when it is seen steeply along its length
+        if (iData.z < 0.0) vAlpha *= smoothstep(0.75, 0.95, abs(normalize(cameraPosition - wc.xyz).y));
         vRight = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
         vUpV = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
         vToCam = normalize(cameraPosition - wc.xyz);
@@ -460,13 +486,15 @@ export function mistMaterial(): THREE.ShaderMaterial {
         vec2 p = vUv * 2.0 - 1.0;
         float n = pNoise(vec3(p * 2.2 + vSeed * 17.0, uTime * 0.12 + vSeed)) * 0.65 + pNoise(vec3(p * 5.0, uTime * 0.2 - vSeed)) * 0.35;
         float d = length(p) + (n - 0.5) * 0.55;
-        float a = 1.0 - smoothstep(0.35, 0.95, d);
+        float a = 1.0 - smoothstep(0.45, 0.95, d);
         if (a < 0.01) discard;
         float z = sqrt(max(0.0, 1.0 - dot(p, p)));
         vec3 N = normalize(vRight * p.x + vUpV * p.y + vToCam * z);
-        float lit = smoothstep(-0.4, 0.7, dot(N, uSun));
-        vec3 shade = vec3(0.84, 0.88, 0.97), bright = vec3(1.06, 1.05, 1.03);
-        vec3 col = mix(shade, bright, lit) * (0.76 + uSunCol * 0.28);
+        // toon-shaded like the cloud sea: a lit side and a shade side with a soft painted step between them
+        float lit = smoothstep(-0.05, 0.2, dot(N, uSun) + (n - 0.5) * 0.4);
+        // the cloud sea's own colours (paintCloud): near-white lit, a soft lilac-grey in shade
+        vec3 shade = vec3(0.84, 0.85, 0.93), bright = vec3(0.98, 0.97, 0.955);
+        vec3 col = mix(shade, bright, lit) * (0.9 + uSunCol * 0.1);
         gl_FragColor = vec4(col, a * vAlpha);
         #include <fog_fragment>
       }`,
@@ -476,19 +504,69 @@ export function mistMaterial(): THREE.ShaderMaterial {
   return m;
 }
 
+let bankMat: THREE.ShaderMaterial | null = null;
+/**
+ * The cloud bank a waterfall falls into: camera-facing heaps painted exactly like the cloud sea (paintCloud), so
+ * the water is swallowed by cloud, not by a separate kind of puff. iPos is the heap's centre (local), iData: width,
+ * seed (picks and mirrors one of two paintings), alpha.
+ */
+export function cloudBankMaterial(): THREE.ShaderMaterial {
+  if (bankMat) return bankMat;
+  const tex = [3, 17].map(k => { const t = new THREE.CanvasTexture(paintCloud(k, true)); t.colorSpace = THREE.SRGBColorSpace; return t; });
+  const m = new THREE.ShaderMaterial({
+    fog: true, transparent: true, depthWrite: false,
+    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { tA: { value: null }, tB: { value: null } }]),
+    vertexShader: /* glsl */ `
+      #include <common>
+      #include <fog_pars_vertex>
+      attribute vec3 iPos; attribute vec3 iData;
+      uniform float uTime;
+      varying vec2 vUv; varying float vSeed; varying float vAlpha;
+      void main(){
+        vec4 wc = modelMatrix * vec4(iPos + vec3(sin(uTime * 0.2 + iData.y * 9.0) * 0.3, 0.0, 0.0), 1.0);
+        vec4 mvPosition = viewMatrix * wc;
+        mvPosition.xy += position.xy * vec2(iData.x, iData.x * 0.5);
+        vUv = position.xy + 0.5; vSeed = iData.y; vAlpha = iData.z;
+        if (vSeed > 0.5) vUv.x = 1.0 - vUv.x;
+        gl_Position = projectionMatrix * mvPosition;
+        #include <fog_vertex>
+      }`,
+    fragmentShader: /* glsl */ `
+      #include <common>
+      #include <fog_pars_fragment>
+      uniform sampler2D tA; uniform sampler2D tB; uniform vec3 uSunCol;
+      varying vec2 vUv; varying float vSeed; varying float vAlpha;
+      void main(){
+        vec4 c = fract(vSeed * 7.0) > 0.5 ? texture2D(tA, vUv) : texture2D(tB, vUv);
+        if (c.a < 0.02) discard;
+        gl_FragColor = vec4(c.rgb * (0.9 + uSunCol * 0.1), c.a * vAlpha);
+        #include <fog_fragment>
+      }`,
+  });
+  Object.assign(m.uniforms, sharedU());
+  m.uniforms.tA.value = tex[0]; m.uniforms.tB.value = tex[1];
+  bankMat = m;
+  return m;
+}
+
 let bowMat: THREE.ShaderMaterial | null = null;
 /** A faint rainbow standing in the spray: a camera-facing arc, its colours thinning out where the mist thins. */
 export function rainbowMaterial(): THREE.ShaderMaterial {
   if (bowMat) return bowMat;
   const m = new THREE.ShaderMaterial({
-    fog: false, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-    uniforms: { uStrength: { value: 0.13 } },
+    // normal blending: over white spray an additive bow would only whiten; this tints it
+    fog: false, transparent: true, depthWrite: false,
+    uniforms: { uStrength: { value: 0.2 } },
     vertexShader: /* glsl */ `
       #include <common>
-      varying vec2 vUv;
+      uniform vec3 uSun;
+      varying vec2 vUv; varying float vBehind;
       void main(){
         vUv = uv;
-        vec4 mvPosition = viewMatrix * modelMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+        // only when the sun is behind the viewer
+        vec3 wc = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+        vBehind = smoothstep(0.15, 0.55, dot(normalize(cameraPosition - wc), uSun));
+        vec4 mvPosition = viewMatrix * vec4(wc, 1.0);
         vec3 sc = vec3(length(modelMatrix[0].xyz), length(modelMatrix[1].xyz), 1.0);
         mvPosition.xy += position.xy * sc.xy;
         gl_Position = projectionMatrix * mvPosition;
@@ -496,20 +574,21 @@ export function rainbowMaterial(): THREE.ShaderMaterial {
     fragmentShader: /* glsl */ `
       #include <common>
       uniform float uStrength; uniform float uTime;
-      varying vec2 vUv;
+      varying vec2 vUv; varying float vBehind;
       ${NOISE_GLSL}
       void main(){
         vec2 p = vec2(vUv.x * 2.0 - 1.0, vUv.y);
         float r = length(p);
-        float band = (r - 0.72) / 0.2;
-        if (band < 0.0 || band > 1.0) discard;
+        float band = (r - 0.74) / 0.16;
+        if (band < 0.0 || band > 1.0 || vBehind < 0.01) discard;
         vec3 col = clamp(abs(fract(band * 0.82 + vec3(0.0, 0.66, 0.33)) * 6.0 - 3.0) - 1.0, 0.0, 1.0);
-        col = mix(col, vec3(1.0), 0.25);
+        col = mix(col, vec3(1.0), 0.15);
         float a = sin(band * 3.14159);
         float ang = atan(p.y, p.x);
-        a *= smoothstep(0.35, 0.95, ang) * smoothstep(2.5, 1.7, ang);
-        a *= smoothstep(0.0, 0.35, p.y) * (0.35 + 0.65 * pNoise(vec3(p * 3.0, uTime * 0.1)));
-        gl_FragColor = vec4(col * a * uStrength, 1.0);
+        // a short segment of the arc, low in the spray
+        a *= smoothstep(0.6, 1.1, ang) * smoothstep(2.3, 1.7, ang);
+        a *= smoothstep(0.0, 0.45, p.y) * (0.35 + 0.65 * pNoise(vec3(p * 3.0, uTime * 0.1))) * vBehind;
+        gl_FragColor = vec4(col, a * uStrength);
       }`,
   });
   Object.assign(m.uniforms, sharedU());

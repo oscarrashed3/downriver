@@ -155,15 +155,16 @@ export function sprigMesh(list: Sprig[], kind: 'tuft' | 'daisy' | 'spike', seed:
   g.boundingSphere = box.getBoundingSphere(new THREE.Sphere()); g.boundingSphere.radius += 2;
   g.boundingBox = box.expandByScalar(2);
   const m = new THREE.Mesh(g, tuftMaterial(kind === 'tuft' ? 'grass' : 'flower'));
-  m.userData.noOutline = true;
+  m.userData.noOutline = true; m.renderOrder = 1;
   m.userData.instances = N;
   return m;
 }
 
 // ------------------------------------------------------------------ hanging growth
 
-const IVY = [new THREE.Color('#5a9a3e'), new THREE.Color('#6eaa46'), new THREE.Color('#4f8e3a'), new THREE.Color('#82b64e')];
-const TIP = new THREE.Color('#b4d468');
+// sampled close to the moss on the ledges, so ivy and moss read as one growth
+const IVY = [new THREE.Color('#6a9a44'), new THREE.Color('#78a64a'), new THREE.Color('#5f9040'), new THREE.Color('#84ae52')];
+const TIP = new THREE.Color('#aac868');
 const BLOSSOM = [new THREE.Color('#f2a6c4'), new THREE.Color('#fff4ea'), new THREE.Color('#c8a8ee'), new THREE.Color('#ffd86a')];
 
 /** Leaf cards collected into one mesh (ivy material): each card faces out from the wall, aSway lets loose ends swing. */
@@ -199,7 +200,7 @@ class Cards {
     g.setAttribute('aSway', new THREE.Float32BufferAttribute(this.sway, 2));
     g.setIndex(this.idx);
     const m = new THREE.Mesh(g, ivyMaterial());
-    m.castShadow = true; m.receiveShadow = true; m.userData.noOutline = true;
+    m.castShadow = true; m.receiveShadow = true; m.userData.noOutline = true; m.renderOrder = 1;
     return m;
   }
 }
@@ -211,25 +212,25 @@ class Cards {
  */
 function strand(sh: IslandShape, cards: Cards, rng: () => number, a: number, y0: number, r0: number, L: number, color: THREE.Color, s2: number, flower: THREE.Color | null) {
   let r = r0, free = 0;
-  const step = 0.2 * s2;
+  const step = 0.17 * s2;
   const ph = rng() * 20;
+  const dark = color.clone().multiplyScalar(0.72);
   for (let d = 0; d < L; d += step) {
     const y = y0 - d;
     const w = y > sh.lipBottom(a) - 0.05 ? null : sh.wall(a, y);
-    const wr = w ? w.r + 0.12 * s2 : r;
+    const wr = w ? w.r + 0.08 * s2 : r;
     if (wr >= r - 0.02) { r = wr; free = 0; } else free += step;
     const out = new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
     const c = out.clone().multiplyScalar(r).setY(y);
     if (w) { c.x += w.cx; c.z += w.cz; }
     const t = d / L;
-    // a full curtain near the top, thinning to single leaves at the tip
-    const size = (0.42 - 0.2 * t) * s2 * (0.85 + rng() * 0.3);
-    const col = color.clone().lerp(TIP, smoothstep(0.35, 1, t) * 0.7);
-    const sw = Math.min(0.14, free * 0.035) * s2;
-    cards.card(c, out, size, col, sw, ph, 1.15);
-    if (t < 0.75) cards.card(c.clone().add(new THREE.Vector3(Math.sin(a), -step * 0.5, -Math.cos(a)).multiplyScalar(0.6 * size)), out, size * 0.85, col, sw, ph);
-    if (t < 0.4) cards.card(c.clone().add(new THREE.Vector3(-Math.sin(a), -step * 0.3, Math.cos(a)).multiplyScalar(0.7 * size)), out, size * 0.8, col, sw, ph);
-    if (flower && rng() < 0.2) cards.card(c.clone().addScaledVector(out, 0.08), out, size * 0.4, flower, sw, ph);
+    // a narrow strand: darker in its core, thinning to small sparse leaves at the tip
+    const size = (0.2 - 0.09 * t) * s2 * (0.85 + rng() * 0.3);
+    const col = dark.clone().lerp(color, 0.4 + 0.6 * t).lerp(TIP, smoothstep(0.45, 1, t) * 0.6);
+    const sw = Math.min(0.12, free * 0.035) * s2;
+    if (t < 0.7 || rng() < 1.4 - t * 1.4) cards.card(c, out, size, col, sw, ph, 1.3);
+    if (t < 0.4) cards.card(c.clone().add(new THREE.Vector3(Math.sin(a), -step * 0.5, -Math.cos(a)).multiplyScalar(0.55 * size)), out, size * 0.8, color, sw, ph);
+    if (flower && rng() < 0.15) cards.card(c.clone().addScaledVector(out, 0.06), out, size * 0.55, flower, sw, ph);
     a += (rng() - 0.5) * 0.003;
   }
 }
@@ -244,39 +245,51 @@ export function hangingGrowth(sh: IslandShape, rng: () => number, density: numbe
   const s2 = Math.max(0.45, sh.sc);
   const blocked = (a: number, pad: number) => avoid.some(v => Math.abs(Math.atan2(Math.sin(a - v.a), Math.cos(a - v.a))) < v.half + pad);
   const perim = TAU * sh.R;
-  // short drapes all round the lip
-  const nDrape = Math.round((perim / (0.55 * s2)) * density);
+  // short drapes along the lip, here and there, so the turf's under-edge is never a clean line
+  const nDrape = Math.round((perim / (1.1 * s2)) * density);
   for (let k = 0; k < nDrape; k++) {
-    const a = (k / nDrape) * TAU + (rng() - 0.5) * 0.02;
-    if (blocked(a, 0.05) || rng() < 0.25) continue;
+    const a = (k / nDrape) * TAU + (rng() - 0.5) * 0.03;
+    if (blocked(a, 0.03) || rng() < 0.35) continue;
     const Rt = sh.outline(a);
     const color = IVY[Math.floor(rng() * IVY.length)];
-    strand(sh, cards, rng, a, sh.edgeY(a) - sh.turf(a) * 0.7, Rt + 0.02 * s2, (0.4 + rng() * 1.2) * s2, color, s2, null);
+    strand(sh, cards, rng, a, sh.edgeY(a) - sh.turf(a) * 0.7, Rt + 0.02 * s2, (0.3 + rng() * 0.9) * s2, color, s2, null);
   }
-  // long curtains: several strands side by side
-  const clusters = Math.round((perim / 4.2) * density);
-  for (let k = 0; k < clusters; k++) {
-    const a0 = rng() * TAU;
-    if (blocked(a0, 0.12)) continue;
-    const strands = 3 + Math.floor(rng() * 5);
+  // long trailing strands, grouped: either side of each waterfall (where the spray keeps it green) and at the
+  // corners of the cliff (the outline's sharpest bends), a few elsewhere
+  const spots: number[] = [];
+  for (const v of avoid) { spots.push(v.a + v.half + 0.06, v.a - v.half - 0.06); }
+  let best: { a: number; k: number }[] = [];
+  for (let i = 0; i < 90; i++) {
+    const a = (i / 90) * TAU, e = 0.05;
+    const k = 2 * sh.outline(a) - sh.outline(a - e) - sh.outline(a + e);
+    best.push({ a, k });
+  }
+  best = best.sort((p, q) => q.k - p.k).slice(0, Math.max(2, Math.round(sh.R / 4)));
+  for (const b of best) spots.push(b.a);
+  const extra = Math.round((perim / 18) * density);
+  for (let i = 0; i < extra; i++) spots.push(rng() * TAU);
+  for (const a0 of spots) {
+    if (blocked(a0, 0.0)) continue;
+    const strands = 2 + Math.floor(rng() * 4);
     const Rt = sh.outline(a0);
     const color = IVY[Math.floor(rng() * IVY.length)];
-    const flowering = rng() < 0.3 ? BLOSSOM[Math.floor(rng() * BLOSSOM.length)] : null;
-    const longest = Math.min(sh.cliffDepth * 0.9, (2.5 + rng() * 8) * s2);
+    const flowering = rng() < 0.25 ? BLOSSOM[Math.floor(rng() * BLOSSOM.length)] : null;
+    const longest = Math.min(sh.cliffDepth * 0.75, (2 + rng() * 6) * s2);
     for (let s = 0; s < strands; s++) {
-      const a = a0 + ((s - strands / 2) * 0.22 * s2) / Rt + (rng() - 0.5) * 0.02;
-      const L = longest * (0.4 + rng() * 0.6) * (1 - 0.5 * Math.abs(s - strands / 2) / strands);
+      const a = a0 + ((s - strands / 2) * (0.25 + rng() * 0.3) * s2) / Rt;
+      if (blocked(a, 0.0)) continue;
+      const L = longest * (0.35 + rng() * 0.65);
       strand(sh, cards, rng, a, sh.edgeY(a) - sh.turf(a) * 0.6, Rt + 0.02 * s2, L, color.clone().offsetHSL(0, 0, (rng() - 0.5) * 0.05), s2, flowering);
     }
   }
-  // moss and grass running down from the ledges
-  const want = ledges.length ? Math.round((perim / 1.3) * density) : 0;
+  // a few short strands down from the mossy ledges
+  const want = ledges.length ? Math.round((perim / 6) * density) : 0;
   for (let i = 0; i < want; i++) {
     const l = ledges[Math.floor(rng() * ledges.length)];
-    if (blocked(l.a, 0.08)) continue;
+    if (blocked(l.a, 0.05)) continue;
     const color = IVY[Math.floor(rng() * IVY.length)];
     const w = sh.wall(l.a, l.p.y - 0.05);
-    strand(sh, cards, rng, l.a, l.p.y + 0.05 * s2, w.r + 0.05 * s2, (0.5 + rng() * 2.4) * s2 * (0.6 + Math.min(1, l.w)), color, s2, rng() < 0.12 ? BLOSSOM[Math.floor(rng() * BLOSSOM.length)] : null);
+    strand(sh, cards, rng, l.a, l.p.y + 0.05 * s2, w.r + 0.05 * s2, (0.4 + rng() * 1.6) * s2 * (0.6 + Math.min(1, l.w)), color, s2, rng() < 0.1 ? BLOSSOM[Math.floor(rng() * BLOSSOM.length)] : null);
   }
   return cards.mesh();
 }
@@ -290,7 +303,8 @@ function taperTube(pts: THREE.Vector3[], r0: number, radial = 5): THREE.BufferGe
   const frames = curve.computeFrenetFrames(n, false);
   const pos: number[] = [], idx: number[] = [];
   for (let i = 0; i <= n; i++) {
-    const t = i / n, c = curve.getPointAt(t), r = r0 * Math.pow(1 - t, 0.9) + 0.006;
+    // (never thinner than a couple of centimetres: finer tips only alias into dots)
+    const t = i / n, c = curve.getPointAt(t), r = Math.max(r0 * 0.25, r0 * Math.pow(1 - t, 0.9)) + 0.012;
     for (let j = 0; j < radial; j++) {
       const a = (j / radial) * TAU;
       const v = c.clone().addScaledVector(frames.normals[i], Math.cos(a) * r).addScaledVector(frames.binormals[i], Math.sin(a) * r);
@@ -330,26 +344,88 @@ function rootTree(geos: THREE.BufferGeometry[], rng: () => number, start: THREE.
   }
 }
 
+/** A root that clings to the rock: it runs down the wall, hugging it, and hangs free where the wall falls away. */
+function clingRoot(geos: THREE.BufferGeometry[], sh: IslandShape, rng: () => number, a: number, y0: number, L: number, r0: number) {
+  const pts: THREE.Vector3[] = [];
+  let rPrev = Infinity;
+  const segs = 7;
+  for (let i = 0; i <= segs; i++) {
+    const y = y0 - (L * i) / segs;
+    a += (rng() - 0.5) * 0.25 / Math.max(4, sh.R);
+    const w = sh.wall(a, y);
+    // hug the wall, but never swing back in under an overhang
+    const r = Math.min(rPrev + 0.05, w.r + r0 * 1.3);
+    rPrev = Math.max(r, w.r + r0);
+    pts.push(new THREE.Vector3(w.cx + Math.cos(a) * rPrev, y, w.cz + Math.sin(a) * rPrev));
+  }
+  geos.push(taperTube(pts, r0, 4));
+}
+
 /**
- * Roots: thick, tapered, warm brown roots coming out from under the overhangs and the underside's upper beds, each
- * branching into tendrils that hang down.
+ * Rough chunks of rock hanging from the underside in a net of roots: geometry for the body (the chunks) and for the
+ * roots (added to geos). Returns the chunk geometries.
  */
-export function roots(sh: IslandShape, rng: () => number, count: number): THREE.Mesh | null {
-  const geos: THREE.BufferGeometry[] = [];
+export function hangingChunks(sh: IslandShape, rng: () => number, count: number, rootGeos: THREE.BufferGeometry[]): THREE.BufferGeometry[] {
+  const out: THREE.BufferGeometry[] = [];
   const s2 = Math.max(0.4, sh.sc);
   for (let k = 0; k < count; k++) {
     const a = rng() * TAU;
-    // most from just under the cliff base and the first underside beds, some from under the lip
-    const y = rng() < 0.25 ? sh.lipBottom(a) - (0.5 + rng() * 1.5) * s2 : -sh.cliffDepth - Math.pow(rng(), 1.5) * sh.underDepth * 0.45;
+    const v = sh.vEnd * (0.25 + rng() * 0.6);
+    const y = -sh.cliffDepth - v * sh.underDepth;
+    const w = sh.wall(a, y);
+    const out0 = new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
+    const anchor = new THREE.Vector3(w.cx, y, w.cz).addScaledVector(out0, w.r * 0.9);
+    const size = (0.6 + rng() * 0.9) * s2;
+    const drop = (1.2 + rng() * 2.5) * s2;
+    const c = anchor.clone().addScaledVector(out0, size * 0.6).add(new THREE.Vector3(0, -drop - size, 0));
+    const g = rockBlock(rng, size, size * (1.0 + rng() * 0.6), sh.band(sh.bandIndex(y)).col, rng() < 0.6 ? 0.8 : 0);
+    g.rotateY(rng() * TAU);
+    g.translate(c.x, c.y, c.z);
+    out.push(g);
+    // the roots it hangs in: from the rock above, sagging a little, gripping over the chunk's top and on below it
+    const n = 3 + Math.floor(rng() * 3);
+    for (let i = 0; i < n; i++) {
+      const ra = rng() * TAU, rr = size * (0.4 + rng() * 0.4);
+      const from = anchor.clone().add(new THREE.Vector3(Math.cos(ra) * rr * 0.8, 0.2 * s2, Math.sin(ra) * rr * 0.8));
+      const grip = c.clone().add(new THREE.Vector3(Math.cos(ra) * rr, size * 0.35, Math.sin(ra) * rr));
+      const mid = from.clone().lerp(grip, 0.5).addScaledVector(out0, 0.25 * s2);
+      const below = c.clone().add(new THREE.Vector3(Math.cos(ra) * rr * 0.7, -size * (0.9 + rng() * 1.2), Math.sin(ra) * rr * 0.7));
+      rootGeos.push(taperTube([from, mid, grip, grip.clone().lerp(below, 0.5).addScaledVector(out0, 0.1), below], (0.05 + rng() * 0.05) * s2, 4));
+    }
+  }
+  return out;
+}
+
+/**
+ * Roots: tangles of thin roots out of the soil layer under the lip, clinging to the top of the cliff; and thick,
+ * tapered roots from under the overhangs and the underside's upper beds, branching into tendrils that hang down.
+ * extra: more root tubes to merge in (the nets the hanging chunks hang in). avoid: the waterfall notches.
+ */
+export function roots(sh: IslandShape, rng: () => number, count: number, extra: THREE.BufferGeometry[] = [], avoid: { a: number; half: number }[] = []): THREE.Mesh | null {
+  const geos: THREE.BufferGeometry[] = [...extra];
+  const s2 = Math.max(0.4, sh.sc);
+  const blocked = (a: number) => avoid.some(v => Math.abs(Math.atan2(Math.sin(a - v.a), Math.cos(a - v.a))) < v.half * 1.6 + 0.2);
+  for (let k = 0; k < count; k++) {
+    const a = rng() * TAU;
+    if (blocked(a)) continue;
+    if (rng() < 0.55) {
+      // a tangle out of the soil: three to five thin roots from one spot, clinging down the top of the cliff
+      const y0 = sh.lipBottom(a) + 0.15 * s2;
+      const n = 3 + Math.floor(rng() * 3);
+      for (let i = 0; i < n; i++) clingRoot(geos, sh, rng, a + ((rng() - 0.5) * 0.8 * s2) / sh.R, y0, (0.8 + rng() * 2.6) * s2, (0.03 + rng() * 0.04) * s2);
+      continue;
+    }
+    const y = -sh.cliffDepth - Math.pow(rng(), 1.5) * sh.underDepth * 0.4;
     const w = sh.wall(a, y);
     const out = new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
     const start = new THREE.Vector3(w.cx, y, w.cz).addScaledVector(out, w.r * 0.97);
-    rootTree(geos, rng, start, out, (1.6 + rng() * 3.6) * s2, (0.09 + rng() * 0.11) * s2, 0);
+    rootTree(geos, rng, start, out, (1.6 + rng() * 3.2) * s2, (0.08 + rng() * 0.1) * s2, 0);
   }
   if (!geos.length) return null;
-  const m = new THREE.Mesh(mergeGeometries(geos, false)!, toonMat('#a07450', 0.5, 0.8));
-  m.castShadow = true; m.receiveShadow = true;
-  addOutlines(m, '#5a3e2c', 0.012 * s2);
+  const m = new THREE.Mesh(mergeGeometries(geos, false)!, toonMat('#8e6646', 0.5, 0.8));
+  // (thin roots cast no shadow: on the sunlit rock their shadows only scrawl)
+  m.castShadow = false; m.receiveShadow = true;
+  // (no ink hull: on roots this thin it only breaks up into dots at a distance)
   return m;
 }
 

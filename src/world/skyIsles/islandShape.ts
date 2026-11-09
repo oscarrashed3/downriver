@@ -3,11 +3,15 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { Noise, smoothstep, clamp, lerp } from '../noise';
 
 // The form of one floating island, as pure functions of local space (+Y up, the island's lip near y = 0):
-// - an irregular outline, R(angle), with bays and promontories at three scales;
+// - an irregular outline, R(angle), with bays and promontories at three scales, and a notch cut back into the cliff
+//   wherever a waterfall goes over, so the rock wraps round the falling water;
 // - a walkable top, height(x, z), with stream channels carved down to each waterfall's lip;
-// - a cliff of many thin horizontal limestone beds: each bed steps in or out, is cut into blocks by vertical joints,
-//   and whole stretches of cliff lean or step back, so ledges, overhangs and cracks come from the beds themselves;
-// - a broad, stepped underside that ends in a blunt jagged base, from which the builder hangs two or three lobes.
+// - a cliff of limestone masses: vertical joints split it into big columns and buttresses with rounded recesses
+//   between them; horizontal beds 1 to 4 m thick run through the columns, each column setting its beds a little in
+//   or out so the beds jog across the joints; only a few hard beds stand out as strong ledges, and their undersides
+//   are eroded round, so the form comes from blocks and overhangs, not from rings;
+// - a heavy underside of big flat facets, its strata fading toward the tip, from which the builder hangs one or two
+//   broken lobes.
 // buildShell() turns that into one mesh made of separate sections (the top and lip, one face per bed, one ledge
 // strip between beds), each with its own normals, so every ledge edge stays crisp.
 
@@ -45,8 +49,11 @@ export interface Stream {
 /** A drift of flowers on the meadow: the ground under it takes a little of its colour, so it reads from afar. */
 export interface Drift { x: number; z: number; r: number; col: THREE.Color; spike: boolean }
 
-// limestone: warm cream and pale gold, a warmer peach bed and, now and then, a cooler grey-lilac one
-const BAND_COLS = ['#eedfbd', '#e9d3a2', '#f4ead2', '#e2c792', '#ecd2ac', '#f0e2c2', '#e5cc9c', '#dccfc4'];
+// limestone: warm cream to pale gold, one hue family; beds differ by small warm and cool shifts, never grey stripes
+const BAND_COLS = ['#e8d5ae', '#e4cc9e', '#dfc28e', '#ebd9b6', '#e2c798', '#e7d1a8', '#dcc08c', '#e6d4b2'];
+
+/** A column of the cliff between two vertical joints: angles, how far it stands out, how it leans, its joint depth. */
+interface Column { a0: number; a1: number; off: number; lean: number; joint: number; seed: number }
 
 export class IslandShape {
   readonly R: number;
@@ -72,8 +79,16 @@ export class IslandShape {
   /** whole stretches of cliff that step back below a bed, and how far */
   private steps: { k: number; a: number; w: number; d: number }[] = [];
   private leanA = 0; private leanK = 0;
+  /** notches cut for the waterfalls: angle, half-width (radians), depth (metres) */
+  private notches: { a: number; w: number; d: number }[] = [];
+  /** the cliff's columns, in angle order from cols[0].a0 round to cols[0].a0 + TAU */
+  private cols: Column[] = [];
+  /** how much the cliff narrows from the lip to its base (share of the radius) */
+  readonly taper: number;
+  /** facets of the underside: values at (facet, row) nodes, interpolated linearly so faces stay flat */
+  private facets: Float32Array; private nFacet: number;
 
-  constructor(o: { seed: number; radius: number; wobble?: number; topHeight?: (x: number, z: number) => number; cliffDepth: number; underDepth: number; waterfalls?: WaterfallSpec[] }) {
+  constructor(o: { seed: number; radius: number; wobble?: number; topHeight?: (x: number, z: number) => number; cliffDepth: number; underDepth: number; waterfalls?: WaterfallSpec[]; taper?: number }) {
     this.R = o.radius;
     this.sc = clamp(o.radius / 12, 0.14, 1.3);
     this.rng = makeRng(o.seed);
@@ -82,7 +97,10 @@ export class IslandShape {
     this.underDepth = o.underDepth;
     this.wob = o.wobble ?? 0.85;
     this.userH = o.topHeight;
+    this.taper = o.taper ?? 0.06;
     const rng = this.rng;
+    // the waterfalls each cut a round-backed notch into the lip and on down the cliff
+    for (const wf of o.waterfalls ?? []) this.notches.push({ a: wf.angle, w: (wf.width * 0.5 + 1.1 * this.sc) / this.R, d: Math.min(this.R * 0.12, wf.width * 0.45 + 0.9 * this.sc) });
     // big bites out of the outline, and a promontory or two
     const nb = 2 + Math.floor(rng() * 3);
     for (let i = 0; i < nb; i++) this.bays.push({ a: rng() * TAU, w: 0.14 + rng() * 0.3, d: -(0.14 + rng() * 0.2) });
@@ -100,11 +118,18 @@ export class IslandShape {
     this.tipX = Math.cos(lean) * ld; this.tipZ = Math.sin(lean) * ld;
     // one side of the cliff leans in toward the bottom more than the other
     this.leanA = rng() * TAU; this.leanK = 0.05 + rng() * 0.12;
+    this.planColumns();
     this.planBands();
+    // the underside's facets: a coarse grid round and down it
+    this.nFacet = Math.max(5, Math.round(5 + this.R * 0.45));
+    this.facets = new Float32Array(this.nFacet * 8);
+    // small rocks break more boldly, so an islet is a broken stone and never a smooth top
+    const famp = this.R < 4 ? 0.55 : 0.32;
+    for (let i = 0; i < this.facets.length; i++) this.facets[i] = 1 + (rng() - 0.5) * famp;
     // two or three stretches of cliff step back hard below some bed (big overhangs, as in the pictures)
     const nCliff = this.bands.filter(b => b.top > -this.cliffDepth).length;
-    for (let i = 0; i < 2 + Math.floor(rng() * 2); i++) {
-      this.steps.push({ k: 2 + Math.floor(rng() * Math.max(1, nCliff - 3)), a: rng() * TAU, w: 0.5 + rng() * 0.9, d: (0.6 + rng() * 0.9) * this.sc });
+    for (let i = 0; i < 1 + Math.floor(rng() * 2); i++) {
+      this.steps.push({ k: 1 + Math.floor(rng() * Math.max(1, nCliff - 2)), a: rng() * TAU, w: 0.4 + rng() * 0.6, d: (0.8 + rng() * 1.0) * this.sc });
     }
   }
 
@@ -120,7 +145,26 @@ export class IslandShape {
       const d = Math.atan2(Math.sin(a - b.a), Math.cos(a - b.a)) / b.w;
       bay += b.d * Math.exp(-d * d * 2.2);
     }
-    return this.R * Math.max(0.5, 1 + this.wob * (0.42 * big + 0.15 * mid + 0.045 * small + bay));
+    const r = this.R * Math.max(0.5, 1 + this.wob * (0.42 * big + 0.15 * mid + 0.045 * small + bay));
+    return r - this.notchDepth(a);
+  }
+  /** How far the waterfall notches cut back into the outline at this angle (metres): a flat-backed U. */
+  notchDepth(a: number) {
+    let d = 0;
+    for (const n of this.notches) {
+      const u = Math.abs(Math.atan2(Math.sin(a - n.a), Math.cos(a - n.a))) / n.w;
+      d = Math.max(d, n.d * (1 - smoothstep(0.55, 1.15, u)));
+    }
+    return d;
+  }
+  /** 1 inside a waterfall notch, fading to 0 at its shoulders. */
+  inNotch(a: number) {
+    let k = 0;
+    for (const n of this.notches) {
+      const u = Math.abs(Math.atan2(Math.sin(a - n.a), Math.cos(a - n.a))) / n.w;
+      k = Math.max(k, 1 - smoothstep(0.6, 1.4, u));
+    }
+    return k;
   }
   /** Radius of the grassy lip at this angle (local, about the island's axis). */
   outline(a: number) {
@@ -227,33 +271,69 @@ export class IslandShape {
 
   // ---------------------------------------------------------------- strata
 
+  /** Vertical joints split the cliff into columns 3 to 8 m wide; each stands out or back and leans its own way. */
+  private planColumns() {
+    const rng = this.rng, sc = this.sc, s3 = Math.max(0.35, sc);
+    const start = rng() * TAU;
+    let a = start;
+    while (a < start + TAU - 1e-3) {
+      const w = (3 + rng() * 5) * s3 / this.R;
+      const a1 = Math.min(start + TAU, a + w);
+      // a deep, rounded recess between big buttresses, or now and then only a tight crack
+      const deep = rng() < 0.7;
+      this.cols.push({ a0: a, a1, off: (rng() - 0.45) * 1.3 * sc, lean: (rng() - 0.5) * 0.09, joint: (deep ? 0.55 + rng() * 0.8 : 0.15) * sc, seed: rng() * 100 });
+      a = a1;
+    }
+    // the last column must not be a sliver
+    if (this.cols.length > 2 && this.cols[this.cols.length - 1].a1 - this.cols[this.cols.length - 1].a0 < 1.5 * s3 / this.R) {
+      const last = this.cols.pop()!;
+      this.cols[this.cols.length - 1].a1 = last.a1;
+    }
+  }
+  /** A column's tone: brightness and warmth, so neighbouring blocks of the cliff read apart. */
+  columnTone(a: number, _y: number) {
+    const c = this.column(a, this.outline(a)).c;
+    const h = Math.sin(c.seed * 91.7) * 0.5 + 0.5;
+    return { k: 0.95 + 0.08 * h, warm: 0.12 * (1 - h) };
+  }
+  /** The column at an angle, and how far (metres) the point is from the nearer of its two joints. */
+  column(a: number, Rt: number) {
+    const C = this.cols, a0 = C[0].a0;
+    const t = a0 + ((((a - a0) % TAU) + TAU) % TAU);
+    let lo = 0, hi = C.length - 1;
+    while (lo < hi) { const m = (lo + hi + 1) >> 1; if (C[m].a0 <= t) lo = m; else hi = m - 1; }
+    const c = C[lo];
+    const dPrev = (t - c.a0) * Rt, dNext = (c.a1 - t) * Rt;
+    // the recess takes the depth of the joint it is next to
+    const jPrev = C[(lo - 1 + C.length) % C.length].joint, jNext = c.joint;
+    return { i: lo, c, d: Math.min(dPrev, dNext), jd: dPrev < dNext ? jPrev : jNext };
+  }
+
   private planBands() {
     const rng = this.rng, sc = this.sc;
     // small rocks keep a handful of beds rather than dozens of slivers
-    const hs = Math.max(0.35, sc);
+    const hs = Math.max(0.3, sc);
     const bottom = -this.cliffDepth - this.underDepth * this.vEnd - 0.5;
     let y = this.Y0, prevCol = -1, k = 0;
+    // only a few hard beds stand out as strong ledges (about one every 4-6 m of cliff)
+    let nextLedge = (2 + rng() * 3) * hs;
     while (y > bottom) {
-      const kind = rng();
       const under = y < -this.cliffDepth;
-      // many thin beds of mixed thickness: hard thin ones stick out as ledges, soft thicker ones weather back
-      let h: number, off: number;
-      if (k === 0) { h = (0.7 + rng() * 0.6) * hs; off = 0; }
-      else if (kind < 0.3) { h = (0.28 + rng() * 0.32) * hs; off = (0.22 + rng() * 0.4) * sc; }
-      else if (kind < 0.55) { h = (0.7 + rng() * 0.9) * hs; off = -(0.2 + rng() * 0.4) * sc; }
-      else { h = (0.4 + rng() * 0.7) * hs; off = (rng() - 0.5) * 0.36 * sc; }
-      if (under) h *= 1.35;
+      // beds of very mixed thickness, 1 to 4 m
+      let h = (k === 0 ? 1.2 + rng() * 1.2 : 1 + Math.pow(rng(), 1.4) * 3) * hs;
+      // most beds run flush with the one above: they read by colour and a faint line, not by a step
+      let off = (rng() - 0.5) * 0.08 * sc;
+      if (!under && this.Y0 - y > nextLedge) {
+        // a hard bed: thinner, standing well out
+        off = (0.55 + rng() * 0.7) * sc;
+        h = (0.8 + rng() * 0.9) * hs;
+        nextLedge = this.Y0 - y + (4 + rng() * 3) * hs;
+      } else if (rng() < 0.2) off = -(0.25 + rng() * 0.3) * sc;
+      if (under) h *= 1.3;
       let ci = Math.floor(rng() * BAND_COLS.length);
       if (ci === prevCol) ci = (ci + 3) % BAND_COLS.length;
-      // the cool bed is rare
-      if (ci === 7 && rng() < 0.5) ci = 1;
       prevCol = ci;
-      // blocks: the bed is cut by vertical joints into blocks a few metres wide, each set a little in or out
-      const blockW = (1.8 + rng() * 2.6) * Math.max(0.35, sc);
-      const nb = Math.max(3, Math.round((TAU * this.R) / blockW));
-      const blocks: number[] = [];
-      for (let i = 0; i < nb; i++) blocks.push((rng() - 0.5) * 0.5 * sc);
-      this.bands.push({ top: y, bot: y - h, off, col: new THREE.Color(BAND_COLS[ci]), nb, phase: rng() * nb, blocks, groove: (0.18 + rng() * 0.22) * sc, seed: rng() * 100 });
+      this.bands.push({ top: y, bot: y - h, off, col: new THREE.Color(BAND_COLS[ci]), nb: 0, phase: 0, blocks: [], groove: (0.08 + rng() * 0.1) * sc, seed: rng() * 100 });
       y -= h; k++;
     }
   }
@@ -267,10 +347,18 @@ export class IslandShape {
 
   /** Underside profile: the share of the cliff radius left at depth v (0 at the cliff base, vEnd at the shell's end). */
   underProfile(v: number, a: number) {
-    // broad and chunky: it keeps most of its width for a while, then pulls in, in a different way round the island
-    const lob = this.noise.n3(Math.cos(a) * 1.5 + 7, v * 1.3, Math.sin(a) * 1.5);
-    const k = 1.15 + 0.5 * lob;
-    return Math.max(0.12, 1 - Math.pow(v / this.vEnd, k) * 0.72) * (1 + 0.16 * lob * smoothstep(0, 0.3, v));
+    // heavy: it keeps most of its girth for a while, then pulls in, in a different way round the island
+    const lob = this.noise.n3(Math.cos(a) * 1.3 + 7, v * 1.1, Math.sin(a) * 1.3);
+    const k = 1.5 + 0.5 * lob;
+    return Math.max(0.14, 1 - Math.pow(v / this.vEnd, k) * 0.7) * (1 + 0.12 * lob * smoothstep(0, 0.3, v));
+  }
+  /** The underside's big flat facets: a coarse grid of values, interpolated linearly (so faces stay planar). */
+  private facet(a: number, v: number) {
+    const n = this.nFacet;
+    const fa = ((((a / TAU) % 1) + 1) % 1) * n, fr = Math.min(6.999, (v / this.vEnd) * 6);
+    const i = Math.floor(fa), j = Math.floor(fr), u = fa - i, w = fr - j;
+    const F = this.facets, at = (ii: number, jj: number) => F[(ii % n) * 8 + jj];
+    return lerp(lerp(at(i, j), at(i + 1, j), u), lerp(at(i, j + 1), at(i + 1, j + 1), u), w);
   }
 
   /**
@@ -282,44 +370,58 @@ export class IslandShape {
     const B = this.bands[bandI];
     const ca = Math.cos(a), sa = Math.sin(a);
     const Rt = this.outline(a);
-    const vb = clamp((B.top - y) / Math.max(1e-3, B.top - B.bot));
-    const p = (a / TAU) * B.nb + B.phase;
-    const i = Math.floor(p), f = p - i;
-    const bi = ((i % B.nb) + B.nb) % B.nb;
-    // a ledge runs part of the way round and dies out elsewhere
-    const reach = smoothstep(-0.35, 0.45, this.noise.n3(ca * 1.4 + B.seed, B.seed * 0.37, sa * 1.4));
-    let o = B.off * (B.off > 0 ? reach : 0.4 + 0.6 * reach) + lerp(B.blocks[bi], B.blocks[(bi + 1) % B.nb], smoothstep(0.9, 1, f));
-    const blockW = (TAU * Rt) / B.nb;
-    const jd = Math.min(f, 1 - f) * blockW;
-    const joint = 1 - smoothstep(0, 0.3 * Math.max(0.4, sc), jd);
-    o -= joint * B.groove;
-    // a crisp small chamfer at the top of each bed, a hint of fullness in its middle
-    o += 0.05 * sc * Math.sin(Math.PI * vb) - 0.07 * sc * (1 - smoothstep(0, 0.12, vb * (B.top - B.bot) / Math.max(0.3, sc)));
-    const fq = 0.2 / Math.max(0.3, sc);
+    const h = Math.max(1e-3, B.top - B.bot);
+    const vb = clamp((B.top - y) / h);
+    const notch = this.inNotch(a);
+    // ---- the column: its own stand-out and lean, and a rounded recess at each joint
+    const col = this.column(a, Rt);
+    const c = col.c;
+    const depthK = clamp((this.Y0 - y) / Math.max(1, this.cliffDepth));
+    let o = c.off + c.lean * (this.Y0 - y);
+    const jw = (0.5 + 0.9 * col.jd / Math.max(0.2, sc)) * Math.max(0.35, sc);
+    const joint = 1 - smoothstep(0, jw, col.d);
+    o -= col.jd * joint * joint * (3 - 2 * joint);
+    // ---- the bed: it runs through every column, but each column sets it a little in or out, so beds jog at joints
+    const hsh = Math.sin((col.i + 1) * 12.9898 + bandI * 78.233) * 43758.5453;
+    const jog = (hsh - Math.floor(hsh) - 0.5) * 0.22 * sc;
+    // a hard bed stands out only along part of the island, and dies out elsewhere
+    const reach = smoothstep(-0.2, 0.35, this.noise.n3(ca * 1.2 + B.seed, B.seed * 0.37, sa * 1.2));
+    const bo = B.off > 0.3 * sc ? B.off * reach : B.off;
+    o += bo + jog;
+    // erosion: the bottom of every bed is worn back and rounded (hard beds into a round-nosed overhang), the top
+    // keeps a crisp small chamfer
+    const nose = Math.max(0, bo) * 0.85 + 0.03 * sc;
+    o -= nose * Math.pow(smoothstep(0.3, 1.0, vb), 1.7);
+    o -= 0.06 * sc * (1 - smoothstep(0, 0.1, vb * h / Math.max(0.3, sc)));
+    // weathering at two scales, so faces are never flat sheets
+    const fq = 0.16 / Math.max(0.3, sc);
     const x = ca * this.R, z = sa * this.R;
-    o += 0.22 * sc * this.noise.fbm(x * fq, B.seed, z * fq, 2);
-    // buttresses and bays that run down through many beds, so the cliff is never a drum
-    o += 1.1 * sc * this.noise.n3(ca * 2.6 + 4, y * 0.025 / Math.max(0.3, sc), sa * 2.6);
+    o += 0.28 * sc * this.noise.fbm(x * fq, y * fq * 0.7 + B.seed, z * fq, 2);
+    // big buttresses and bays running down the whole cliff
+    o += 0.9 * sc * this.noise.n3(ca * 2.2 + 4, y * 0.02 / Math.max(0.3, sc), sa * 2.2);
     // whole stretches step back hard below a given bed
     for (const s of this.steps) {
       if (bandI < s.k) continue;
       const d = Math.atan2(Math.sin(a - s.a), Math.cos(a - s.a)) / s.w;
       o -= s.d * Math.exp(-d * d * 2.5);
     }
+    // in a waterfall's notch the rock is worn smooth by the water: little of the blockiness
+    o *= 1 - 0.8 * notch;
     const base = Rt - 0.32 * sc;
     const lean = this.leanK * (0.5 + 0.5 * Math.cos(a - this.leanA));
     if (y >= -this.cliffDepth) {
-      const df = clamp((this.Y0 - y) / (this.Y0 + this.cliffDepth));
-      return { r: Math.max(0.05, base * (1 - 0.04 * df - lean * df) + o), cx: 0, cz: 0, joint, v: 0, band: B };
+      return { r: Math.max(0.05, base * (1 - this.taper * depthK - lean * depthK) + o), cx: 0, cz: 0, joint, v: 0, band: B };
     }
-    // the underside: broad, stepped and lobed, its base leaning off-centre
+    // ---- the underside: heavy, in big flat facets, the blockiness of the beds fading out toward its tip
     const v = clamp((-this.cliffDepth - y) / this.underDepth, 0, this.vEnd);
-    const prof = this.underProfile(v, a);
-    const r = Math.max(0.05, (base * (1 - 0.04 - lean) + o * 1.2) * prof);
     const lv = v / this.vEnd;
-    return { r, cx: this.tipX * lv * lv, cz: this.tipZ * lv * lv, joint, v, band: B };
+    const prof = this.underProfile(v, a) * this.facet(a, v);
+    const r = Math.max(0.05, (base * (1 - this.taper - lean) + o * (1 - 0.65 * smoothstep(0, 1, lv))) * prof);
+    return { r, cx: this.tipX * lv * lv, cz: this.tipZ * lv * lv, joint: joint * (1 - lv), v, band: B };
   }
 }
+
+const a0j = (j: number, N: number) => (j / N) * TAU;
 
 /** Smooth minimum. */
 export function smin(a: number, b: number, k: number) {
@@ -332,20 +434,21 @@ export function smin(a: number, b: number, k: number) {
 const C = (s: string) => new THREE.Color(s);
 const GRASS = [C('#76a843'), C('#8cbc4e'), C('#a3cc5c'), C('#bad466')];
 const SOIL = C('#94704a'), SOIL_D = C('#76573c');
-const MOSS = C('#82ac48'), MOSS_D = C('#68983f'), MOSS_L = C('#a6c45a');
-const EARTH = C('#cdb08c'), BED = C('#9a967a'), SAND = C('#dccca2');
+const MOSS = C('#86a84a'), MOSS_D = C('#6e9440'), MOSS_L = C('#a2bc5a');
+const EARTH = C('#c9a47a'), BED = C('#9a967a'), SAND = C('#dccca2');
 
 /**
  * The attributes every piece of an island body carries, so they merge into one draw:
  * color, aRock (0 grass .. 1 limestone), aBand (metres below the top of this bed, metres above its bottom),
- * aLedge (+ a ledge sticks out above this face, - the bed above overhangs it; 0 none). Normals come per section.
+ * aLedge (+ a ledge sticks out above this face, - the bed above overhangs it; 0 none), aUnder (0 on the cliff, rising
+ * to 1 at the underside's tip: the strata fade out with it). Normals come per section.
  */
 export class BodyBuilder {
-  pos: number[] = []; col: number[] = []; rock: number[] = []; band: number[] = []; ledge: number[] = []; idx: number[] = [];
+  pos: number[] = []; col: number[] = []; rock: number[] = []; band: number[] = []; ledge: number[] = []; under: number[] = []; idx: number[] = [];
   /** finished sections, each with its own normals */
   parts: THREE.BufferGeometry[] = [];
-  vert(x: number, y: number, z: number, c: THREE.Color, r: number, bd = 50, bu = 50, l = 0) {
-    this.pos.push(x, y, z); this.col.push(c.r, c.g, c.b); this.rock.push(r); this.band.push(bd, bu); this.ledge.push(l);
+  vert(x: number, y: number, z: number, c: THREE.Color, r: number, bd = 50, bu = 50, l = 0, un = 0) {
+    this.pos.push(x, y, z); this.col.push(c.r, c.g, c.b); this.rock.push(r); this.band.push(bd, bu); this.ledge.push(l); this.under.push(un);
     return this.pos.length / 3 - 1;
   }
   /** Grid rows of N points (closed rings): quads between consecutive rows, outward winding when rows go down. */
@@ -364,12 +467,13 @@ export class BodyBuilder {
     g.setAttribute('aRock', new THREE.Float32BufferAttribute(this.rock, 1));
     g.setAttribute('aBand', new THREE.Float32BufferAttribute(this.band, 2));
     g.setAttribute('aLedge', new THREE.Float32BufferAttribute(this.ledge, 1));
+    g.setAttribute('aUnder', new THREE.Float32BufferAttribute(this.under, 1));
     g.setIndex(this.idx);
     g.computeVertexNormals();
     this.parts.push(g);
     this.reset();
   }
-  private reset() { this.pos = []; this.col = []; this.rock = []; this.band = []; this.ledge = []; this.idx = []; }
+  private reset() { this.pos = []; this.col = []; this.rock = []; this.band = []; this.ledge = []; this.under = []; this.idx = []; }
   /** Everything as one geometry (index kept). */
   merge(): THREE.BufferGeometry { this.cut(); return this.parts.length === 1 ? this.parts[0] : mergeGeometries(this.parts, false)!; }
 }
@@ -381,6 +485,7 @@ export function asBody(g: THREE.BufferGeometry, rock = 1): THREE.BufferGeometry 
   if (!g.attributes.aRock) g.setAttribute('aRock', new THREE.Float32BufferAttribute(new Float32Array(n).fill(rock), 1));
   g.setAttribute('aBand', new THREE.Float32BufferAttribute(new Float32Array(n * 2).fill(50), 2));
   g.setAttribute('aLedge', new THREE.Float32BufferAttribute(new Float32Array(n), 1));
+  if (!g.attributes.aUnder) g.setAttribute('aUnder', new THREE.Float32BufferAttribute(new Float32Array(n), 1));
   if (g.attributes.uv) g.deleteAttribute('uv');
   // the shell is indexed; a flat-shaded piece gets a plain index so they still merge
   if (!g.index) g.setIndex(Array.from({ length: n }, (_, i) => i));
@@ -405,10 +510,11 @@ export function meadowColor(sh: IslandShape, x: number, z: number, out = new THR
   const k = n.fbm(x * 0.09, 4.2, z * 0.09, 2) * 0.5 + 0.5;
   const d = n.n3(x * 0.35, 9.1, z * 0.35) * 0.5 + 0.5;
   out.copy(GRASS[0]).lerp(GRASS[1], smoothstep(0.2, 0.55, k)).lerp(GRASS[2], smoothstep(0.55, 0.85, k));
-  out.lerp(GRASS[3], smoothstep(0.7, 0.9, d) * 0.6);
+  out.lerp(GRASS[3], smoothstep(0.75, 0.95, d) * 0.25);
   for (const f of sh.drifts) {
     const dd = Math.hypot(x - f.x, z - f.z);
-    if (dd < f.r) out.lerp(TMP.copy(f.col).lerp(WHITE, 0.15), (1 - smoothstep(f.r * 0.35, f.r, dd)) * 0.55);
+    // the ground under a drift takes its colour, so it reads as a patch of colour from the far side of the gap
+    if (dd < f.r * 1.1) out.lerp(TMP.copy(f.col), (1 - smoothstep(f.r * 0.45, f.r * 1.1, dd)) * 0.7);
   }
   for (const st of sh.streams) {
     const q = sh.nearest(st, x, z);
@@ -418,7 +524,7 @@ export function meadowColor(sh: IslandShape, x: number, z: number, out = new THR
   }
   return out;
 }
-const TMP = new THREE.Color(), WHITE = new THREE.Color(1, 1, 1), WET = new THREE.Color('#dfe7e6');
+const TMP = new THREE.Color(), WHITE = new THREE.Color(1, 1, 1), WET = new THREE.Color('#c9c2a6');
 
 /** 1 right where a waterfall pours over the lip at this angle, 0 away from it. */
 function fallWet(sh: IslandShape, a: number) {
@@ -507,7 +613,7 @@ export function buildShell(sh: IslandShape, N: number, bare = false): ShellOut {
     const bot = Math.max(Bd.bot, yBottom);
     const h = Bd.top - bot;
     const under = Bd.top < -sh.cliffDepth;
-    const step = (under ? 1.0 : 0.75) * s4;
+    const step = (under ? 1.1 : 0.55) * s4;
     // rows: the top, a chamfer row just under it, even rows, the bottom
     const ts: number[] = [0];
     const ch = Math.min(0.1 * s4, h * 0.2);
@@ -530,11 +636,13 @@ export function buildShell(sh: IslandShape, N: number, bare = false): ShellOut {
         const q = rr[j];
         const dr = r1[j].r - r0[j].r; // + this bed sticks out under the one above: a ledge top
         const k = sh.noise.n3(q.x * 0.5, q.y * 0.5, q.z * 0.5) * 0.5 + 0.5;
-        const mossy = !bare && dr > 0.08 * s4 && q.y > yBottom + 2 ? smoothstep(0.08, 0.35, dr / s4) * (0.55 + 0.45 * k) : 0;
+        // moss in patches along the ledge tops, not a continuous band
+        const patch = smoothstep(-0.15, 0.35, sh.noise.n3(q.x * 0.12 / s4, q.y * 0.05, q.z * 0.12 / s4));
+        const mossy = !bare && dr > 0.08 * s4 && q.y > yBottom + 2 ? smoothstep(0.1, 0.45, dr / s4) * (0.55 + 0.45 * k) * patch : 0;
         tmp.copy(isUpper ? sh.band(prevBand).col : Bd.col);
         if (q.w.v > 0) tmp.lerp(EARTH, smoothstep(0, 0.6, q.w.v) * 0.45);
-        tmp.lerp(k > 0.5 ? MOSS_L : MOSS, mossy * 0.95);
-        B.vert(q.x, q.y, q.z, tmp, 1 - mossy, 0, 50, dr > 0 ? 2 : -2);
+        tmp.lerp(k > 0.6 ? MOSS : MOSS_D, mossy * 0.9);
+        B.vert(q.x, q.y, q.z, tmp, 1 - mossy, 0, 50, dr > 0 ? 2 : -2, q.w.v / sh.vEnd);
       }
       B.ringGrid(first, 2, N);
       B.cut();
@@ -557,9 +665,14 @@ export function buildShell(sh: IslandShape, N: number, bare = false): ShellOut {
       const w = q.w;
       const ca = Math.cos((j / N) * TAU), sa = Math.sin((j / N) * TAU);
       tmp.copy(w.band.col);
+      // each column is its own block of stone: a touch paler or warmer than its neighbours
+      const cs = sh.columnTone(a0j(j, N), q.y);
+      tmp.multiplyScalar(cs.k).lerp(EARTH, cs.warm);
       // broad vertical water stains, broken bed by bed (so they never fan out into a star from below)
       const stain = smoothstep(0.4, 0.8, sh.noise.n3(ca * sh.R * 0.6 / s4, bi * 0.37, sa * sh.R * 0.6 / s4));
-      tmp.multiplyScalar(1 - stain * 0.08 - w.joint * 0.16);
+      tmp.multiplyScalar(1 - stain * 0.05 - w.joint * 0.12);
+      // in a joint the rock is a touch warmer (sand washed into it)
+      tmp.lerp(EARTH, w.joint * 0.2);
       // deeper under the island the rock turns a little warmer and earthier
       if (w.v > 0) tmp.lerp(EARTH, smoothstep(0, 0.6, w.v) * 0.45).multiplyScalar(1 - 0.12 * w.v);
       let rk = 1;
@@ -571,7 +684,7 @@ export function buildShell(sh: IslandShape, N: number, bare = false): ShellOut {
         tmp.lerp(mn > 0.5 ? MOSS : MOSS_D, m * 0.9);
         rk = 1 - m * 0.8;
       }
-      B.vert(q.x, q.y, q.z, tmp, rk, yTop - q.y, q.y - bot, ledgeAmt[j]);
+      B.vert(q.x, q.y, q.z, tmp, rk, yTop - q.y, q.y - bot, ledgeAmt[j], w.v / sh.vEnd);
     }
     B.ringGrid(first, rows.length, N);
     B.cut();
@@ -593,7 +706,7 @@ export function buildShell(sh: IslandShape, N: number, bare = false): ShellOut {
       const x = lerp(q.x, cx, t), z = lerp(q.z, cz, t);
       const y = yb - sh.underDepth * 0.08 * Math.sin(Math.PI * t * 0.9) * (0.4 + jag) - (t === 1 ? sh.underDepth * 0.06 : 0);
       tmp.copy(q.w.band.col).lerp(EARTH, 0.5).multiplyScalar(0.86);
-      B.vert(x, y, z, tmp, 1);
+      B.vert(x, y, z, tmp, 1, 50, 50, 0, 1);
     }
     B.ringGrid(first, capRows.length, N);
     B.cut();
@@ -602,126 +715,112 @@ export function buildShell(sh: IslandShape, N: number, bare = false): ShellOut {
 }
 
 /**
- * A lobe of rock hanging under the island: stepped beds of the same limestone, each bed set in or out, narrowing to
- * a point that splits into two or three sub-points of different lengths. Its top sits inside the body above it.
- * Returns geometry with the body attributes (it merges with the shell).
+ * A lobe of rock hanging under the island: a heavy, broken mass in big flat facets (seven to nine sides, a row every
+ * couple of metres, each corner pushed in or out), keeping its girth most of the way down and then breaking into
+ * one blunt point and one or two shorter, thick sub-points. Its top sits inside the body above it. The strata fade
+ * out toward the tip (aUnder). Returns flat-shaded geometry with the body attributes (it merges with the shell).
  */
-export function buildLobe(sh: IslandShape, cx: number, cz: number, y0: number, r0: number, len: number, N: number, seed: number, split = true): THREE.BufferGeometry {
-  const B = new BodyBuilder();
+export function buildLobe(sh: IslandShape, cx: number, cz: number, y0: number, r0: number, len: number, _N: number, seed: number, split = true): THREE.BufferGeometry {
   const rng = makeRng(seed * 13 + sh.R);
-  const tmp = new THREE.Color();
   const s4 = Math.max(0.4, sh.sc);
-  const lean = rng() * TAU, ld = r0 * (0.3 + rng() * 0.5);
+  const sides = 7 + Math.floor(rng() * 3);
+  const rowH = Math.max(0.6 * s4, Math.min(2.6 * s4, len / 4));
+  const rows = Math.max(3, Math.round(len / rowH));
+  const lean = rng() * TAU, ld = r0 * (0.35 + rng() * 0.45);
   const lx = Math.cos(lean) * ld, lz = Math.sin(lean) * ld;
-  // bed cuts down the lobe
-  const cuts: number[] = [y0];
-  let y = y0;
-  while (y > y0 - len + 0.05) { y -= (0.6 + rng() * 1.4) * s4 * 1.2; cuts.push(Math.max(y, y0 - len)); }
-  const prof = (v: number, a: number) => {
-    // chunky: the lobe keeps its girth most of the way down, then breaks off into its points
-    const k = 1.7 + 0.6 * sh.noise.n3(Math.cos(a) * 1.7 + seed, v, Math.sin(a) * 1.7);
-    return Math.max(0, 1 - Math.pow(v, k)) * (0.85 + 0.15 * (1 - v));
-  };
-  const offs = cuts.map(() => (rng() - 0.4) * 0.22);
-  const radAt = (bi: number, yy: number, a: number) => {
-    const v = clamp((y0 - yy) / len);
-    const n = sh.noise.n3(Math.cos(a) * 2.2 + seed * 3, bi * 0.7, Math.sin(a) * 2.2);
-    return r0 * prof(v, a) * (1 + offs[bi] + 0.22 * n);
-  };
-  type P = { x: number; y: number; z: number; r: number };
-  let prev: P[] | null = null;
-  for (let bi = 0; bi < cuts.length - 1; bi++) {
-    const top = cuts[bi], bot = cuts[bi + 1];
-    if (top - bot < 0.05) break;
-    const nr = Math.max(1, Math.round((top - bot) / (0.9 * s4)));
-    const rows: P[][] = [];
-    for (let k = 0; k <= nr; k++) {
-      const yy = lerp(top, bot, k / nr), v = clamp((y0 - yy) / len);
-      const row: P[] = [];
-      for (let j = 0; j < N; j++) {
-        const a = (j / N) * TAU;
-        const r = Math.max(0.03, radAt(bi, yy, a));
-        row.push({ x: cx + lx * v * v + Math.cos(a) * r, y: yy, z: cz + lz * v * v + Math.sin(a) * r, r });
-      }
-      rows.push(row);
+  const a0 = rng() * TAU;
+  const tmp = new THREE.Color();
+  const pos: number[] = [], col: number[] = [], under: number[] = [];
+  // the corner grid
+  const P: THREE.Vector3[][] = [];
+  for (let k = 0; k <= rows; k++) {
+    const v = k / rows;
+    const ring: THREE.Vector3[] = [];
+    // girth held, then a quick pull-in to a blunt point
+    const prof = k === rows ? 0 : Math.max(0.08, 1 - Math.pow(v, 1.8)) * (k === 0 ? 1.05 : 0.8 + rng() * 0.35);
+    for (let j = 0; j < sides; j++) {
+      const a = a0 + (j / sides) * TAU + (rng() - 0.5) * 0.35;
+      const r = r0 * prof * (0.78 + rng() * 0.4);
+      ring.push(new THREE.Vector3(cx + lx * v * v + Math.cos(a) * r, y0 - len * v + (k > 0 && k < rows ? (rng() - 0.5) * rowH * 0.5 : 0), cz + lz * v * v + Math.sin(a) * r));
     }
-    const col = sh.band(sh.bandIndex(top)).col;
-    if (prev) {
-      const first = B.pos.length / 3;
-      const p0 = prev;
-      for (const rr of [p0, rows[0]]) for (let j = 0; j < N; j++) {
-        const q = rr[j];
-        tmp.copy(col).lerp(EARTH, 0.4);
-        B.vert(q.x, q.y, q.z, tmp, 1, 0, 50, rows[0][j].r > p0[j].r ? 2 : -2);
-      }
-      B.ringGrid(first, 2, N); B.cut();
-    }
-    const first = B.pos.length / 3;
-    for (let k = 0; k < rows.length; k++) for (let j = 0; j < N; j++) {
-      const q = rows[k][j], v = clamp((y0 - q.y) / len);
-      tmp.copy(col).lerp(EARTH, 0.3 + 0.25 * v).multiplyScalar(0.96 - 0.12 * v);
-      B.vert(q.x, q.y, q.z, tmp, 1, top - q.y, q.y - bot, prev ? (rows[0][j].r > prev[j].r ? 1 : -1) : 0);
-    }
-    B.ringGrid(first, rows.length, N); B.cut();
-    prev = rows[rows.length - 1];
+    P.push(ring);
   }
-  // close the bottom to a short point
-  if (prev) {
-    const first = B.pos.length / 3;
-    let mx = 0, mz = 0;
-    for (const q of prev) { mx += q.x / N; mz += q.z / N; }
-    const yb = prev[0].y;
-    tmp.copy(EARTH).multiplyScalar(0.85);
-    for (const q of prev) B.vert(q.x, q.y, q.z, tmp, 1);
-    for (let j = 0; j < N; j++) B.vert(mx, yb - 0.25 * s4, mz, tmp, 1);
-    B.ringGrid(first, 2, N); B.cut();
+  const bandCol = sh.band(sh.bandIndex(y0)).col;
+  const tri = (p: THREE.Vector3[], v: number) => {
+    // one colour per facet, so each reads as a broken face; darker and earthier toward the tip
+    const n = sh.noise.n3(p[0].x * 0.3, p[0].y * 0.3, p[0].z * 0.3);
+    tmp.copy(bandCol).lerp(EARTH, 0.25 + 0.35 * v).multiplyScalar(0.97 - 0.1 * v + 0.05 * n);
+    for (const q of p) { pos.push(q.x, q.y, q.z); col.push(tmp.r, tmp.g, tmp.b); under.push(0.4 + 0.6 * v); }
+  };
+  for (let k = 0; k < rows; k++) for (let j = 0; j < sides; j++) {
+    const a = P[k][j], b = P[k][(j + 1) % sides], c = P[k + 1][j], d = P[k + 1][(j + 1) % sides];
+    const v = (k + 0.5) / rows;
+    // split each quad along its shorter diagonal, so the facets break naturally
+    if (a.distanceToSquared(d) < b.distanceToSquared(c)) { tri([a, d, b], v); tri([a, c, d], v); }
+    else { tri([a, c, b], v); tri([b, c, d], v); }
   }
-  const parts = [B.merge()];
-  // the point splits into two or three sub-points of different lengths
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setAttribute('aUnder', new THREE.Float32BufferAttribute(under, 1));
+  g.computeVertexNormals();
+  const parts = [asBody(g)];
+  // one or two short, thick sub-points beside the main one
   if (split && len > 2.5 * s4) {
-    const n = 2 + Math.floor(rng() * 2);
-    const vS = 0.5 + rng() * 0.12;
-    const yS = y0 - len * vS;
-    const rS = r0 * prof(vS, 0) * 0.85;
+    const n = 1 + Math.floor(rng() * 2);
     for (let i = 0; i < n; i++) {
-      const a = (i / n) * TAU + rng() * 1.2;
-      const d = rS * (0.3 + rng() * 0.3);
-      const px = cx + lx * vS * vS + Math.cos(a) * d, pz = cz + lz * vS * vS + Math.sin(a) * d;
-      parts.push(buildLobe(sh, px, pz, yS + 0.3 * s4, rS * (0.5 + rng() * 0.25), len * (0.3 + rng() * 0.35), Math.max(7, Math.round(N * 0.6)), seed * 7 + i + 1, false));
+      const k = Math.floor(rows * (0.35 + rng() * 0.2));
+      const ring = P[k];
+      const j = Math.floor(rng() * sides);
+      const c = ring[j].clone().lerp(ring[(j + 1) % sides], 0.5);
+      const mid = ring.reduce((m, q) => m.add(q), new THREE.Vector3()).multiplyScalar(1 / sides);
+      const rr = c.distanceTo(new THREE.Vector3(mid.x, c.y, mid.z));
+      const px = lerp(mid.x, c.x, 0.55), pz = lerp(mid.z, c.z, 0.55);
+      parts.push(buildLobe(sh, px, pz, c.y + 0.4 * s4, rr * (0.5 + rng() * 0.2), len * (1 - k / rows) * (0.45 + rng() * 0.3), 0, seed * 7 + i + 1, false));
     }
   }
   return parts.length > 1 ? mergeGeometries(parts, false)! : parts[0];
 }
 
 /**
- * A broken block of limestone (a jittered prism with flat top and bottom and hard edges), for blocks hanging from
- * the underside and for rubble. Body attributes, so it merges with the shell.
+ * A broken chunk of limestone: a lumpy ball cut into big flat facets, with a flatter top (where moss grows) and a
+ * rough, pointed underside. Used for chunks hanging from the underside, loose rubble and boulders. Body attributes,
+ * so it merges with the shell.
  */
 export function rockBlock(rng: () => number, w: number, h: number, col: THREE.Color, mossTop = 0): THREE.BufferGeometry {
-  const sides = 5 + Math.floor(rng() * 3);
-  const g0 = new THREE.CylinderGeometry(w, w * (0.7 + rng() * 0.25), h, sides, 1);
-  const p = g0.attributes.position as THREE.BufferAttribute;
-  const jit: number[] = [];
-  for (let i = 0; i <= sides; i++) jit.push(0.75 + rng() * 0.45);
-  const yj: number[] = [];
-  for (let i = 0; i <= sides; i++) yj.push((rng() - 0.5) * 0.3 * h);
+  // a dodecahedron, its corners jittered hard and its top cut flat: big angular faces, a broken block
+  const g = new THREE.DodecahedronGeometry(1, 0);
+  const p = g.attributes.position as THREE.BufferAttribute;
+  const topCut = 0.45 + rng() * 0.25;
+  const tipX = (rng() - 0.5) * 0.6, tipZ = (rng() - 0.5) * 0.6;
+  const sx = 0.8 + rng() * 0.4, sz = 0.7 + rng() * 0.4;
+  const v = new THREE.Vector3();
+  const cache = new Map<string, THREE.Vector3>();
   for (let i = 0; i < p.count; i++) {
-    const x = p.getX(i), z = p.getZ(i), y = p.getY(i);
-    if (Math.hypot(x, z) < 1e-4) continue;
-    const k = Math.round(((Math.atan2(z, x) + Math.PI) / TAU) * sides) % sides;
-    p.setXYZ(i, x * jit[k], y + (y < 0 ? yj[k] : yj[k] * 0.25), z * jit[k]);
+    v.fromBufferAttribute(p, i);
+    const key = v.x.toFixed(3) + ',' + v.y.toFixed(3) + ',' + v.z.toFixed(3);
+    let q = cache.get(key);
+    if (!q) {
+      q = v.clone().multiplyScalar(0.8 + rng() * 0.4);
+      q.y = Math.min(q.y, topCut);
+      // the underside drags down to a rough point
+      if (q.y < 0) { q.y *= 1.3; q.x += tipX * -q.y; q.z += tipZ * -q.y; }
+      cache.set(key, q);
+    }
+    p.setXYZ(i, q.x * w * sx, q.y * h * 0.8, q.z * w * sz);
   }
-  g0.deleteAttribute('normal'); g0.deleteAttribute('uv');
-  const g = g0.toNonIndexed();
+  g.deleteAttribute('uv');
   g.computeVertexNormals();
-  const n = g.attributes.position.count;
+  const n = p.count;
   const cols = new Float32Array(n * 3), rk = new Float32Array(n);
   const nrm = g.attributes.normal as THREE.BufferAttribute;
   const tmp = new THREE.Color(), moss = C('#86ae4a');
-  for (let i = 0; i < n; i++) {
-    const up = nrm.getY(i) > 0.7 ? mossTop : 0;
-    tmp.copy(col).multiplyScalar(nrm.getY(i) < -0.5 ? 0.9 : 1).lerp(moss, up);
-    cols.set([tmp.r, tmp.g, tmp.b], i * 3); rk[i] = 1 - up;
+  for (let i = 0; i + 2 < n; i += 3) {
+    // one colour per facet
+    const ny = (nrm.getY(i) + nrm.getY(i + 1) + nrm.getY(i + 2)) / 3;
+    const up = ny > 0.6 ? mossTop : 0;
+    tmp.copy(col).multiplyScalar(ny < -0.4 ? 0.9 : 0.97 + rng() * 0.06).lerp(EARTH, ny < 0 ? 0.25 : 0).lerp(moss, up);
+    for (let k = 0; k < 3; k++) { cols.set([tmp.r, tmp.g, tmp.b], (i + k) * 3); rk[i + k] = 1 - up; }
   }
   g.setAttribute('color', new THREE.BufferAttribute(cols, 3));
   g.setAttribute('aRock', new THREE.BufferAttribute(rk, 1));
