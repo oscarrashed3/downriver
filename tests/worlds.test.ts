@@ -71,12 +71,29 @@ describe('The six worlds', () => {
     }
     const r = migrateSave(JSON.parse(JSON.stringify({ ...v4, world: 2 })));
     const f = new Set(r.data!.flags);
-    expect([...f].filter(x => x.startsWith('visited:')).sort()).toEqual(['visited:0', 'visited:1', 'visited:3']);
-    expect(f.has('told-goback:1')).toBe(true);
+    // the forest became the Sky Isles and the desert was repainted: they greet you as new places again
+    expect([...f].filter(x => x.startsWith('visited:')).sort()).toEqual(['visited:0', 'visited:3']);
+    expect(f.has('told-goback:1')).toBe(false);
     for (const gone of ['map:pines', 'met:tamsin']) expect(f.has(gone), gone).toBe(false);
     for (const kept of ['read-letter', 'map:sea', 'fox-joined']) expect(f.has(kept), kept).toBe(true);
     expect(Object.keys(r.data!.seen)).toEqual(['sea']);
     expect(Object.keys(r.data!.pins)).toEqual(['sea']);
+  });
+  it('a forest save arrives in the Sky Isles as a first visit, and old sea ground keeps its notes', () => {
+    const v4 = { v: 4, flags: ['visited:0', 'visited:1', 'visited:2', 'visited:3', 'told-goback:0', 'told-goback:1', 'told-goback:2'], moods: {}, river: createRiverState(), snow: createSnowpack(), world: 1, dir: [1, 0, 0], poles: [], journal: [], pins: {}, day: 0.4, flowers: 0, sigs: {}, bag: [], sketches: [], sent: {}, seen: {} };
+    const r = migrateSave(JSON.parse(JSON.stringify(v4)));
+    expect(r.data!.world).toBe(1);
+    expect(r.data!.arrive).toBe(true);
+    expect([...r.data!.flags].sort()).toEqual(['told-goback:0', 'told-goback:3', 'visited:0', 'visited:3']);
+  });
+  it('knocking on the old desert lighthouse does not count: the home light is in Lantern Town now', () => {
+    const river = { ...createRiverState(), loopComplete: true };
+    const v4 = { v: 4, flags: ['visited:0', 'visited:3', 'loop-complete', 'fox-joined'], moods: {}, river, snow: createSnowpack(), world: 3, dir: [1, 0, 0], poles: [], journal: [], pins: {}, day: 0.4, flowers: 0, sigs: {}, bag: [], sketches: [], sent: {}, seen: {} };
+    const r = migrateSave(JSON.parse(JSON.stringify(v4)));
+    expect(r.data!.flags).not.toContain('loop-complete');
+    expect(r.data!.flags).toContain('fox-joined');
+    expect(r.data!.river.loopComplete).toBe(false);
+    expect(r.data!.world).toBe(4);
   });
   it('a version 5 save stays as it is', () => {
     const v5 = { v: 5, flags: ['visited:5'], moods: {}, river: createRiverState(), snow: createSnowpack(), world: 5, dir: [0, -1, 0], poles: [], journal: [], pins: {}, day: 0.4, flowers: 0, sigs: {}, bag: [], sketches: [], sent: {}, seen: {} };

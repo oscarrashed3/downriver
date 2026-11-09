@@ -151,7 +151,7 @@ export function addLife(p: Planet, scene: THREE.Scene, c: WorldContent) {
   anim((dt, t) => ducks.forEach(k => {
     k.la += Math.sin(t * 0.15 + k.ph) * dt * 0.18;
     const { d, down } = waterDir(k.la, k.side + Math.sin(t * 0.3 + k.ph) * 0.6);
-    k.o.position.copy(d).multiplyScalar(p.waterLevelRadius() - 0.04 + Math.sin(t * 2 + k.ph) * 0.02).add(p.center);
+    k.o.position.copy(d).multiplyScalar(p.waterLevelRadius(p.tAtLat(k.la)) - 0.04 + Math.sin(t * 2 + k.ph) * 0.02).add(p.center);
     orientTo(k.o, d, down.clone().negate().applyAxisAngle(d, Math.sin(t * 0.4 + k.ph) * 0.5));
   }));
 
@@ -173,7 +173,7 @@ export function addLife(p: Planet, scene: THREE.Scene, c: WorldContent) {
         const i = Math.round(rt * (p.path.length - 1)), j = Math.min(p.path.length - 1, i + 3);
         const a = p.path[i].clone(), s = new THREE.Vector3().crossVectors(a, p.path[j].clone().sub(a)).normalize();
         const d = a.addScaledVector(s, (rand() - 0.5) * 2 / p.R).normalize(), fw = p.path[j].clone().sub(p.path[i]).normalize().applyAxisAngle(d, (rand() - 0.5) * 1.5);
-        leap.up.copy(d); leap.a.copy(d).multiplyScalar(p.waterLevelRadius()).add(p.center); leap.b.copy(leap.a).addScaledVector(fw, 1.6);
+        leap.up.copy(d); leap.a.copy(d).multiplyScalar(p.waterLevelRadius(rt)).add(p.center); leap.b.copy(leap.a).addScaledVector(fw, 1.6);
         leap.t = 0;
       } else leap.t = 2;
     }

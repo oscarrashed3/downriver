@@ -8,7 +8,7 @@ import * as P from './props';
 import { addOutlines } from '../render/paint';
 
 /** The salt flat: (lat, lon offset), radius in metres, and its height. */
-export const SALT = { lat: 64, lon: -32, r: 15, h: 1.5 } as const;
+export const SALT = { lat: 37, lon: -31, r: 12, h: 1.5 } as const;
 /** Sahra, the wandering town on wheels, on the other bank. */
 export const SAHRA = { lat: 96, lon: 26 } as const;
 
@@ -79,6 +79,11 @@ export function populateDesert(k: Kit) {
     const a = (i / 8) * Math.PI * 2;
     const dLat = (SALT.r + 2) / (p.R * Math.PI / 180);
     put(crystals(), SALT.lat + Math.cos(a) * dLat, SALT.lon + Math.sin(a) * dLat / Math.sin(SALT.lat * Math.PI / 180), 0);
+  }
+
+  // Crystals by the landing, so the first look already glitters.
+  for (const [lat, m] of [[24, 8.5], [29, -6.5], [33, 9]] as const) {
+    put(crystals(), lat, m / (p.R * Math.PI / 180 * Math.sin(lat * Math.PI / 180)), 0);
   }
 
   npc('sefa', SAHRA.lat - 6, SAHRA.lon - 12);

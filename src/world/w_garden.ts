@@ -8,9 +8,10 @@ import type { Kit, Flat } from './content';
 import * as P from './props';
 import * as Q from './props2';
 import { addOutlines } from '../render/paint';
+import { orientTo } from './sphere';
 
 /** The fallen watering can, the landmark: lying on its side, its spout dribbling into the river. */
-export const CAN = { lat: 70, lon: -16 } as const;
+export const CAN = { lat: 40, lon: -17 } as const;
 
 const PETALS = ['#f49ac0', '#ffd25a', '#ff8a7a', '#f6f0f4', '#c89af0', '#ffb05a'];
 const ink = (g: THREE.Object3D, w = 0.06) => addOutlines(g, '#3b2a30', w);
@@ -85,7 +86,7 @@ export function wateringCan(): THREE.Group {
   const body = m(new THREE.CylinderGeometry(3, 3, 6, 18), tin, 0, 3, 0); body.rotation.z = Math.PI / 2; g.add(body);
   for (const x of [-3, 3]) { const r = m(new THREE.TorusGeometry(3, 0.18, 6, 24), rim, x, 3, 0); r.rotation.y = Math.PI / 2; g.add(r); }
   const spout = m(new THREE.CylinderGeometry(0.4, 0.7, 7, 10), tin, 5.5, 2.2, 0); spout.rotation.z = Math.PI / 2 + 0.35; g.add(spout);
-  const rose = m(new THREE.CylinderGeometry(0.9, 0.5, 0.6, 12), rim, 8.9, 1.0, 0); rose.rotation.z = Math.PI / 2 + 0.35; g.add(rose);
+  const rose = m(new THREE.CylinderGeometry(0.9, 0.5, 0.6, 12), rim, 9.0, 3.45, 0); rose.rotation.z = -Math.PI / 2 + 0.35; g.add(rose);
   const handle = m(new THREE.TorusGeometry(2.2, 0.25, 6, 16, Math.PI), rim, -0.5, 5.6, 0); g.add(handle);
   ink(g, 0.08);
   return outer;
@@ -124,7 +125,17 @@ export function populateGarden(k: Kit) {
   scatter(30, () => dewdrop(0.6 + P.rand() * 0.9), [8, 172], 5);
   // pebbles big as boulders lie about, a few right at the water to hop across on
   scatter(14, () => Q.boulder(1.2 + P.rand()), [10, 170], 6);
-  for (const lat of [48, 110, 150]) for (const s of [-1.6, 0, 1.6]) put(Q.riverRock(0.9, 0.35), lat + s * 0.5, s, -0.2);
+  // Pebble stepping stones across the river; the raft knows where they are and bumps round them.
+  c.refs.riverRocks = [] as { t: number; side: number; obj: THREE.Object3D }[];
+  for (const lat of [54, 110, 150]) for (const side of [-0.6, 0, 0.6]) {
+    const t = p.tAtLat(lat), d = p.pathPoint(t), tan = p.pathPoint(t + 0.004).sub(d).normalize();
+    const sideV = new THREE.Vector3().crossVectors(d, tan).normalize();
+    const dir = d.clone().addScaledVector(sideV, -side * p.cfg.riverWidth / p.R).normalize();
+    const rock = Q.riverRock(0.9, 0.35);
+    p.surfacePoint(dir, -0.2, rock.position); orientTo(rock, dir, tan.clone().negate());
+    k.scene.add(rock);
+    c.refs.riverRocks.push({ t, side, obj: rock });
+  }
 
   const snail = put(giantSnail(), 52, 24, 0);
   c.animate.push((dt, t) => { snail.scale.y = 1 + Math.sin(t * 0.8) * 0.03; });

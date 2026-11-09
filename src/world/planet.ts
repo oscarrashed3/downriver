@@ -106,11 +106,16 @@ export class Planet {
         return A * (Math.pow(r, 2.6) * 0.72 + hills * 0.22 + cap);
       }
       case 'sky': {
-        // A soft floor of cloud, low and billowy, and flat-topped islands of meadow standing high out of it.
-        const cloud = 0.35 + 0.55 * (n.fbm(x * 5 + 2, y * 5, z * 5, 2) * 0.5 + 0.5);
+        // A soft floor of cloud, billowy, and flat-topped islands of meadow standing out of it. The cloud lies a
+        // little below the river's island at each latitude (it steps down with the river), so from any bank the
+        // edge and the cloud sea beyond it are in plain sight, never hidden round the curve of the world.
+        const lat = Math.acos(clamp(y, -1, 1)) * 180 / Math.PI;
+        const base = this.skyCloud(lat);
+        const cloud = base + 0.7 * (n.fbm(x * 7 + 2, y * 7, z * 7, 2) * 0.5 + 0.5) + 0.3 * Math.abs(n.n3(x * 19, y * 19, z * 19));
+        // other islands drift in the cloud, lower than the river's own, and none crowd the landing by the dock
         const isl = n.fbm(x * 1.9 + 11, y * 1.9, z * 1.9, 3);
-        const k = smoothstep(0.16, 0.21, isl);
-        const top = A * (0.42 + 0.38 * (n.fbm(x * 0.9 - 4, y * 0.9, z * 0.9, 2) * 0.5 + 0.5)) + n.n3(x * 9, y * 9, z * 9) * 0.25;
+        const k = smoothstep(0.22, 0.26, isl) * smoothstep(34, 44, lat);
+        const top = base + 1.0 + 1.6 * (n.fbm(x * 0.9 - 4, y * 0.9, z * 0.9, 2) * 0.5 + 0.5) + n.n3(x * 9, y * 9, z * 9) * 0.25;
         return lerp(cloud, top, k);
       }
       case 'garden':
@@ -147,8 +152,9 @@ export class Planet {
     const bed = this.bedAt(t);
     if (this.cfg.shape === 'sky') {
       // The river runs along the top of a chain of islands, broad where it is level and narrow where it drops.
-      const hw = this.cfg.riverWidth + this.cfg.bankWidth + 1.5 + 3.5 * this.plateau(t);
-      const isle = smoothstep(hw + 2.5, hw, dist);
+      // narrow enough that the edge and the cloud sea below are always in sight from the bank
+      const hw = this.cfg.riverWidth + this.cfg.bankWidth + 0.5 + 2.0 * this.plateau(t);
+      const isle = smoothstep(hw + 2.0, hw, dist);
       const top = bed + this.cfg.waterDepth + 0.6 + this.noise.n3(d.x * 10, d.y * 10, d.z * 10) * 0.25;
       if (isle > 0) h = Math.max(h, lerp(h, top, isle));
     }
@@ -178,14 +184,19 @@ export class Planet {
   bedAt(t: number): number {
     if (this.cfg.shape !== 'sky') return this.cfg.riverBed;
     let lift = SKY_LIFT;
-    for (const [ts, drop] of SKY_STEPS) lift -= drop * smoothstep(ts - 0.012, ts + 0.012, t);
+    for (const [ts, drop] of SKY_STEPS) lift -= drop * smoothstep(ts - 0.006, ts + 0.006, t);
     return this.cfg.riverBed + lift;
+  }
+
+  /** The Sky Isles' cloud floor at a latitude: 2.8 m below the island top beside the river there. */
+  skyCloud(lat: number): number {
+    return this.bedAt(this.tAtLat(lat)) + this.cfg.waterDepth + 0.6 - SKY_CLOUD_BELOW;
   }
 
   /** 1 on a level stretch of the Sky Isles' river, 0 right at a drop (the island narrows to a neck there). */
   plateau(t: number): number {
     let k = 1;
-    for (const [ts] of SKY_STEPS) k = Math.min(k, smoothstep(0.012, 0.05, Math.abs(t - ts)));
+    for (const [ts] of SKY_STEPS) k = Math.min(k, smoothstep(0.01, 0.045, Math.abs(t - ts)));
     return k;
   }
 
@@ -320,7 +331,7 @@ export class Planet {
       else c.copy(mid).lerp(high, smoothstep(0.5, 1, h + jitter));
       if (shape === 'sky') {
         // cloud below, meadow on the islands
-        c.copy(mid).lerp(high, smoothstep(-0.2, 0.4, big + jitter)).lerp(low, smoothstep(1.6, 1.0, heights[i]));
+        c.copy(mid).lerp(high, smoothstep(-0.2, 0.4, big + jitter));
       } else if (shape === 'desert') desertBand(heights[i] + big * 0.25 + jitter * 1.2, c);
       // painted dabs of brighter grass
       c.lerp(dab, smoothstep(0.25, 0.55, big) * 0.35 * smoothstep(0.6, 0.3, h));
@@ -328,6 +339,11 @@ export class Planet {
       const rocky = smoothstep(0.86, 0.6, flat);
       const rk = rock.clone().lerp(moss, smoothstep(0.62, 0.8, flat) * 0.55 * (peaks ? 1 : 0.3));
       c.lerp(rk, rocky * (shape === 'desert' ? 0.12 : 0.9)); // the desert's cliffs keep their painted bands
+      if (shape === 'sky') {
+        // the cloud sea: white, with lilac-blue shade in the hollows between the billows
+        const rel = heights[i] - this.skyCloud(Math.acos(clamp(d.y, -1, 1)) * 180 / Math.PI);
+        c.lerp(cloudShade.copy(low).lerp(cloudHollow, smoothstep(0.5, 0.0, rel) * 0.35), smoothstep(1.5, 0.9, rel));
+      }
       const rdist = rd[i];
       const bankK = smoothstep(this.cfg.riverWidth + this.cfg.bankWidth + 1.5, this.cfg.riverWidth, rdist);
       c.lerp(bank, bankK * 0.6);
@@ -457,14 +473,17 @@ export function glacierEdgeLat(snowpack: number): number { return 4 + snowpack *
 
 /** The Sky Isles' river starts this high above its base bed, and drops at each step: [t along the river, metres]. */
 export const SKY_LIFT = 7.5;
-export const SKY_STEPS: [number, number][] = [[0.3, 2.5], [0.56, 2.5], [0.8, 2.0]];
+/** How far the Sky Isles' cloud floor lies below the island tops beside the river. */
+export const SKY_CLOUD_BELOW = 2.8;
+const cloudShade = new THREE.Color(), cloudHollow = new THREE.Color('#c8cff0');
+export const SKY_STEPS: [number, number][] = [[0.17, 2.5], [0.45, 2.5], [0.74, 2.0]];
 
 /** The Painted Desert's layers, bottom to top: pink, coral, lilac, violet, turquoise, and round again. */
 export const DESERT_BANDS = ['#f8d2d4', '#f6a890', '#d6bcf2', '#a48ada', '#8adcd2', '#f8dcbc'].map(c => new THREE.Color(c));
 const bandTmp = new THREE.Color();
-/** Colour by height in soft stripes about 2 m thick. */
+/** Colour by height in soft stripes about a metre thick, so the dunes' flanks are striped as well as the mesas. */
 function desertBand(h: number, out: THREE.Color) {
-  const f = Math.max(0, h) / 2.0, i = Math.floor(f), k = smoothstep(0.82, 0.98, f - i);
+  const f = Math.max(0, h) / 1.1, i = Math.floor(f), k = smoothstep(0.82, 0.98, f - i);
   const B = DESERT_BANDS;
   out.copy(B[i % B.length]).lerp(bandTmp.copy(B[(i + 1) % B.length]), k);
 }

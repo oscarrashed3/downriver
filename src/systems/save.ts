@@ -78,7 +78,14 @@ function fromV3(r: Omit<Partial<SaveData>, 'v'>): V4 {
 export const V4_WORLD_MAP: Record<number, number> = { 0: 0, 1: 1, 2: 3, 3: 4 };
 const V4_SAME_GROUND = new Set([0, 2]);
 /** Pieces of the four-world journey that no longer exist: the forest's map, and the forest people (Tamsin and Oro now live elsewhere and have not met you). */
-const V4_GONE_FLAGS = new Set(['map:pines', 'met:tamsin', 'met:oro', 'talked:tamsin', 'talked:oro']);
+const V4_GONE_FLAGS = new Set(['map:pines', 'met:tamsin', 'met:oro', 'talked:tamsin', 'talked:oro',
+  // The home light has moved from the desert to Lantern Town, which nobody has reached yet: knock again there.
+  'loop-complete']);
+/**
+ * Arrival and leaving flags of the old worlds whose ground is new: the forest (old 1) became the Sky Isles and the
+ * Glass Desert (old 3) was repainted, so their first-arrival card, intro and notes should play again.
+ */
+const V4_NEW_GROUND = new Set([1, 3]);
 const V4_GONE_WORLDS = new Set(['pines']);
 
 function fromV4(r: Omit<Partial<SaveData>, 'v'> & { arrive?: boolean }): SaveData {
@@ -88,11 +95,12 @@ function fromV4(r: Omit<Partial<SaveData>, 'v'> & { arrive?: boolean }): SaveDat
   for (const f of r.flags ?? []) {
     if (V4_GONE_FLAGS.has(f)) continue;
     const m = /^(visited|told-goback):(\d+)$/.exec(f);
-    if (m) { const n = V4_WORLD_MAP[+m[2]]; if (n !== undefined) flags.add(`${m[1]}:${n}`); continue; }
+    if (m) { const n = V4_WORLD_MAP[+m[2]]; if (n !== undefined && !V4_NEW_GROUND.has(+m[2])) flags.add(`${m[1]}:${n}`); continue; }
     flags.add(f);
   }
   const keep = <T>(o: Record<string, T> | undefined) => Object.fromEntries(Object.entries(o ?? {}).filter(([k]) => !V4_GONE_WORLDS.has(k)));
-  const data = withDefaults({ ...(r as SaveData), v: 5 as const, world, flags: [...flags], pins: keep(r.pins), seen: keep(r.seen) });
+  const river = r.river ? { ...r.river, loopComplete: false } : r.river;
+  const data = withDefaults({ ...(r as SaveData), v: 5 as const, world, flags: [...flags], pins: keep(r.pins), seen: keep(r.seen), river: river as SaveData['river'] });
   if (!V4_SAME_GROUND.has(oldWorld)) data.arrive = true;
   return data;
 }

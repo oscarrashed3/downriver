@@ -151,8 +151,9 @@ describe('Save migration', () => {
     const r = migrateSave({ ...v3(), world: 5, flags: ['read-letter', 'chapter1-complete', 'visited:0', 'visited:1', 'visited:2', 'visited:3', 'visited:4', 'visited:5', 'told-goback:2', 'map:deep', 'map:aquila', 'met:cassian', 'met:oro', 'map:sea'],
       seen: { peaks: '01', pines: '1', deep: '1', aquila: '1', sea: '1' }, pins: { peaks: [{ x: 1, y: 2 }], aquila: [{ x: 0, y: 0 }] } });
     const f = new Set(r.data!.flags);
-    expect([...f].filter(x => x.startsWith('visited:')).sort()).toEqual(['visited:0', 'visited:1', 'visited:' + SIX[2]]);
-    expect(f.has('told-goback:1')).toBe(true);
+    expect([...f].filter(x => x.startsWith('visited:')).sort()).toEqual(['visited:0', 'visited:' + SIX[2]]);
+    // the forest is gone (the Sky Isles stand in its place, new ground), so its marks go too
+    expect(f.has('told-goback:1')).toBe(false);
     for (const gone of ['map:deep', 'map:aquila', 'met:cassian', 'told-goback:2', 'met:oro']) expect(f.has(gone), gone).toBe(false);
     for (const kept of ['read-letter', 'chapter1-complete', 'map:sea']) expect(f.has(kept), kept).toBe(true);
     expect(Object.keys(r.data!.seen).sort()).toEqual(['peaks', 'sea']);
@@ -163,13 +164,13 @@ describe('Save migration', () => {
     expect(r.data?.world).toBe(SIX[2]);
     expect(r.data?.arrive).toBe(true);
     const f = new Set(r.data!.flags);
-    expect([...f].filter(x => x.startsWith('visited:')).sort()).toEqual(['visited:0', 'visited:1', 'visited:' + SIX[2]]);
+    expect([...f].filter(x => x.startsWith('visited:')).sort()).toEqual(['visited:0', 'visited:' + SIX[2]]);
     expect(f.has('visited:' + SIX[3])).toBe(false);
     expect(f.has('told-goback:' + SIX[2])).toBe(true);
   });
   it('only marks the sea visited when the old save had been to the desert, Aquila or the sea', () => {
     const r = migrateSave({ ...v3(), world: 1, flags: ['visited:0', 'visited:1', 'visited:2'] });
-    expect(r.data!.flags.sort()).toEqual(['visited:0', 'visited:1']);
+    expect(r.data!.flags.sort()).toEqual(['visited:0']);
   });
   it('fills in fields an early version 3 save did not have', () => {
     const old: any = v3(); delete old.sigs; delete old.bag; delete old.seen;

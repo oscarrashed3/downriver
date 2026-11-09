@@ -30,7 +30,7 @@ export default async ({ page, shot, ev, key }) => {
   await page.click('button[data-tab="sketches"]'); await page.waitForTimeout(800); await shot('sketchbook');
   await key('KeyB'); await page.waitForTimeout(400);
   // the fox in the Sky Isles
-  await ev(`(() => { const g = __game; g.enterWorld(1, false); const p = g.planets[1]; g.player.placeAt(p, p.dirRiver(34.5, 7)); g.player.facing.copy(g.fox.f.root.position.clone().sub(g.player.pos).projectOnPlane(g.player.up).normalize()); g.player.sync(); g.rig.snap(); g.day.setLocal(g.player.up, 0.5); })()`);
+  await ev(`(() => { const g = __game; g.enterWorld(1, false); const p = g.planets[1]; g.player.placeAt(p, p.dirRiver(24.5, 7)); g.player.facing.copy(g.fox.f.root.position.clone().sub(g.player.pos).projectOnPlane(g.player.up).normalize()); g.player.sync(); g.rig.snap(); g.day.setLocal(g.player.up, 0.5); })()`);
   await page.waitForTimeout(2500); await shot('fox');
   console.log('prompt', await ev(`document.querySelector('.prompt').innerText`));
 };

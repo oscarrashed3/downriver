@@ -26,6 +26,8 @@ export interface WorldConfig {
     low: string; mid: string; high: string; rock: string; bank?: string; moss?: string; dab?: string; path?: string;
     snow?: string; ice?: string; water: string; waterDeep: string;
     light: string; ambient: string; fog: string; skyTop: string; skyHorizon: string;
+    /** Only for a world that keeps the night (Lantern Town): its own moonlit ambient, fog and moon strength. */
+    night?: { ambient: string; fog: string; moon: number };
   };
   music: 'bells' | 'woodwind' | 'marimba' | 'pluck' | 'lyre' | 'strings';
   /**
@@ -62,7 +64,8 @@ export const WORLDS: WorldConfig[] = [
     palette: {
       low: '#f6f3fa', mid: '#a9d98a', high: '#d2eaa0', rock: '#ece2d2', bank: '#e9e2c8', dab: '#c4ec96', path: '#efe6cc',
       water: '#a8e6f4', waterDeep: '#4fa3c8',
-      light: '#fff6dc', ambient: '#a8c8ee', fog: '#e4f0fb', skyTop: '#7fb6ee', skyHorizon: '#f4f8ff',
+      // pastel blue all the way down to the horizon (a white horizon washed World 2 out to grey)
+      light: '#fff4d6', ambient: '#a8c8ee', fog: '#cfe6fa', skyTop: '#5f9ee8', skyHorizon: '#b8dcf8',
     },
     music: 'lyre', hour: { elev: 0.93 },
   },
@@ -105,9 +108,12 @@ export const WORLDS: WorldConfig[] = [
     center: placeAt(5), radius: 58, seed: 53, detail: 60, amplitude: 3,
     riverStartLat: 4, meander: 20, meanderWaves: 2, riverWidth: 2.6, riverBed: 0.6, bankWidth: 3, waterDepth: 0.55,
     palette: {
-      low: '#b8ac94', mid: '#c4b49a', high: '#cdbfa6', rock: '#a898a8', bank: '#d0c0a4', path: '#e0ccaa',
+      // warm old cobbles, so the moonlit town never reads as snow
+      low: '#a08a78', mid: '#a8927e', high: '#b09a84', rock: '#8a7a88', bank: '#b49c80', path: '#c8aa88',
       water: '#5a8ab8', waterDeep: '#1a2f5a',
       light: '#ffd8a0', ambient: '#5a6aa8', fog: '#2a3060', skyTop: '#141a44', skyHorizon: '#4a3a6a',
+      // a festival night: a bright moon, lilac-blue shadows, a warm haze from all the lanterns
+      night: { ambient: '#6a78c8', fog: '#4a4a80', moon: 1.5 },
     },
     music: 'woodwind', hour: { elev: -0.6 },
   },

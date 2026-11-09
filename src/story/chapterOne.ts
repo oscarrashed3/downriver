@@ -986,7 +986,7 @@ export class ChapterOne {
     const raftAt = (dt: number, speed: number) => {
       raftT = Math.min(0.9, raftT + speed * dt / (Math.PI * p.R));
       const d = p.pathPoint(raftT), tan = p.pathPoint(Math.min(1, raftT + 0.004)).sub(d).normalize();
-      pl.pos.copy(d).multiplyScalar(p.waterLevelRadius() + 0.22 + Math.sin(g.time * 2.4) * 0.05).add(p.center);
+      pl.pos.copy(d).multiplyScalar(p.waterLevelRadius(raftT) + 0.22 + Math.sin(g.time * 2.4) * 0.05).add(p.center);
       pl.up.copy(d); pl.facing.copy(tan); pl.pose = { sit: 1, wave: 0.6 }; pl.animate(dt, 0, false); pl.sync();
       g.fold.update(dt, pl.pos, pl.up, pl.facing, true);
       return { d, tan };

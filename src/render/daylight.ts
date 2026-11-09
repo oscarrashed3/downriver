@@ -3,7 +3,11 @@ import { PAINT } from './paint';
 import { LIGHT } from './palette';
 import { clamp, smoothstep } from '../world/noise';
 
-export interface DayPalette { fog: string; skyTop: string; skyHorizon: string; light: string; ambient: string }
+export interface DayPalette {
+  fog: string; skyTop: string; skyHorizon: string; light: string; ambient: string;
+  /** A world that lives at night (Lantern Town) can light its own night: brighter ambient and fog, a stronger moon. */
+  night?: { ambient: string; fog: string; moon: number };
+}
 
 /**
  * A full day passes in about twelve minutes. On a world this small, time also depends on where you
@@ -83,10 +87,10 @@ export class DayCycle {
     sunLight.color.set(p.light).lerp(warm, clamp(dusk * 0.85));
     moonLight.position.copy(this.sun).multiplyScalar(-400).add(center);
     moonLight.target.position.copy(center);
-    moonLight.intensity = smoothstep(0.08, -0.25, e) * 0.9;
+    moonLight.intensity = smoothstep(0.08, -0.25, e) * (p.night?.moon ?? 0.9);
 
     const ambDay = new THREE.Color(p.ambient);
-    const ambNight = new THREE.Color(LIGHT.nightAmbient);
+    const ambNight = new THREE.Color(p.night?.ambient ?? LIGHT.nightAmbient);
     const ambDusk = new THREE.Color(LIGHT.duskAmbient);
     const sky = ambNight.clone().lerp(ambDay, day).lerp(ambDusk, dusk * 0.45);
     PAINT.uAmbSky.value.copy(sky).multiplyScalar(0.62);
@@ -97,6 +101,6 @@ export class DayCycle {
     PAINT.uCenter.value.copy(center);
 
     const fogDay = new THREE.Color(p.fog);
-    fog.color.set(LIGHT.nightFog).lerp(fogDay, day).lerp(new THREE.Color(LIGHT.duskFog), dusk * 0.4);
+    fog.color.set(p.night?.fog ?? LIGHT.nightFog).lerp(fogDay, day).lerp(new THREE.Color(LIGHT.duskFog), dusk * 0.4);
   }
 }

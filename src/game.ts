@@ -14,6 +14,7 @@ import { SkyIslands, CloudSea, beaconTexture, LOOK_CAM } from './world/skyIsland
 import { prepare, populate, FOX_SPOT, HOME_LIGHT, type WorldContent, type Interactable } from './world/content';
 import * as Q from './world/props2';
 import { randState, setRandState, skipRand } from './world/props';
+import { laterArrivalDir, dockDir } from './world/arrival';
 import { talkSpot, overShoulder, segmentClear, chooseShot } from './systems/stage';
 import { resolveSolids } from './world/collide';
 import { fireView } from './world/fire';
@@ -403,9 +404,9 @@ export class Game {
   streamCurve(i: number): THREE.CubicBezierCurve3 {
     const a = this.planets[i], b = this.planets[i + 1];
     const endDir = a.path[a.path.length - 1];
-    const p0 = a.center.clone().addScaledVector(endDir, a.waterLevelRadius() + 0.02);
+    const p0 = a.center.clone().addScaledVector(endDir, a.waterLevelRadius(1) + 0.02);
     const startDir = b.path[0];
-    const p3 = b.center.clone().addScaledVector(startDir, b.waterLevelRadius() + 0.3);
+    const p3 = b.center.clone().addScaledVector(startDir, b.waterLevelRadius(0) + 0.3);
     const tangentOut = a.path[a.path.length - 1].clone().sub(a.path[a.path.length - 4]).normalize();
     // the water runs on off the lip first, then bends away in one long arc: a ribbon in the sky, not a spout
     const p1 = p0.clone().addScaledVector(endDir, 14).addScaledVector(tangentOut, 70);
@@ -427,7 +428,7 @@ export class Game {
   buildTravelProps() {
     for (let i = 1; i < this.planets.length; i++) {
       const p = this.planets[i];
-      const d = this.besideRiver(p, 18, p.cfg.riverWidth + 1.4);
+      const d = dockDir(p);
       const dock = Q.dock();
       p.surfacePoint(d, -0.15, dock.position);
       orientTo(dock, d, p.surfacePoint(p.dirRiver(18, 0)).sub(dock.position));
@@ -668,22 +669,7 @@ export class Game {
   arrivalDir(i: number) {
     const p = this.planets[i];
     if (i === 0) return p.dirRiver(PK.benches[3][0] + 1.5, PK.benches[3][1] + 2);
-    // Far enough from the channel to stand on dry bank, not in the water.
-    const w = p.cfg.riverWidth * 1.15 + 0.6;
-    return this.besideRiver(p, 20, Math.max(p.cfg.riverWidth + 3.2, w + 1.6));
-  }
-
-  /**
-   * A point at the given latitude about `metres` from the river's centre line.
-   * A longitude offset shrinks by sin(lat), so convert with that, then step outward
-   * until the real distance to the (meandering) river is at least `metres`.
-   */
-  besideRiver(p: Planet, lat: number, metres: number): THREE.Vector3 {
-    const degPerM = 1 / (p.R * Math.PI / 180 * Math.max(0.05, Math.sin(lat * Math.PI / 180)));
-    let off = metres * degPerM;
-    const d = p.dirRiver(lat, off);
-    for (let i = 0; i < 40 && p.riverNearest(d).dist < metres; i++) { off += 0.25 * degPerM; p.dirRiver(lat, off, d); }
-    return d;
+    return laterArrivalDir(p);
   }
 
   /** Compile every material in view-independent order so a new world's first frame doesn't stall. */
@@ -699,7 +685,7 @@ export class Game {
     const p = this.planet, d = this.player.up;
     if (this.cur !== 0) {
       switch (WORLDS[this.cur].id) {
-        case 'sky': return p.height(d) < 1.6 ? 'stepSnow' : 'stepGrass'; // soft cloud underfoot, or island meadow
+        case 'sky': return p.height(d) - p.skyCloud(Math.acos(Math.max(-1, Math.min(1, d.y))) * 180 / Math.PI) < 1.2 ? 'stepSnow' : 'stepGrass'; // soft cloud underfoot, or island meadow
         case 'garden': return 'stepGrass';
         case 'desert': return 'stepSnow';
         case 'lantern': return 'stepStone';
@@ -834,7 +820,7 @@ export class Game {
     const w = p.cfg.riverWidth * p.flowWidth;
     const dir = d.clone().addScaledVector(side, -pl.raftSide * w / p.R).normalize();
     const bob = Math.sin(this.time * 2.4) * (0.05 + rapids * 0.12);
-    pl.pos.copy(dir).multiplyScalar(p.waterLevelRadius() + 0.22 + bob).add(p.center);
+    pl.pos.copy(dir).multiplyScalar(p.waterLevelRadius(pl.raftT) + 0.22 + bob).add(p.center);
     pl.up.copy(dir);
     pl.facing.copy(tan).applyAxisAngle(dir, this.raftYaw);
     pl.vel.copy(tan).multiplyScalar(speed);
