@@ -7,8 +7,15 @@
 // layer on top of whatever posed it before: k = 0 leaves the body alone, k = 1 is fully prone.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { toon } from '../props';
-import { addOutlines } from '../../render/paint';
+import { addOutlines, paint, softRamp } from '../../render/paint';
+
+/** Toon with a stronger rim, so riders separate from the cloth behind them. */
+const rimMats = new Map<string, THREE.MeshToonMaterial>();
+export function riderToon(color: string) {
+  let m = rimMats.get(color);
+  if (!m) { m = paint(new THREE.MeshToonMaterial({ color, gradientMap: softRamp() }), { rim: 2.6, variation: 0.6 }); rimMats.set(color, m); }
+  return m;
+}
 
 const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
 const clamp = (x: number, a = 0, b = 1) => Math.min(b, Math.max(a, x));
@@ -52,6 +59,8 @@ export interface GlidePoseInput {
  */
 export function glidePose(r: RiderRig, g: GlidePoseInput) {
   const k = clamp(g.k);
+  // the hood's point is blown flatter while flying
+  if (r.hoodTip) r.hoodTip.scale.set(1, 1 - 0.3 * k, 1 - 0.15 * k);
   if (k <= 0.001) return;
   const bank = g.bank ?? 0, dive = clamp(g.dive ?? 0), wind = clamp(g.wind ?? 0.6), t = g.t;
   const flap = (f: number, ph: number) => Math.sin(t * f * (0.6 + wind) + ph);
@@ -91,19 +100,21 @@ export function glidePose(r: RiderRig, g: GlidePoseInput) {
     L.knee.rotation.x = lerp(L.knee.rotation.x, 0.32 + kick - dive * 0.15, k);
     if (r.ankles?.[i]) r.ankles[i].rotation.x = lerp(r.ankles[i].rotation.x, 0.75, k);
   }
-  // cloth on the body streams back and flaps
+  // cloth on the body streams back along the legs and flaps
   const fl = 0.35 + wind * 0.65 + dive * 0.5;
   r.coatPanels?.forEach((c, i) => {
-    const e = new THREE.Euler(0.45 * k + flap(9, i * 1.7) * 0.18 * fl * k, 0, flap(7, i) * 0.06 * k); // lifted off the wing by the wind
-    c.pivot.quaternion.slerp(new THREE.Quaternion().setFromEuler(e), k);
+    const e = new THREE.Euler(0.1 * k + flap(9, i * 1.7) * 0.12 * fl * k, 0, flap(7, i) * 0.05 * k);
+    c.pivot.quaternion.slerp(_cq.setFromEuler(e), k);
   });
-  if (r.hoodTip) r.hoodTip.rotation.set(lerp(r.hoodTip.rotation.x, 0.5 + flap(11, 0.4) * 0.25 * fl, k), 0, flap(8, 1) * 0.15 * k);
+  // the hood's point is blown flat down the back instead of standing up like a cone
+  if (r.hoodTip) r.hoodTip.rotation.set(lerp(r.hoodTip.rotation.x, -1.9 + flap(11, 0.4) * 0.12 * fl, k), 0, flap(8, 1) * 0.1 * k);
   r.scarfTail?.forEach((seg, i) => {
     seg.rotation.x = lerp(seg.rotation.x, (i === 0 ? -0.2 : 0) + flap(10, i * 0.9) * (0.25 + i * 0.12) * fl, k);
     seg.rotation.z = lerp(seg.rotation.z, flap(7, i * 1.3) * 0.2 * fl, k);
   });
 }
 
+const _cq = new THREE.Quaternion();
 const _t = new THREE.Vector3(), _h = new THREE.Vector3(), _ax = new THREE.Vector3(), _wq = new THREE.Quaternion();
 
 /**
@@ -159,7 +170,7 @@ class Kit {
   bake() {
     for (const [parent, set] of this.sets) for (const [key, list] of set) {
       const [color, line] = key.split('|');
-      const m = new THREE.Mesh(mergeGeometries(list, false)!, toon(color));
+      const m = new THREE.Mesh(mergeGeometries(list, false)!, riderToon(color));
       m.castShadow = true;
       if (line === '0') m.userData.noOutline = true;
       parent.add(m);
@@ -183,11 +194,11 @@ export interface RacerLook {
 }
 export const RACERS: Record<RacerKind, RacerLook> = {
   // Zephy: the fast boy from Sailtown, red scarf, a leather flying harness over a white shirt
-  zephy: { skin: '#c99068', hair: '#3a2418', shirt: '#f1ead8', vest: '#8a5a36', trousers: '#5d4a3c', boots: '#5a3824', scarf: '#d8453a', height: 1.3, harness: '#6a4428', braids: 1 },
+  zephy: { skin: '#c99068', hair: '#3a2418', shirt: '#f1ead8', vest: '#8a5a36', trousers: '#5d4a3c', boots: '#5a3824', scarf: '#e04a3a', height: 1.42, harness: '#6a4428', braids: 1 },
   // Lark: two long braids, a yellow scarf, a cream smock
-  lark: { skin: '#eac0a0', hair: '#5a3624', shirt: '#efe2c4', vest: '#c8a46a', trousers: '#6a5a48', boots: '#6a4430', scarf: '#f0c040', height: 1.22, braids: 2, harness: '#7a5030' },
+  lark: { skin: '#eac0a0', hair: '#5a3624', shirt: '#efe2c4', vest: '#c8a46a', trousers: '#6a5a48', boots: '#6a4430', scarf: '#f2c43a', height: 1.32, braids: 2, harness: '#7a5030' },
   // Gran Wren: the oldest racer, white bun, straw hat, a blue coat
-  wren: { skin: '#e4b896', hair: '#f2eee4', shirt: '#3e64a8', vest: '#2f4f8c', trousers: '#3a3a4a', boots: '#4a3428', scarf: '#9cc4ec', hat: '#e2c88a', bun: true, height: 1.25, old: true, harness: '#5a4030' },
+  wren: { skin: '#e4b896', hair: '#f2eee4', shirt: '#3e64a8', vest: '#2f4f8c', trousers: '#3a3a4a', boots: '#4a3428', scarf: '#5aa0e6', hat: '#e8d090', bun: true, height: 1.36, old: true, harness: '#5a4030' },
 };
 
 /**
@@ -281,9 +292,12 @@ export class StandInRider implements RiderRig {
     }
     k.add(this.head, sph(0.017, 8, 6), L.skin, [0, 0.12, 0.13], { line: false });
     k.add(this.head, tor(0.026, 0.0065, Math.PI), '#6a3030', [0, 0.085, 0.118], { r: [0, 0, Math.PI], line: false }); // a grin
-    // hair
-    k.add(this.head, sph(0.135, 14, 10), L.hair, [0, 0.19, -0.02], { s: [1.06, 0.82, 1.06] });
-    if (!L.old) for (let i = 0; i < 6; i++) { const a = -1 + i * 0.4; k.add(this.head, sph(0.045, 8, 6), L.hair, [Math.sin(a) * 0.09, 0.22, 0.08 + Math.cos(a) * 0.02], { s: [1, 0.8, 1.5], r: [0.9, 0, -a * 0.5] }); }
+    // hair: a cap that follows the skull, and tufts that break its outline (no helmet)
+    k.add(this.head, sph(0.132, 14, 10), L.hair, [0, 0.175, -0.025], { s: [1.04, 0.86, 1.04] });
+    if (!L.old) {
+      for (let i = 0; i < 5; i++) { const a = -0.9 + i * 0.45; k.add(this.head, new THREE.ConeGeometry(0.04, 0.12, 6), L.hair, [Math.sin(a) * 0.085, 0.235, 0.085 + Math.cos(a) * 0.01], { r: [1.9, 0, -a * 0.6] }); }
+      for (let i = 0; i < 7; i++) { const a = -2.2 + i * 0.73; k.add(this.head, new THREE.ConeGeometry(0.045, 0.13, 6), L.hair, [Math.sin(a) * 0.12, 0.2 + Math.cos(i * 1.7) * 0.03, Math.cos(a) * 0.12 - 0.02], { r: [Math.cos(a) * 1.4, 0, -Math.sin(a) * 1.4] }); }
+    }
     if (L.bun) k.add(this.head, sph(0.06, 10, 8), L.hair, [0, 0.27, -0.09]);
     if (L.braids) {
       const n = L.braids;
@@ -296,10 +310,25 @@ export class StandInRider implements RiderRig {
       }
     }
     if (L.hat) {
-      const hat = new THREE.Group(); hat.position.set(0, 0.26, -0.01); hat.rotation.x = -0.12; this.head.add(hat);
-      k.add(hat, cyl(0.26, 0.27, 0.02, 20), L.hat, [0, 0, 0]);
-      k.add(hat, cyl(0.1, 0.125, 0.11, 16), L.hat, [0, 0.055, 0]);
-      k.add(hat, cyl(0.127, 0.127, 0.03, 16), '#3e64a8', [0, 0.02, 0], { line: false }); // band
+      // a real straw hat: a lathed brim that dips at the front and back and turns up at the edge,
+      // a pinched crown, a blue band, and a darker plaited edge
+      const hat = new THREE.Group(); hat.position.set(0, 0.255, -0.01); hat.rotation.x = -0.1; this.head.add(hat);
+      const brim = new THREE.LatheGeometry([
+        new THREE.Vector2(0.1, 0.012), new THREE.Vector2(0.16, 0.0), new THREE.Vector2(0.23, -0.012), new THREE.Vector2(0.28, -0.012),
+        new THREE.Vector2(0.305, 0.004), new THREE.Vector2(0.3, 0.012), new THREE.Vector2(0.24, 0.006), new THREE.Vector2(0.1, 0.022),
+      ], 28);
+      const bp = brim.attributes.position as THREE.BufferAttribute;
+      for (let i = 0; i < bp.count; i++) { const x = bp.getX(i), z = bp.getZ(i), r = Math.hypot(x, z); bp.setY(i, bp.getY(i) - 0.035 * (r / 0.3) * (z * z) / (r * r + 1e-6)); }
+      brim.computeVertexNormals();
+      k.add(hat, brim, L.hat!, [0, 0, 0]);
+      const crown = new THREE.LatheGeometry([
+        new THREE.Vector2(0.118, 0.0), new THREE.Vector2(0.122, 0.05), new THREE.Vector2(0.115, 0.095), new THREE.Vector2(0.085, 0.118),
+        new THREE.Vector2(0.03, 0.105), new THREE.Vector2(0.0, 0.1),
+      ], 20);
+      k.add(hat, crown, L.hat!, [0, 0.01, 0]);
+      k.add(hat, cyl(0.124, 0.124, 0.03, 20), '#3e64a8', [0, 0.027, 0], { line: false }); // band
+      k.add(hat, tor(0.3, 0.008), '#c4a462', [0, 0.008, 0], { r: [Math.PI / 2, 0, 0], line: false }); // plaited edge
+      k.add(hat, sph(0.03, 8, 6), '#e04a3a', [0.1, 0.035, 0.06], { s: [1, 0.7, 0.5], line: false }); // a red flower in the band
       this.hairTails.push(hat);
     }
     k.bake();
