@@ -10,7 +10,10 @@ import { paint, softRamp, addOutlines } from '../../../render/paint';
  * the sea's top is near y = 0 under the lab origin), with its far sea, towers, flocks and castle island, and a
  * few cloud pads. Plain stand-in islands give a sense of scale (props=0 hides them).
  * Query: R=radius, props=0, nosea=1, lands=1 (always on at golden hour), squash=1 (the first pad squashes at t = 1 s),
- * ink=0 (turn the finish pass's cloud ink mask off, to compare).
+ * ink=0 (turn the finish pass's cloud ink mask off, and the clouds' alpha mask with it, to compare).
+ * The sea is composed for the views: hand-placed hero masses before the midday camera and under the steep view,
+ * towers at both edges of the midday view, and at golden hour broad openings onto the lands to the right of the
+ * sun (window.__sea and window.__seaStats() are there for debugging and perf checks).
  */
 export default function (ctx: LabCtx): LabPiece {
   const { scene, params, golden } = ctx;
@@ -18,20 +21,36 @@ export default function (ctx: LabCtx): LabPiece {
   // (the views look toward +Z at midday, with the sun ahead and to the left as in picture 1; the castle stands there too)
   // (golden: the sun and a tower in front of it lie toward azimuth ~0.86)
   const sunAz = Math.atan2(ctx.sunDir.x, -ctx.sunDir.z);
+  const V = (x: number, z: number) => new THREE.Vector3(x, 0, z);
   const sea = new CloudSea({
     center: new THREE.Vector3(0, -R, 0), radius: R, seed: Number(params.get('seed') ?? 2),
     lands: golden || params.get('lands') === '1',
-    castle: { azimuth: 2.78 },
-    towerAz: golden ? [sunAz - 0.1, 3.5, 2.1] : [3.5, 2.15, sunAz],
+    castle: { azimuth: 2.95 },
+    // walls of towering cumulus at both edges of the midday view; at golden hour one beside the sun
+    towerAz: golden ? [sunAz + 0.3, sunAz - 0.55, 3.6, 2.5] : [3.72, 2.5, sunAz, 4.4],
+    // hero masses: before the midday camera, under the steep view, and framing the golden view's openings
+    masses: [
+      { at: V(-15, 34), r: 23, h: 25 }, { at: V(22, 44), r: 20, h: 21 }, { at: V(-2, 60), r: 26, h: 26 },
+      { at: V(31, -2), r: 20, h: 22 }, { at: V(10, -48), r: 22, h: 24 }, { at: V(-32, -18), r: 22, h: 22 },
+    ],
+    gaps: [{ at: V(18, -16), r: 26 }, { at: V(46, -44), r: 20 }],
+    farGaps: [
+      // (mostly to the right of the sun, as in picture 4, so the lands are not lost in its glare)
+      { azimuth: sunAz + 0.42, distance: 250, r: 95 }, { azimuth: sunAz + 0.5, distance: 520, r: 190 },
+      { azimuth: sunAz + 0.3, distance: 800, r: 240 }, { azimuth: sunAz + 0.05, distance: 1100, r: 300 },
+    ],
   });
   sea.setGolden(golden ? 1 : 0);
   sea.setHaze((scene.fog as THREE.FogExp2).color, golden ? 0.0009 : 0.0011);
   // no ink through the clouds
-  FINISH_CLOUD_MASK.value = params.get('ink') === '0' ? 0 : 1;
+  const inkMask = params.get('ink') !== '0';
+  FINISH_CLOUD_MASK.value = inkMask ? 1 : 0;
+  sea.setInkMask(inkMask);
   scene.add(sea.group);
   if (params.get('nosea')) sea.group.visible = false;
   // for perf checks: what the sea drew, and the renderer's last frame counts
   (window as any).__seaStats = () => sea.stats;
+  (window as any).__sea = sea;
 
   // cloud pads: a little hopping path off the near island
   const pads: CloudPad[] = [];
@@ -40,6 +59,7 @@ export default function (ctx: LabCtx): LabPiece {
     const p = new CloudPad({ size: s, seed: i + 3 });
     p.root.position.set(x, y, z);
     scene.add(p.root);
+    p.setInkMask(inkMask);
     pads.push(p);
   });
   // a Nilo-sized marker standing on the first pad (1.2 m)
@@ -64,7 +84,8 @@ export default function (ctx: LabCtx): LabPiece {
         lp.setXYZ(i, lp.getX(i) * k, y, lp.getZ(i) * k);
       }
       lg.computeVertexNormals();
-      const rock = new THREE.Mesh(lg, toon('#e2cfa6'));
+      const rm = toon('#e8d3a8'); rm.emissive.set('#3a3026');
+      const rock = new THREE.Mesh(lg, rm);
       const top = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.02, r, 1.2, 28), toon('#8fc06a'));
       top.position.y = 0.4;
       rock.castShadow = top.castShadow = true; rock.receiveShadow = top.receiveShadow = true;
