@@ -83,6 +83,9 @@ export function lanternBoat(): THREE.Group {
   const g = new THREE.Group();
   const hull = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 6, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), P.toon('#8a5a44'));
   hull.scale.set(0.7, 0.45, 1.6); g.add(hull);
+  // a deck over the hull, so it reads as a boat and not a bowl
+  const deck = new THREE.Mesh(new THREE.CircleGeometry(1, 16), P.toon('#b07a58'));
+  deck.rotation.x = -Math.PI / 2; deck.scale.set(0.66, 1.52, 1); deck.position.y = -0.02; g.add(deck);
   const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 1.4, 5), P.toon('#4a3a34')); mast.position.y = 0.7; g.add(mast);
   const l = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 8), glow(PAPER[Math.floor(P.rand() * PAPER.length)]));
   l.position.y = 1.45; l.scale.y = 1.25; l.userData.noOutline = true; g.add(l);
@@ -135,7 +138,7 @@ export function populateLantern(k: Kit) {
     const lat = LANTERN_HARBOUR_LAT + 4 + (i % 3) * 4, lon = -150 + i * 38;
     const d = p.dirRiver(lat, lon);
     if (p.surfaceRadius(d) > wr - 0.2) continue; // only on open water
-    const o = put(lanternBoat(), lat, lon, wr - p.surfaceRadius(d) + 0.15, undefined, 0);
+    const o = put(lanternBoat(), lat, lon, wr - p.surfaceRadius(d) + 0.36, undefined, 0);
     boats.push({ o, ph: i * 1.7, base: o.position.clone(), up: d });
   }
   c.animate.push((_dt, t) => boats.forEach(b => b.o.position.copy(b.base).addScaledVector(b.up, Math.sin(t * 1.4 + b.ph) * 0.06)));
@@ -165,7 +168,7 @@ export function populateLantern(k: Kit) {
   lm('The landing', 22, 0, 'hut');
   for (const lat of [30, 52, 74]) {
     const d = p.dirRiver(lat, 0);
-    const o = put(lanternBoat(), lat, 0, p.waterLevelRadius() - p.surfaceRadius(d) + 0.1, undefined, 0);
+    const o = put(lanternBoat(), lat, 0, p.waterLevelRadius() - p.surfaceRadius(d) + 0.33, undefined, 0);
     boats.push({ o, ph: lat, base: o.position.clone(), up: d });
   }
 
