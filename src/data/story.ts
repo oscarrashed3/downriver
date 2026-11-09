@@ -20,8 +20,9 @@ export const OPENING = {
     'Somewhere in the lightning, someone with a lantern was watching.',
     'Then the wind took you, and the sky turned over.',
   ],
-  lookDown: 'Look down.',
-  homeLight: 'Far below the clouds, one small light is blinking. Somehow, you know it is home.',
+  lookUp: 'Look up.',
+  worlds: 'Past the clouds, the other worlds hang in the sky like far-off moons.',
+  homeLight: 'On the farthest one, a small light is blinking. Somehow, you know it is home.',
   firstStep: 'The river is too thin to carry you. Find out why.',
   walkHint: '<b>W A S D</b> walk &nbsp; <b>X</b> run &nbsp; <b>Mouse</b> look',
 };

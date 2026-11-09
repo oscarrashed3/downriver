@@ -17,10 +17,14 @@ export class Sky {
         uCloud: { value: new THREE.Color('#fff4ea') },
         uDusk: { value: new THREE.Color('#ffa58a') },
         uTime: { value: 0 },
+        // far views (the title, the sky view): the depths below the worlds glow warm instead of going deep blue
+        uAbyss: { value: 0 },
+        uAbyssCol: { value: new THREE.Color('#ffc890') },
+        uAbyssMid: { value: new THREE.Color('#86a9ea') },
       },
       vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = projectionMatrix * modelViewMatrix * vec4(position,1.0); gl_Position = p.xyww; }`,
       fragmentShader: `
-        uniform vec3 uUp, uSun, uTop, uHorizon, uCloud, uDusk; uniform float uTime; varying vec3 vDir;
+        uniform vec3 uUp, uSun, uTop, uHorizon, uCloud, uDusk, uAbyssCol, uAbyssMid; uniform float uTime, uAbyss; varying vec3 vDir;
         float h(vec3 p){ return fract(sin(dot(p, vec3(127.1,311.7,74.7))) * 43758.5453); }
         void main(){
           vec3 d = normalize(vDir);
@@ -37,7 +41,10 @@ export class Sky {
           vec3 seaC = mix(vec3(0.86, 0.93, 1.0), hor, 0.3) * mix(0.25, 1.0, day) + vec3(1.0,0.82,0.6) * pow(sunAmt, 6.0) * 0.35 * day;
           col = mix(col, seaC, smoothstep(0.02, -0.12, e));
           vec3 deep = mix(vec3(0.62, 0.78, 0.95), vec3(0.22, 0.46, 0.84), smoothstep(-0.3, -0.95, e));
+          deep = mix(deep, mix(uAbyssMid, uAbyssCol, smoothstep(-0.6, -0.98, e)), uAbyss);
           col = mix(col, deep * mix(0.18, 1.0, day), smoothstep(-0.2, -0.55, e));
+          // and the whole sky softens toward pearl and cornflower, like a watercolour wash
+          col = mix(col, mix(col, vec3(0.95, 0.93, 0.96), 0.08 + 0.1 * smoothstep(0.0, -0.6, e)), uAbyss);
           // sun disk and halo
           col += vec3(1.0, 0.86, 0.62) * (pow(sunAmt, 900.0) * 3.0 + pow(sunAmt, 14.0) * 0.4 * (0.4 + dusk));
           // moon opposite the sun, and stars at night
@@ -67,6 +74,7 @@ export class Sky {
         uDusk: { value: new THREE.Color('#ffb29a') },
         uDuskAmt: { value: 0 },
         uSky: { value: new THREE.Color('#b4def2') },
+        uHaze: { value: 0 },
       },
       vertexShader: /* glsl */ `
         varying vec3 vN; varying vec3 vW; varying float vSeed;
@@ -80,7 +88,7 @@ export class Sky {
           gl_Position = projectionMatrix * viewMatrix * wp;
         }`,
       fragmentShader: /* glsl */ `
-        uniform vec3 uSun, uTop, uBelly, uDusk; uniform float uDay, uDuskAmt;
+        uniform vec3 uSun, uTop, uBelly, uDusk, uSky; uniform float uDay, uDuskAmt, uHaze;
         varying vec3 vN; varying vec3 vW; varying float vSeed;
         void main(){
           vec3 N = normalize(vN);
@@ -151,8 +159,8 @@ export class Sky {
     this.mesh.position.copy(camPos);
   }
 
-  /** The sky colour at the horizon right now (kept for callers; the clouds do not melt into it). */
-  setCloudSky(c: THREE.Color) { (this.cloudMat.uniforms.uSky.value as THREE.Color).copy(c); }
+  /** The sky colour at the horizon right now (kept for callers; the clouds keep their old look). */
+  setCloudSky(c: THREE.Color, haze = 0) { (this.cloudMat.uniforms.uSky.value as THREE.Color).copy(c); this.cloudMat.uniforms.uHaze.value = haze; }
 
   setPalette(top: string, horizon: string) {
     (this.mat.uniforms.uTop.value as THREE.Color).set(top);

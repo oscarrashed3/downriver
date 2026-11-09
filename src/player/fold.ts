@@ -120,6 +120,9 @@ export class Fold {
     this.root.scale.setScalar(0.8);
   }
 
+  /** A spot to settle on for a while (his satchel, during the "Look up." shot), instead of hovering at his shoulder. */
+  perch: THREE.Vector3 | null = null;
+
   update(dt: number, playerPos: THREE.Vector3, up: THREE.Vector3, facing: THREE.Vector3, raftMode: boolean) {
     this.t += dt;
     this.raft = raftMode;
@@ -130,6 +133,7 @@ export class Fold {
       ? playerPos.clone().addScaledVector(up, 0.12)
       : playerPos.clone().addScaledVector(up, 1.75 + Math.sin(this.t * 2.2) * 0.12).addScaledVector(side, -0.85).addScaledVector(facing, -0.3);
     goal.lerp(kiteGoal, this.kiteAmt);
+    if (this.perch) goal.copy(this.perch);
     this.pos.lerp(goal, 1 - Math.exp(-(raftMode ? 30 : 6 + this.kiteAmt * 10) * dt));
     this.root.position.copy(this.pos);
     orientTo(this.root, up, side.clone().negate());

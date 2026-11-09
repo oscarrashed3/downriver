@@ -10,6 +10,7 @@ import { WORLDS } from './world/worlds';
 const FOX_WORLD = WORLDS.findIndex(w => w.id === 'pines');
 import { Planet } from './world/planet';
 import { Sky } from './world/sky';
+import { SkyIslands, CloudSea, beaconTexture } from './world/skyIslands';
 import { prepare, populate, FOX_SPOT, HOME_LIGHT, type WorldContent, type Interactable } from './world/content';
 import * as Q from './world/props2';
 import { randState, setRandState, skipRand } from './world/props';
@@ -59,6 +60,9 @@ export type Mode = 'title' | 'cut' | 'play' | 'talk' | 'ride' | 'raft' | 'overla
 interface Ride { to: number; curve: THREE.Curve<THREE.Vector3>; s: number; dur: number; kite: boolean; arrive: () => void }
 
 const FOG_BASE = 0.0026;
+/** Haze in the far views (the title, the sky view, the home-light shot): the deepest world is softly veiled. */
+const FOG_FAR = 0.00024;
+const FAR_HAZE = new THREE.Color('#c9d8f4');
 /** How many numbers the five later worlds of the six-world journey took from the shared prop generator. */
 const SIX_WORLD_LATER_RAND = 4441;
 
@@ -97,6 +101,11 @@ export class Game {
   blizzard: Motes;
   beacon: THREE.Sprite;
   beaconPos = new THREE.Vector3();
+  /** The later worlds hung in World 1's sky like far moons, for the "Look up." shot. */
+  islands: SkyIslands;
+  /** Painted cloud banks round the column of worlds, for the far views (title, sky view). */
+  cloudSea: CloudSea;
+
   seq: Sequencer;
   ch1: ChapterOne;
   mode: Mode = 'title';
@@ -283,16 +292,13 @@ export class Game {
     // The home light: the lighthouse on the dunes where the river ends, blinking far below the clouds.
     const home = this.planets[this.planets.length - 1];
     home.surfacePoint(home.dirRiver(HOME_LIGHT.lat, HOME_LIGHT.lon), 16.5, this.beaconPos);
-    const bc = document.createElement('canvas'); bc.width = bc.height = 64;
-    const bx = bc.getContext('2d')!;
-    const bg = bx.createRadialGradient(32, 32, 0, 32, 32, 32);
-    bg.addColorStop(0, 'rgba(255,255,235,1)'); bg.addColorStop(0.2, 'rgba(255,230,150,0.95)'); bg.addColorStop(1, 'rgba(255,190,110,0)');
-    bx.fillStyle = bg; bx.fillRect(0, 0, 64, 64);
-    this.beacon = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(bc), sizeAttenuation: false, transparent: true, fog: false, depthWrite: false, blending: THREE.AdditiveBlending }));
+    this.beacon = new THREE.Sprite(new THREE.SpriteMaterial({ map: beaconTexture(), sizeAttenuation: false, transparent: true, fog: false, depthWrite: false, blending: THREE.AdditiveBlending }));
     this.beacon.position.copy(this.beaconPos);
     this.beacon.scale.setScalar(0.022);
     this.beacon.renderOrder = 10;
     this.scene.add(this.beacon);
+    this.islands = new SkyIslands(this.scene, this.planets);
+    this.cloudSea = new CloudSea(this.scene, this.planets, this.sky.cloudMat);
 
     this.seq = new Sequencer((who, text) => this.hud.showCaption(who, text));
     if (this.fast > 1) this.seq.speed = 4;
@@ -556,6 +562,9 @@ export class Game {
 
   // ------------------------------------------------------------------ title & scenes
   showTitle() {
+    // a high morning sun over the cloud sea, so the banks have bright crowns and soft lavender shade
+    // (a new game sets its own time of day when Nilo wakes; Continue loads the saved one)
+    this.day.setLocal(new THREE.Vector3(0, 1, 0), 0.6);
     const saved = loadSave();
     const has = !!saved.data;
     const el = document.createElement('div');
@@ -1358,12 +1367,124 @@ export class Game {
     return best;
   }
 
+  /**
+   * Where Nilo looks up to the other worlds: a stretch of open sky (no trees, roofs or sleeping giant across it),
+   * with the sun low off to one side, and not too far to turn. Sets the frame the sky moons hang in.
+   */
+  private lookPlan: { at: THREE.Vector3; dir: THREE.Vector3 } | null = null;
+  /** Which side of Nilo the low camera of the "Look up." shot sits: -1 left, 1 right. */
+  lookSide = -1;
+  planLookUp() {
+    const pl = this.player, u = pl.up, p = this.planets[0];
+    const sunT = this.day.sun.clone().projectOnPlane(u);
+    const hasSun = sunT.lengthSq() > 1e-4;
+    sunT.normalize();
+    const face = pl.facing.clone().projectOnPlane(u).normalize();
+    if (this.lookPlan && this.lookPlan.at.distanceTo(pl.pos) < 0.2) { this.islands.setFrame(pl.pos, u, this.lookPlan.dir, -this.lookSide); return this.lookPlan.dir.clone(); }
+    const eye = pl.pos.clone().addScaledVector(u, 0.4);
+    // what could stand across that sky: everything near him on this world (trees, roofs, Hollo), not the ground itself
+    const skip = new Set<THREE.Object3D>([this.sky.mesh, this.sky.clouds, this.grass.group, p.group, this.player.root, this.fold.root, this.fold.string,
+      this.islands.group, this.cloudSea.group, this.beacon, this.motes.points, this.rain.points, this.blizzard.points, ...this.streams, ...this.updrafts]);
+    const near = this.scene.children.filter(o => !skip.has(o) && o.visible && !(o as THREE.Light).isLight);
+    // Everything near him as a few thousand bounding balls: cheap to test against a hundred sky directions per try.
+    const balls: { c: THREE.Vector3; r: number }[] = [];
+    const sph = new THREE.Sphere(), mtx = new THREE.Matrix4();
+    for (const root of near) root.traverseVisible(o => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh || !m.geometry) return;
+      if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
+      const bs = m.geometry.boundingSphere!;
+      const inst = o as THREE.InstancedMesh;
+      if (inst.isInstancedMesh) {
+        for (let i = 0; i < inst.count; i++) {
+          inst.getMatrixAt(i, mtx); mtx.premultiply(inst.matrixWorld);
+          sph.copy(bs).applyMatrix4(mtx);
+          if (sph.radius < 25 && sph.center.distanceTo(eye) < 70) balls.push({ c: sph.center.clone(), r: sph.radius });
+        }
+        return;
+      }
+      sph.copy(bs).applyMatrix4(m.matrixWorld);
+      if (sph.radius < 25 && sph.center.distanceTo(eye) < 70) balls.push({ c: sph.center.clone(), r: sph.radius });
+    });
+    const ref2 = new THREE.Vector3().crossVectors(u, face);
+    const at = (az0: number, el: number, az: number) => {
+      const e = el * Math.PI / 180, a = az0 + az * Math.PI / 180;
+      return face.clone().multiplyScalar(Math.cos(e) * Math.cos(a)).addScaledVector(ref2, Math.cos(e) * Math.sin(a)).addScaledVector(u, Math.sin(e)).normalize();
+    };
+    /** The nearest ball across this line of sight (balls are generous, so they count from 80% of their size), or Infinity. */
+    const hitDist = (from: THREE.Vector3, dir: THREE.Vector3, maxD = Infinity) => {
+      let best = Infinity;
+      for (const b of balls) {
+        const vx = b.c.x - from.x, vy = b.c.y - from.y, vz = b.c.z - from.z;
+        const along = vx * dir.x + vy * dir.y + vz * dir.z;
+        if (along <= 0 || along > maxD + b.r) continue;
+        const d2 = vx * vx + vy * vy + vz * vz - along * along, rr = b.r * 0.8;
+        if (d2 < rr * rr && along < best) best = along;
+      }
+      return best;
+    };
+    // the sky the shot looks into, seen from where the camera will be (low behind him, to one side):
+    // where the moons hang, the frame round them, and the line to his head
+    const probes: [number, number, number][] = [];
+    for (let el = 20; el <= 70; el += 6) for (let az = -45; az <= 45; az += 9) {
+      // the middle of the frame, where the moons hang, matters most
+      probes.push([el, az, (el > 26 && Math.abs(az) < 30 ? 1 : 0.4) * 0.5]);
+    }
+    let best = face.clone(), bestS = Infinity, bestSide = -1;
+    for (let k = 0; k < 24; k++) {
+      const a = (k / 24) * Math.PI * 2;
+      const dir = face.clone().applyAxisAngle(u, a);
+      const right = new THREE.Vector3().crossVectors(dir, u).normalize();
+      const az0 = Math.atan2(dir.dot(ref2), dir.dot(face));
+      let base = (1 - Math.cos(a)) * 1.5;
+      if (hasSun) {
+        const ds = Math.abs(Math.atan2(new THREE.Vector3().crossVectors(dir, sunT).dot(u), dir.dot(sunT)));
+        base += Math.max(0, 0.6 - ds) * 8 + Math.max(0, ds - 1.4) * 3;
+      }
+      for (const side of [-1, 1]) {
+        const cam = pl.pos.clone().addScaledVector(dir, -1.8).addScaledVector(u, 0.3).addScaledVector(right, side * 0.7);
+        let score = base;
+        for (const [el, az, w] of probes) {
+          const h = hitDist(cam, at(az0, el, az));
+          // something right beside the camera fills half the frame: that counts far more than a tree far off
+          if (h < Infinity) score += 4 * w * (h < 8 ? 10 : 1);
+        }
+        const head = pl.pos.clone().addScaledVector(u, 1.1).sub(cam);
+        const hl = head.length();
+        if (hitDist(cam, head.normalize(), hl - 0.6) < hl - 0.6) score += 6;
+        if (score < bestS) { bestS = score; best = dir; bestSide = side; }
+      }
+    }
+    this.lookSide = bestSide;
+    // the nearest world goes on the other side of the frame from Nilo
+    this.islands.setFrame(pl.pos, u, best, -bestSide);
+    this.lookPlan = { at: pl.pos.clone(), dir: best.clone() };
+    return best;
+  }
+
+  /** Paint the later worlds into the sky moons (once; a short hitch, so it is done while the letter is open). */
+  bakeIslands() {
+    if (this.islands.baked) return;
+    if (this.mode === 'letter') this.planLookUp();
+    const fog = this.scene.fog as THREE.FogExp2;
+    const sunSide = Math.sign(this.day.sun.dot(this.islands.right)) || 1;
+    this.islands.bake({
+      renderer: this.renderer, scene: this.scene, planets: this.planets, sunSide, sunLight: this.sunLight,
+      light: i => this.day.apply(WORLDS[i].palette, this.sunLight, this.moonLight, fog, this.planets[i].center),
+      hide: [this.sky.mesh, this.sky.clouds, ...this.streams, ...this.updrafts, this.beacon, this.cloudSea.group, this.grass.group,
+        this.motes.points, this.rain.points, this.blizzard.points, this.player.root, this.fold.root, this.fold.string, ...this.skyView.silhouettes, this.skyView.marker],
+      homePos: this.beaconPos,
+    });
+  }
+
   openLetter() {
     this.mode = 'letter';
     this.player.satchelGlow = 0;
     this.player.pose = { listen: 1 };
     this.hud.showLetter(Opening.LETTER_TEXT);
     this.sound.sfxPlay('paper');
+    // the next shot looks up at the other worlds: paint them now, while the page is up
+    setTimeout(() => this.bakeIslands(), 300);
   }
 
   /** Slow motion, for looking closely (1 is normal speed). */
@@ -1397,7 +1518,7 @@ export class Game {
           this.player.pose = {};
           this.give('read-letter');
           this.sound.sfxPlay('paper');
-          this.cut(Opening.lookDownBeats(this), () => { this.hud.notify(OPENING.walkHint); this.save(); });
+          this.cut(Opening.lookUpBeats(this), () => { this.hud.notify(OPENING.walkHint); this.save(); });
         }
         break;
       case 'play': this.updatePlay(dt); this.updateAreas(); this.updateMeet(dt); break;
@@ -1461,7 +1582,12 @@ export class Game {
     const fog = this.scene.fog as THREE.FogExp2;
     const far = this.mode === 'title' ? 1 : Math.max(this.fogK, smoothstep(0, 0.5, this.skyView.k));
     (this.beacon.material as THREE.SpriteMaterial).depthTest = far < 0.3;
-    fog.density = lerp(FOG_BASE, 0.00006, far);
+    // far away, the air between the worlds is a soft pearly haze, so the deeper worlds sink into light
+    fog.density = lerp(FOG_BASE, FOG_FAR, far);
+    fog.color.lerp(FAR_HAZE, far * 0.4);
+    this.sky.mat.uniforms.uAbyss.value = far;
+    this.cloudSea.update(this.time, smoothstep(0.35, 0.9, far));
+    this.sky.clouds.visible = far < 0.6;
 
     (this.contents[this.cur].refs.lifeNear as THREE.Vector3 | undefined)?.copy(this.player.pos);
     for (const c of this.contents) c.animate.forEach(f => f(dt, this.time));
@@ -1472,7 +1598,7 @@ export class Game {
     for (const pl of this.planets) if (pl.ocean) (pl.ocean.material as THREE.ShaderMaterial).uniforms.uTime.value = this.time;
     // Seen from far away (title, sky view, the home light shot) the cloud sea is always in plain daylight.
     const upForSky = far > 0.5 ? this.day.sun.clone().lerp(new THREE.Vector3(0, 1, 0), 0.25).normalize() : this.rig.override ? this.rig.override.up : this.rig.smoothUp;
-    this.sky.setCloudSky((this.scene.fog as THREE.FogExp2).color);
+    this.sky.setCloudSky((this.scene.fog as THREE.FogExp2).color, (this.scene.fog as THREE.FogExp2).density * far);
     this.sky.update(upForSky, this.camera.position, this.time, this.day.sun, Math.max(this.day.day, far), this.day.dusk * (1 - far));
     this.skyread.update(dt, p, this.time);
     this.hud.sky.classList.toggle('on', this.skyread.active && this.mode === 'play');
@@ -1484,7 +1610,7 @@ export class Game {
     // the home light blinks, slow and steady
     const blink = 0.55 + 0.45 * Math.pow(Math.max(0, Math.sin(this.time * 1.7)), 3);
     (this.beacon.material as THREE.SpriteMaterial).opacity = blink;
-    if (this.mode !== 'cut') this.beacon.scale.setScalar(this.mode === 'title' ? 0.03 : 0.018 + this.skyView.k * 0.012);
+    if (this.mode !== 'cut') this.beacon.scale.setScalar(this.mode === 'title' ? 0.1 + 0.04 * blink : 0.03 + this.skyView.k * 0.03);
     for (const u of this.updrafts) u.visible = this.skyView.k < 0.5;
     if (this.mode !== 'ride') this.motes.update(dt, p.center, this.player.pos, onPeaks ? 0.6 : 0.8, onPeaks ? 0.6 : 0.35);
     this.blizzard.update(dt, p.center, this.player.pos, 7, onPeaks ? this.winter : 0);

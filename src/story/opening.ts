@@ -5,17 +5,31 @@ import type { Beat } from './sequencer';
 import type { CamPose } from '../systems/skyView';
 import { CHAPTERS, LETTER, OPENING } from '../data/story';
 import { PK } from '../world/peaks';
+import { WORLDS } from '../world/worlds';
 import { smoothstep } from '../world/noise';
 import { stormPanel } from './paintedPanels';
 
 export const LETTER_TEXT = LETTER;
 
-/** A slow drift over the cloud sea: all four worlds hang below, and far down one light blinks. */
+/** The sky while Nilo looks up: a soft cornflower overhead and a warm, pearly band low down. */
+const DREAM_TOP = new THREE.Color('#78a4e4');
+const DREAM_HORIZON = new THREE.Color('#ffe2cc');
+
+/**
+ * The title: from just above the first world, looking down the long spiral of worlds into the glowing cloud sea.
+ * The first world is close and large at the edge of the frame, the others sink one by one into the warm haze,
+ * and far down under the title the home light blinks. A very slow drift keeps it alive.
+ */
+const TITLE_POSE = [-0.5, 950, -60, 0.5, -460];
 export function titleCamera(g: Game, t: number): CamPose {
-  const c = g.skyView.center;
-  const a = 0.6 + t * 0.012;
-  const pos = c.clone().add(new THREE.Vector3(Math.cos(a) * 980, 380 + Math.sin(t * 0.05) * 30, Math.sin(a) * 980));
-  return { pos, look: c.clone().add(new THREE.Vector3(0, -140, 0)), up: new THREE.Vector3(0, 1, 0) };
+  const P = g.planets, top = P[0].center, deep = P[P.length - 1].center;
+  // where round the column we stand, how far out, how high above the first world, how far down we look, and how far
+  // the look is pushed sideways (so the spiral of worlds runs down the left of the frame, clear of the words)
+  const [a0, r, h, lookK, side] = (g as unknown as { titleTune?: number[] }).titleTune ?? TITLE_POSE;
+  const a = a0 + Math.sin(t * 0.03) * 0.05 + t * 0.002;
+  const pos = top.clone().add(new THREE.Vector3(Math.cos(a) * r, h + Math.sin(t * 0.07) * 8, Math.sin(a) * r));
+  const look = top.clone().lerp(deep, lookK).add(new THREE.Vector3(Math.cos(a + 1.57) * side, 0, Math.sin(a + 1.57) * side));
+  return { pos, look, up: new THREE.Vector3(0, 1, 0) };
 }
 
 function lerpPose(a: CamPose, b: CamPose, k: number): CamPose {
@@ -119,42 +133,114 @@ export function wakeBeats(g: Game): Beat[] {
   ];
 }
 
-/** After the letter: "Look down." The camera swings out past the edge of the world to the home light far below. */
-export function lookDownBeats(g: Game): Beat[] {
-  const p0 = g.planets[0], home = g.planets[g.planets.length - 1], pl = g.player;
-  const dirH = home.center.clone().sub(p0.center).setY(0).normalize();
-  const out: CamPose = {
-    pos: p0.center.clone().addScaledVector(dirH, p0.R + 125).add(new THREE.Vector3(0, 30, 0)),
-    look: g.beaconPos.clone(), up: new THREE.Vector3(0, 1, 0),
-  };
+/**
+ * After the letter: "Look up." Nilo turns and tips his head back; the camera sinks low behind him and tilts up
+ * into the sky, where the other three worlds hang beyond the clouds like far moons, and on the farthest one the home
+ * light blinks. Then the clouds drift over them, and the camera comes back down behind him.
+ */
+export function lookUpBeats(g: Game): Beat[] {
+  const pl = g.player, isl = g.islands;
+  // time marks of the whole shot, in seconds from "Look up."
+  const A = 2.8, B = 5.5, C = 5.3, D = 2.8;
   let from: CamPose | null = null;
+  let face0 = new THREE.Vector3(), turn = 0, swelled = 0, rigYaw = 0, rigPitch = 0;
+  const up = () => pl.up.clone();
+  const fwdNow = (T: number) => face0.clone().applyAxisAngle(pl.up, turn * smoothstep(0.15, 2.2, T));
+  // over his shoulder, then low behind him looking up past his hood into the sky
+  const behind = (): CamPose => {
+    const f = isl.fwd, r = isl.right, u = up();
+    return { pos: pl.pos.clone().addScaledVector(f, -3.0).addScaledVector(u, 1.6).addScaledVector(r, 0.8 * g.lookSide), look: pl.pos.clone().addScaledVector(u, 1.5).addScaledVector(f, 3), up: u };
+  };
+  const low = (T: number): CamPose => {
+    const f = isl.fwd, r = isl.right, u = up();
+    const drift = smoothstep(A + 2, A + B + C, T);
+    const pos = pl.pos.clone().addScaledVector(f, -1.8 + drift * 0.25).addScaledVector(u, 0.3).addScaledVector(r, (0.7 - drift * 0.15) * g.lookSide);
+    // first the sky over the nearer worlds, then, as the light comes on, drift up toward the farthest one
+    const near = isl.skyDir(37, -4 * isl.flip), home = isl.homeDir();
+    const dir = near.lerp(home, smoothstep(A + B - 0.5, A + B + C - 0.3, T) * 0.55).normalize();
+    return { pos, look: pos.clone().addScaledVector(dir, 60), up: u };
+  };
+  /** Swing round Nilo's head rather than straight through him. */
+  const orbit = (a: CamPose, b: CamPose, k: number): CamPose => {
+    const c = pl.pos.clone().addScaledVector(pl.up, 1.2);
+    const va = a.pos.clone().sub(c), vb = b.pos.clone().sub(c);
+    const la = va.length(), lb = vb.length();
+    const q = new THREE.Quaternion().setFromUnitVectors(va.normalize(), vb.normalize());
+    const v = va.applyQuaternion(new THREE.Quaternion().slerp(q, k)).multiplyScalar(la + (lb - la) * k);
+    const pose = lerpPose(a, b, k);
+    pose.pos.copy(c).add(v);
+    return pose;
+  };
+  const sky = (T: number) => {
+    const reveal = smoothstep(A + 0.6, A + B + 1.2, T);
+    const light = smoothstep(A + B + 0.2, A + B + 1.6, T);
+    const veil = smoothstep(A + B + C - 0.2, A + B + C + D * 0.8, T);
+    const show = 1 - smoothstep(A + B + C + D * 0.5, A + B + C + D, T);
+    isl.update(g.camera, T, show, reveal, light, veil);
+    // a softer, dreamier blue overhead while we look up, warming toward the sun
+    const pal = WORLDS[0].palette, dream = show * smoothstep(A * 0.3, A + 1.5, T);
+    (g.sky.mat.uniforms.uTop.value as THREE.Color).set(pal.skyTop).lerp(DREAM_TOP, dream * 0.7);
+    (g.sky.mat.uniforms.uHorizon.value as THREE.Color).set(pal.skyHorizon).lerp(DREAM_HORIZON, dream * 0.45);
+    if (swelled === 0 && T > A + 0.2) { swelled = 1; g.sound.swell(0); }
+    if (swelled === 1 && T > A + B + 0.3) { swelled = 2; g.sound.swell(1); }
+  };
   return [
     {
-      line: { text: OPENING.lookDown }, dur: 2.4,
-      enter: () => { pl.lookAt = g.beaconPos.clone(); },
-      tick: k => { pl.pose = { listen: smoothstep(0, 1, k) }; },
+      line: { text: OPENING.lookUp }, dur: A,
+      enter: () => {
+        from = { pos: g.camera.position.clone(), look: g.rig.look.clone(), up: g.camera.up.clone() };
+        rigYaw = g.rig.yaw; rigPitch = g.rig.pitch;
+        const fwd = g.planLookUp();
+        g.bakeIslands();
+        isl.clearSky(g.sky.clouds);
+        const u = pl.up;
+        face0 = pl.facing.clone().projectOnPlane(u).normalize();
+        turn = Math.atan2(new THREE.Vector3().crossVectors(face0, fwd).dot(u), face0.dot(fwd));
+        pl.lookAt = pl.pos.clone().addScaledVector(isl.skyDir(45, 0), 60);
+      },
+      tick: k => {
+        const T = k * A;
+        pl.facing.copy(fwdNow(T));
+        pl.pose = { listen: smoothstep(0, 0.6, k) * 0.5 };
+        g.cutCam = orbit(from!, behind(), smoothstep(0.05, 1, k));
+        sky(T);
+      },
+      exit: () => { pl.facing.copy(isl.fwd); g.rig.faceDir(pl.up, isl.fwd); },
     },
     {
-      line: { text: OPENING.homeLight }, dur: 7.5,
-      enter: () => { from = { pos: g.camera.position.clone(), look: g.rig.look.clone(), up: g.camera.up.clone() }; },
+      line: { text: OPENING.worlds }, dur: B,
+      // Fold settles on his satchel to look up with him, out of the way of the sky
+      enter: () => { g.fold.perch = pl.pos.clone().addScaledVector(pl.up, 0.8).addScaledVector(isl.right, -0.3 * g.lookSide).addScaledVector(isl.fwd, -0.12); },
       tick: k => {
-        const e = smoothstep(0, 0.45, k);
-        const pose = lerpPose(from!, out, e);
-        pose.pos.addScaledVector(from!.up, Math.sin(e * Math.PI) * 40);
-        g.cutCam = pose;
-        g.fogK = e;
-        g.beacon.scale.setScalar(0.018 + 0.02 * smoothstep(0.35, 0.6, k));
+        const T = A + k * B;
+        g.cutCam = lerpPose(behind(), low(T), smoothstep(0, 0.75, k));
+        sky(T);
       },
     },
     {
-      dur: 2.4,
+      line: { text: OPENING.homeLight }, dur: C,
+      // the follow camera goes back to just where it was, so the shot lands on the view it started from
+      exit: () => { g.rig.yaw = rigYaw; g.rig.pitch = rigPitch; },
       tick: k => {
+        const T = A + B + k * C;
+        g.cutCam = low(T);
+        sky(T);
+      },
+    },
+    {
+      dur: D,
+      enter: () => { from = low(A + B + C); },
+      tick: k => {
+        const T = A + B + C + k * D;
         const back: CamPose = { pos: g.rig.pos.clone(), look: g.rig.look.clone(), up: g.rig.smoothUp.clone() };
-        g.cutCam = lerpPose(out, back, smoothstep(0, 1, k));
-        g.fogK = 1 - smoothstep(0, 0.8, k);
-        pl.pose = { touchChest: smoothstep(0.5, 1, k) };
+        g.cutCam = orbit(from!, back, smoothstep(0.1, 1, k));
+        pl.pose = { touchChest: smoothstep(0.4, 1, k) };
+        // and he turns back to the spring, where the old woman is waiting
+        pl.facing.copy(isl.fwd).applyAxisAngle(pl.up, -turn * smoothstep(0.3, 0.9, k));
+        if (k > 0.3) { pl.lookAt = null; g.fold.perch = null; }
+        sky(T);
       },
-      exit: () => { g.cutCam = null; g.fogK = 0; pl.lookAt = null; },
+      exit: () => { g.cutCam = null; pl.lookAt = null; g.fold.perch = null; isl.update(g.camera, 0, 0, 0, 0); isl.restoreSky(g.sky.clouds); g.sky.setPalette(WORLDS[0].palette.skyTop, WORLDS[0].palette.skyHorizon); },
     },
     {
       dur: 4.6,
