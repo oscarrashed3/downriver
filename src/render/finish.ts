@@ -2,6 +2,13 @@ import * as THREE from 'three';
 import { Pass, FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 
 /**
+ * Cloud ink mask, shared by every FinishPass (off by default). Worlds whose clouds blend with cloudBlend()
+ * (src/world/skyIsles/cloudPuffs.ts) pull the render target's alpha below 0.5 where they cover; with this on,
+ * the pass draws no ink or hatching there (so outlines behind clouds do not show through) and writes alpha 1.
+ */
+export const FINISH_CLOUD_MASK = { value: 0 };
+
+/**
  * The finishing pass: what turns a render into a painting.
  * - Ink lines from the depth buffer (silhouettes and creases), thinner and lighter with distance,
  *   in the spirit of French comic line art.
@@ -44,12 +51,13 @@ export class FinishPass extends Pass {
         uMist: { value: 0 },
         uDream: { value: 0 },
         uMistCol: { value: new THREE.Color('#dfe8f4') },
+        uCloudMask: FINISH_CLOUD_MASK,
       },
       vertexShader: /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
       fragmentShader: /* glsl */ `
         #include <packing>
         uniform sampler2D tDiffuse, tDepth;
-        uniform vec2 uRes; uniform float uNear, uFar, uTime, uInkK, uLineW, uHatch, uBrush, uHaze, uGrain, uVignette, uSat, uNight, uSunVis, uMist, uDream;
+        uniform vec2 uRes; uniform float uCloudMask, uNear, uFar, uTime, uInkK, uLineW, uHatch, uBrush, uHaze, uGrain, uVignette, uSat, uNight, uSunVis, uMist, uDream;
         uniform vec2 uSun; uniform vec3 uSunCol, uMistCol, uHazeCol;
         uniform vec3 uInk, uShadowTint, uHighTint;
         varying vec2 vUv;
@@ -74,6 +82,9 @@ export class FinishPass extends Pass {
           float crease = smoothstep(0.02, 0.06, lap) * 0.4;
           float fade = 1.0 - smoothstep(30.0, 700.0, dmin) * 0.75;
           float ink = max(sil, crease) * fade * uInkK;
+          // (cloud ink mask: no lines where clouds cover)
+          float clear = mix(1.0, smoothstep(0.3, 0.7, src.a), uCloudMask);
+          ink *= clear;
           // Luma before the grade decides where hatching goes.
           float luma = dot(col, vec3(0.299, 0.587, 0.114));
           // Grade: saturation, cool shadows, warm lights.
@@ -84,7 +95,7 @@ export class FinishPass extends Pass {
           col *= mix(mix(uHighTint, vec3(1.0), uDream * 0.8), uShadowTint, sh);
           float solid = 1.0 - step(uFar * 0.9, dc);
           float diag = abs(fract((gl_FragCoord.x + gl_FragCoord.y) / (5.0 * uLineW)) - 0.5) * 2.0;
-          float hatch = smoothstep(0.55, 0.85, diag) * (1.0 - smoothstep(0.03, 0.16, luma)) * solid * fade * uHatch * 0.22;
+          float hatch = smoothstep(0.55, 0.85, diag) * (1.0 - smoothstep(0.03, 0.16, luma)) * solid * fade * uHatch * 0.22 * clear;
           col = mix(col, uInk * 0.6, hatch);
           // Morning mist: soft, pale, thicker with distance, only on solid ground.
           float mist = (1.0 - exp(-dc * 0.0045)) * uMist * solid;
@@ -108,7 +119,7 @@ export class FinishPass extends Pass {
           col *= 1.0 - dot(q, q) * uVignette * 1.6 * (1.0 - 0.6 * uDream);
           float g = hash(vUv * uRes + fract(uTime * 13.0) * 100.0) - 0.5;
           col += g * uGrain * (0.35 + luma);
-          gl_FragColor = vec4(max(col, 0.0), src.a);
+          gl_FragColor = vec4(max(col, 0.0), mix(src.a, 1.0, uCloudMask));
         }`,
       depthTest: false, depthWrite: false,
     });
