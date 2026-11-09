@@ -209,6 +209,22 @@ export class Sound {
     o.connect(f).connect(g).connect(this.sfx); o.start(t); o.stop(t + 0.12);
   }
 
+  /**
+   * The music opening up under a big view. Stage 0: a soft string chord swells in, then turns (D, then G over B).
+   * Stage 1: a slow bell figure on top, for the moment the home light shows.
+   */
+  swell(stage: 0 | 1) {
+    const ctx = this.ctx; if (!ctx) return;
+    const t = ctx.currentTime + 0.05;
+    if (stage === 0) {
+      [38, 50, 57, 62, 66].forEach((m, i) => this.note(m, t + i * 0.4, 'strings', i === 0 ? 1.4 : 1.1, 7.5));
+      [43, 55, 59, 62, 67, 71].forEach((m, i) => this.note(m, t + 5.2 + i * 0.25, 'strings', i === 0 ? 1.3 : 1.0, 8));
+    } else {
+      [74, 78, 81, 86, 83, 81].forEach((m, i) => this.note(m, t + i * 0.55, 'bells', 0.42 - i * 0.03));
+      this.note(90, t + 3.6, 'bells', 0.22);
+    }
+  }
+
   /** A short composed melody (the farewell theme). */
   melody(notes: number[], beat = 0.42) {
     const ctx = this.ctx; if (!ctx) return;

@@ -3,6 +3,7 @@ import type { Planet } from '../world/planet';
 import { WORLDS } from '../world/worlds';
 import { CHAPTERS } from '../data/story';
 import { smoothstep } from '../world/noise';
+import { PAINT } from '../render/paint';
 
 export interface CamPose { pos: THREE.Vector3; look: THREE.Vector3; up: THREE.Vector3 }
 
@@ -32,7 +33,24 @@ export class SkyView {
     this.marker.visible = false;
     scene.add(this.marker);
     for (const p of planets) {
-      const m = new THREE.Mesh(new THREE.SphereGeometry(p.R + p.cfg.amplitude * 0.55 + 4, 32, 20), new THREE.MeshBasicMaterial({ color: '#b8b4d8', transparent: true, opacity: 0, fog: false, depthWrite: false }));
+      // a world not yet visited is wrapped in its own cloud: lit on the sun side, lavender in shade, soft at the rim
+      const m = new THREE.Mesh(new THREE.SphereGeometry(p.R + p.cfg.amplitude + 14, 40, 24), new THREE.ShaderMaterial({
+        transparent: true, depthWrite: false, fog: false,
+        uniforms: { opacity: { value: 0 }, uSun: PAINT.uSun },
+        vertexShader: 'varying vec3 vN; varying vec3 vW; void main(){ vN = normalize(mat3(modelMatrix) * normal); vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
+        fragmentShader: `uniform float opacity; uniform vec3 uSun; varying vec3 vN; varying vec3 vW;
+          float h(vec3 p){ return fract(sin(dot(floor(p), vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+          void main(){
+            vec3 N = normalize(vN), V = normalize(cameraPosition - vW);
+            // billows: the normal nudged by a coarse lumpy pattern so it reads as a ball of cloud, not a plastic sphere
+            vec3 q = vW * 0.06;
+            N = normalize(N + (vec3(h(q), h(q + 3.1), h(q + 7.7)) - 0.5) * 0.35);
+            float lit = dot(N, uSun) * 0.5 + 0.5;
+            vec3 col = mix(vec3(0.70, 0.72, 0.90), vec3(1.0, 0.97, 0.93), smoothstep(0.25, 0.85, lit));
+            float rim = smoothstep(0.0, 0.55, dot(normalize(vN), V));
+            gl_FragColor = vec4(col, opacity * rim);
+          }`,
+      }));
       m.position.copy(p.center); m.visible = false;
       scene.add(m); this.silhouettes.push(m);
       const el = document.createElement('div'); el.className = 'wl'; el.style.display = 'none';
@@ -61,7 +79,7 @@ export class SkyView {
     const show = this.k > 0.05;
     this.marker.visible = show;
     this.marker.position.copy(playerPos);
-    this.silhouettes.forEach((m, i) => { m.visible = show && !visited.has(i); (m.material as THREE.MeshBasicMaterial).opacity = 0.92 * smoothstep(0.3, 0.9, this.k); });
+    this.silhouettes.forEach((m, i) => { m.visible = show && !visited.has(i); (m.material as THREE.ShaderMaterial).uniforms.opacity.value = 0.95 * smoothstep(0.3, 0.9, this.k); });
     this.hintEl.style.display = this.k > 0.9 ? 'block' : 'none';
     this.hintEl.innerHTML = canTravel ? 'Click a world you have been to and fly back. Everything there is as you left it. <b>Tab</b> or scroll in to return.' : '<b>Tab</b> or scroll in to return to Nilo.';
     const v = new THREE.Vector3();
