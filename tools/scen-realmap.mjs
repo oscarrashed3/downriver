@@ -2,7 +2,7 @@
 // URL=http://localhost:5183/downriver/ node tools/play.mjs realmap   (shots land in shots/realmap-N-*.png)
 export default async ({ page, shot, ev, key }) => {
   const mode = () => ev('__game.mode');
-  await page.click('button[data-a="new"]');
+  await page.click('button[data-a="new"]', { noWaitAfter: true, timeout: 120000 });
   await ev(`__game.seq.speed = 30`);
   for (let i = 0; i < 160 && (await mode()) !== 'play'; i++) { await page.waitForTimeout(250); await ev(`(() => { const g = __game; g.input.pressed.add(g.mode === 'letter' ? 'KeyE' : 'Space'); })()`); }
   await ev(`(() => { const g = __game; g.give('read-letter'); g.renderEvery = 1; g.meet = null; g.cutCam = null; g.rig.override = null; g.mode = 'play'; g.map.driftMs = 4000; })()`);
@@ -10,10 +10,17 @@ export default async ({ page, shot, ev, key }) => {
   await gwait(1.5);
   const report = [];
   // the model is built in idle moments while you walk; give it a moment, as a real walk would
-  for (let i = 0; i < 40 && !(await ev(`__game.map.models.get(__game.planet.cfg.id)?.clouds.length === 2`)); i++) await page.waitForTimeout(500);
-  report.push('model warmed before opening: ' + (await ev(`__game.map.models.get(__game.planet.cfg.id)?.clouds.length === 2`)));
+  const warm = `(() => { const m = __game.map.models.get(__game.planet.cfg.id); return !!m && m.clouds.length === 2 && !!m.parts; })()`;
+  for (let i = 0; i < 60 && !(await ev(warm)); i++) await page.waitForTimeout(500);
+  report.push('model warmed before opening: ' + (await ev(warm)));
+  // nothing of the model may stand outside the globe: the highest prop vertex, in ground-heights above the planet
+  const reach = `(() => { const m = __game.map.models.get(__game.planet.cfg.id), R = __game.planet.R; let top = 0;
+    for (const c of m.props.children) { const a = c.geometry.attributes.position; for (let i = 0; i < a.count; i++) top = Math.max(top, Math.hypot(a.getX(i), a.getY(i), a.getZ(i))); }
+    let g = 0; const t = m.terrain.geometry.attributes.position; for (let i = 0; i < t.count; i++) g = Math.max(g, Math.hypot(t.getX(i), t.getY(i), t.getZ(i)));
+    return 'highest prop ' + (top - R).toFixed(1) + ' m above R, highest ground ' + (g - R).toFixed(1) + ' m'; })()`;
   const open = async (label, wait = 2500) => {
     await ev(`__game.openTab('map')`); await page.waitForTimeout(wait);
+    report.push(label + ': ' + (await ev(reach)));
     report.push(label + ': open ms ' + (await ev('(__game.map.openMs ?? __game.map.paintMs ?? 0).toFixed(1) + " (model " + (__game.map.modelMs ?? 0).toFixed(1) + ", props " + (__game.map.propsMs ?? 0).toFixed(1) + ")"')) + ', draw ms ' + (await ev('__game.map.lastDrawMs.toFixed(1)')));
     await shot(label);
   };

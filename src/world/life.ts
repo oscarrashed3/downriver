@@ -41,7 +41,8 @@ export function addLife(p: Planet, scene: THREE.Scene, c: WorldContent) {
     obj.position.copy(p.surfacePoint(d, lift));
     orientTo(obj, d, head);
   };
-  const add = (obj: THREE.Object3D) => { scene.add(obj); return obj; };
+  // creatures move, so the map leaves them out (still things like mushrooms and the hive stay on it)
+  const add = (obj: THREE.Object3D, still = false) => { if (!still) obj.userData.mapSkip = true; scene.add(obj); return obj; };
   const walker = (obj: THREE.Object3D, d: THREE.Vector3, range: number): Walker => {
     const w = { obj, dir: d.clone(), head: tangent(d).applyAxisAngle(d, rand() * 6.28), home: d.clone(), range, t: rand() * 4, state: 0 };
     place(obj, w.dir, w.head); add(obj); return w;
@@ -244,7 +245,7 @@ export function addLife(p: Planet, scene: THREE.Scene, c: WorldContent) {
   hive.add(mesh(new THREE.SphereGeometry(0.12, 8, 6), toon('#d8b060'), 0, 0.72, 0));
   hive.add(mesh(new THREE.CircleGeometry(0.06, 8), toon('#3a2a20'), 0, 0.14, 0.4));
   hive.add(mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.06, 10), toon('#8a6a4a'), 0, 0.0, 0));
-  ink(hive); place(hive, hiveD, tangent(hiveD)); add(hive);
+  ink(hive); place(hive, hiveD, tangent(hiveD)); add(hive, true);
   const beeMat = toon('#f0c030');
   const bees = Array.from({ length: 7 }, () => { const b = mesh(new THREE.SphereGeometry(0.03, 5, 4), beeMat); b.castShadow = false; add(b); return { b, ph: rand() * 20, r: 0.5 + rand() * 1.4 }; });
   anim((_dt, t) => {
@@ -273,7 +274,7 @@ export function addLife(p: Planet, scene: THREE.Scene, c: WorldContent) {
     return g;
   };
   const scatterNear = (ll: LL, r: number, n: number, make: () => THREE.Object3D) => {
-    for (let i = 0; i < n; i++) { const d = spotNear(ll, r); const o = make(); place(o, d, tangent(d).applyAxisAngle(d, rand() * 6.28), -0.02); add(o); }
+    for (let i = 0; i < n; i++) { const d = spotNear(ll, r); const o = make(); place(o, d, tangent(d).applyAxisAngle(d, rand() * 6.28), -0.02); add(o, true); }
   };
   scatterNear([15.6, 15.5], 7, 4, mush);      // under the old tree
   scatterNear([90, -30], 14, 5, mush);         // the woods south of the village
@@ -291,7 +292,7 @@ export function addLife(p: Planet, scene: THREE.Scene, c: WorldContent) {
     g.userData.hub = hub; return g;
   };
   const wheels: THREE.Object3D[] = [];
-  for (let i = 0; i < 5; i++) { const d = spotNear([50, 47], 9); const o = pinwheel(); place(o, d, tangent(d)); add(o); wheels.push(o); }
+  for (let i = 0; i < 5; i++) { const d = spotNear([50, 47], 9); const o = pinwheel(); place(o, d, tangent(d)); add(o, true); wheels.push(o); }
   c.refs.life = { hen: hens[0].obj, cat: cats[0].o, duck: ducks[0].o, hive, marmot: marmots[3].o, wheel: wheels[0], fly: flies[8].o };
   anim((dt, t) => wheels.forEach((w, i) => { (w.userData.hub as THREE.Object3D).rotation.z -= dt * (4 + Math.sin(t * 0.7 + i) * 3); }));
 }
