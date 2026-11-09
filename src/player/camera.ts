@@ -3,11 +3,17 @@ import type { Planet } from '../world/planet';
 import { anyTangent } from '../world/sphere';
 import { clamp } from '../world/noise';
 
+function savedPref(key: string, def: number, lo: number, hi: number) {
+  try { const v = localStorage.getItem(key); const n = Number(v); if (v !== null && isFinite(n)) return clamp(n, lo, hi); } catch { /* private mode */ }
+  return def;
+}
+function savePref(key: string, v: number) { try { localStorage.setItem(key, String(Math.round(v * 100) / 100)); } catch { /* private mode */ } }
+
 /** Third-person camera that orbits the traveler relative to their local "up" on a round world. */
 export class CameraRig {
   yaw = 0;
   pitch = 0.32;
-  dist = 8.5;
+  dist = savedPref('downriver-camdist', 8.5, 4, 14);
   ref = new THREE.Vector3(1, 0, 0);
   smoothUp = new THREE.Vector3(0, 1, 0);
   pos = new THREE.Vector3();
@@ -24,9 +30,13 @@ export class CameraRig {
 
   constructor(public camera: THREE.PerspectiveCamera) {}
 
-  /** Mouse wheel: ease the follow distance between 4 and 14 m. */
-  zoomBy(steps: number) { this.distGoal = clamp(this.distGoal * (1 + steps * 0.12), 4, 14); }
-  distGoal = 8.5;
+  /** Mouse wheel: ease the follow distance between 4 and 14 m. Remembered between visits. */
+  zoomBy(steps: number) { this.setDistance(this.distGoal * (1 + steps * 0.12)); }
+  distGoal = this.dist;
+  setDistance(d: number) { this.distGoal = clamp(d, 4, 14); savePref('downriver-camdist', this.distGoal); }
+  /** Mouse-look speed, 1 = normal (Settings). Remembered between visits. */
+  sens = savedPref('downriver-sens', 1, 0.3, 2.5);
+  setSensitivity(s: number) { this.sens = clamp(s, 0.3, 2.5); savePref('downriver-sens', this.sens); }
 
   forward(up: THREE.Vector3): THREE.Vector3 {
     return this.ref.clone().applyAxisAngle(up, this.yaw).normalize();
@@ -50,8 +60,8 @@ export class CameraRig {
     this.ref.projectOnPlane(up);
     if (this.ref.lengthSq() < 1e-4) anyTangent(up, this.ref);
     this.ref.normalize();
-    this.yaw -= mdx * 0.0032 + keyYaw * dt * 2.2;
-    this.pitch = clamp(this.pitch + mdy * 0.0026, -0.25, 1.25);
+    this.yaw -= mdx * 0.0032 * this.sens + keyYaw * dt * 2.2;
+    this.pitch = clamp(this.pitch + mdy * 0.0026 * this.sens, -0.25, 1.25);
     this.dist += (this.distGoal - this.dist) * (1 - Math.exp(-8 * dt));
     this.smoothUp.lerp(up, 1 - Math.exp(-6 * dt)).normalize();
     const f = this.forward(this.smoothUp);

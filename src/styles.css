@@ -289,3 +289,64 @@ canvas#game { display: block; width: 100vw; height: 100vh; }
 .compass .carrow.left { right: calc(100% + 6px); }
 .compass .carrow.right { left: calc(100% + 6px); }
 .gm.pin .gl.task { white-space: normal; width: 210px; line-height: 1.25; }
+
+/* ---- Settings: a gear beside the paper boat, Esc, or the title screen ---- */
+.gearbtn { position: absolute; right: 86px; top: 22px; width: 44px; height: 44px; border-radius: 50%; border: 2px solid rgba(43,37,64,.85); background: var(--paper); box-shadow: 0 4px 16px rgba(30,20,50,.4); cursor: pointer; pointer-events: auto; padding: 5px; z-index: 30; transition: background .2s; }
+.gearbtn svg { width: 100%; height: 100%; display: block; transition: transform .35s; }
+.gearbtn:hover svg { transform: rotate(40deg); }
+.gearbtn.open { background: #e8b04a; }
+.gearbtn.hidden { display: none; }
+/* tooltips under the two corner buttons */
+.menubtn[data-tip]::after, .gearbtn[data-tip]::after { content: attr(data-tip); position: absolute; right: -4px; top: calc(100% + 10px); white-space: nowrap; font: 500 14px system-ui, sans-serif; letter-spacing: .02em; color: var(--paper); background: rgba(43,37,64,.92); padding: 6px 11px; border-radius: 9px; box-shadow: 0 4px 14px rgba(20,14,40,.35); opacity: 0; transform: translateY(-4px); transition: opacity .18s, transform .18s; pointer-events: none; }
+.gearbtn[data-tip]::after { content: attr(data-tip) '  \00b7  ' attr(data-key); white-space: pre; }
+.menubtn:hover::after, .gearbtn:hover::after, .menubtn:focus-visible::after, .gearbtn:focus-visible::after { opacity: 1; transform: none; }
+.menubtn.open::after, .gearbtn.open::after { opacity: 0 !important; }
+
+.title .tset { display: flex; align-items: center; gap: 8px; margin-top: 18px; font-size: 17px; padding: 8px 22px 8px 16px; border-color: rgba(255,255,255,.5); background: rgba(255,255,255,.08); }
+.title .tset svg { width: 22px; height: 22px; transition: transform .35s; }
+.title .tset:hover svg { transform: rotate(40deg); }
+.title .foot b { font-weight: 600; border: 1px solid rgba(255,255,255,.6); border-radius: 4px; padding: 0 4px; font-size: 11px; }
+.title.dim { opacity: 0; pointer-events: none; }
+.title.dim * { pointer-events: none !important; }
+
+.menusheet.settings { position: relative; width: min(600px, 92vw); padding: 22px 30px 16px; font-size: 17px; line-height: 1.4; background: linear-gradient(180deg, #fbf5e7, var(--paper)); }
+.menusheet.settings h2 { font-size: 30px; font-style: italic; margin-bottom: 4px; }
+.menusheet.settings section { padding: 12px 0 11px; border-top: 1px solid rgba(43,37,64,.12); }
+.menusheet.settings h3 { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 9px; font: 600 11px system-ui, sans-serif; letter-spacing: .22em; text-transform: uppercase; color: rgba(43,37,64,.6); }
+.menusheet.settings .hint { margin: 0; font: italic 14px 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif; letter-spacing: 0; text-transform: none; color: rgba(43,37,64,.68); }
+.menusheet.settings h3 .hint kbd { font-size: 11px; }
+.menusheet.settings kbd { font: 600 12px system-ui, sans-serif; padding: 1px 6px; border: 1px solid rgba(43,37,64,.35); border-bottom-width: 2px; border-radius: 5px; background: rgba(255,255,255,.6); white-space: nowrap; font-style: normal; }
+.menusheet.settings button { font: inherit; color: var(--ink); cursor: pointer; }
+.menusheet.settings .sx { position: absolute; right: 14px; top: 12px; width: 34px; height: 34px; border-radius: 50%; border: 1px solid rgba(43,37,64,.25); background: rgba(255,255,255,.5); font-size: 22px; line-height: 1; padding: 0; }
+.menusheet.settings .sx:hover { background: #fff; }
+.menusheet.settings .seg { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid rgba(43,37,64,.3); border-radius: 14px; overflow: hidden; background: rgba(255,255,255,.45); }
+.menusheet.settings .seg button { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 8px 6px 7px; border: 0; border-left: 1px solid rgba(43,37,64,.18); background: transparent; transition: background .15s; }
+.menusheet.settings .seg button:first-child { border-left: 0; }
+.menusheet.settings .seg button b { font-weight: 500; font-size: 17px; }
+.menusheet.settings .seg button small { font: 11px system-ui, sans-serif; opacity: .6; }
+.menusheet.settings .seg button:hover { background: rgba(255,255,255,.85); }
+.menusheet.settings .seg button.on { background: #2f3550; color: var(--paper); }
+.menusheet.settings .seg button.on small { opacity: .8; }
+.menusheet.settings .slide { display: flex; align-items: center; gap: 14px; margin: 4px 0; }
+.menusheet.settings .slide label { width: 110px; flex: none; }
+.menusheet.settings .slide input[type=range] { flex: 1; min-width: 120px; accent-color: #2f3550; height: 22px; cursor: pointer; }
+.menusheet.settings .slide output { width: 76px; flex: none; font-size: 15px; font-style: italic; opacity: .8; }
+.menusheet.settings .mute { flex: none; font-size: 15px; padding: 6px 14px; border-radius: 18px; border: 1px solid rgba(43,37,64,.3); background: rgba(255,255,255,.65); min-width: 92px; }
+.menusheet.settings .mute.off { background: #e9dfcc; color: rgba(43,37,64,.6); text-decoration: line-through; }
+.menusheet.settings .keys { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 22px; font-size: 15px; }
+.menusheet.settings .keys div { display: flex; align-items: baseline; gap: 9px; }
+.menusheet.settings .keys kbd { min-width: 54px; text-align: center; flex: none; }
+.menusheet.settings .link { border: 0; background: none; padding: 0; font: italic 14px 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif; letter-spacing: 0; text-transform: none; text-decoration: underline; text-underline-offset: 3px; color: var(--ink); opacity: .8; }
+.menusheet.settings .link:hover { opacity: 1; }
+.menusheet.settings .reset { flex: none; font-size: 15px; padding: 7px 16px; border-radius: 18px; border: 1px solid rgba(192,80,58,.55); background: rgba(255,255,255,.6); color: #8a3626; }
+.menusheet.settings .reset:hover { background: #fff; }
+.menusheet.settings .reset.warn { background: #c0503a; color: #fff; border-color: #c0503a; }
+.menusheet.settings .journey .hint { margin: 0; }
+.menusheet.settings .foot { margin: 0; padding-top: 8px; border-top: 1px solid rgba(43,37,64,.12); font-size: 13px; opacity: .6; text-align: center; }
+.overlay.ontitle { padding-top: 24px; }
+@media (max-height: 760px) { .menusheet.settings { padding-top: 14px; padding-bottom: 10px; } .menusheet.settings h2 { font-size: 26px; } .menusheet.settings section { padding: 9px 0 8px; } .menusheet.settings .seg button { padding: 6px 6px 5px; } }
+/* the tab strip keeps clear of the gear and boat buttons in the corner */
+.menustrip { left: 16px; right: 150px; transform: none; max-width: none; justify-content: safe center; gap: 7px; }
+.menustrip button { padding: 8px 16px; }
+.overlay.ontitle { backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+.menusheet.settings:not(.ontitle) .sx { display: none; }

@@ -37,6 +37,18 @@ export class QualityAuto {
     return this.level;
   }
 
+  /** Pick a level by hand (remembered), or 'auto' to let the game choose again from how smoothly it runs. */
+  set(l: QualityLevel | 'auto'): QualityLevel {
+    if (l === 'auto') {
+      this.manual = false; this.settled = false; this.checks = 0; this.samples = [];
+      try { localStorage.removeItem(KEY); } catch { /* ignore */ }
+      return this.level;
+    }
+    this.level = l; this.manual = true;
+    try { localStorage.setItem(KEY, l); } catch { /* ignore */ }
+    return l;
+  }
+
   /** Feed frame times while playing. Returns a new level when it should change. */
   sample(dt: number): QualityLevel | null {
     if (this.manual || this.settled) return null;
