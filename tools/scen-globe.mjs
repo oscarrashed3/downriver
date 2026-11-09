@@ -25,13 +25,13 @@ export default async ({ page, shot, ev, key }) => {
   const gwait = async sec => { const t0 = await ev('__game.time'); for (let i = 0; i < 3000 && (await ev('__game.time')) < t0 + sec; i++) await page.waitForTimeout(50); };
   await gwait(1.5);
   const report = [];
-  // the painted ground warms up in idle moments while you walk; give it a moment, as a real walk would
-  for (let i = 0; i < 24 && !(await ev(`(__game.map.heights.get(__game.planet.cfg.id)?.row ?? 0) >= 160 * 320`)); i++) await page.waitForTimeout(500);
-  report.push("ground rows warmed before opening: " + (await ev(`__game.map.heights.get(__game.planet.cfg.id)?.row ?? 0`)) + " of " + 160 * 320);
+  // the ground model is built in an idle moment while you walk; give it a moment, as a real walk would
+  for (let i = 0; i < 24 && !(await ev(`__game.map.models.has(__game.planet.cfg.id)`)); i++) await page.waitForTimeout(500);
+  report.push('model built before opening: ' + (await ev(`__game.map.models.has(__game.planet.cfg.id)`)));
 
   // ---------------- the globe
   await key('KeyM'); await page.waitForTimeout(2500);
-  report.push('globe paint ms ' + (await ev('__game.map.paintMs.toFixed(1)')) + ' (ground ' + (await ev('__game.map.baseMs.toFixed(1)')) + ')' + ', per-frame draw ms ' + (await ev('__game.map.lastDrawMs.toFixed(2)')));
+  report.push('globe open ms ' + (await ev('__game.map.openMs.toFixed(1)')) + ' (props ' + (await ev('__game.map.propsMs.toFixed(1)')) + ')' + ', per-frame draw ms ' + (await ev('__game.map.lastDrawMs.toFixed(2)')));
   await shot('globe-on-nilo');
   const side = async (label, lat, off) => { await ev(`(() => { const g = __game, P = g.planet; g.map.look(${lat}, P.lonAtLat(${lat}) + ${off}); })()`); await page.waitForTimeout(900); await shot(label); };
   await side('globe-north-spring', 8, 0);
