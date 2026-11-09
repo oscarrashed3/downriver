@@ -20,6 +20,11 @@ function mesh(g: THREE.BufferGeometry, m: THREE.Material, x = 0, y = 0, z = 0) {
 
 let seed = 99;
 export function rand() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
+/** The shared generator's state, so a caller can keep one world's numbers apart from another's. */
+export function randState() { return seed; }
+export function setRandState(s: number) { seed = s; }
+/** Move the generator on by n numbers without using them. */
+export function skipRand(n: number) { for (let i = 0; i < n; i++) seed = (seed * 16807) % 2147483647; }
 
 // ---- Spring Peaks ----
 export function stone(height: number, carved: boolean): THREE.Group {

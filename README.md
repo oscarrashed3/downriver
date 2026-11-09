@@ -26,7 +26,7 @@ A journey game about one river. Rill wakes far from home at the top of the world
 - **Travel both ways:** raft from the bridge, falling streams down, warm updrafts back up by kite, and a sky view that shows every world at once with fast travel.
 - **The look:** painted toon shading with blue-violet shadows and rim light, ink outlines, wind grass, painted cumulus with cloud shadows, a twelve minute day with a moon, and colors named in `src/render/palette.ts`.
 
-The other five worlds are still sketches from Milestone 1.
+The other three worlds are still sketches from Milestone 1.
 
 ## Milestone 1
 

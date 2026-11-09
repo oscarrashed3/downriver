@@ -40,10 +40,12 @@ export const RESET_NOTICE = 'The story has grown since your last visit, so this 
 /**
  * Version 3 saves came from the six-world layout (peaks, pines, deep, desert, aquila, sea).
  * Version 4 has four (peaks, pines, sea, desert). Old world indices map to the world that took their place.
+ * The desert used to come before the sea and is now the last world, so an old desert save (and its
+ * visited mark) moves to the sea's arrival point: the journey order holds and no world is skipped.
  */
-export const V3_WORLD_MAP: Record<number, number> = { 0: 0, 1: 1, 2: 1, 3: 3, 4: 2, 5: 2 };
-/** Old worlds whose ground still exists in the new layout, so a saved spot on them is still good. */
-const V3_SAME_GROUND = new Set([0, 1, 3, 5]);
+export const V3_WORLD_MAP: Record<number, number> = { 0: 0, 1: 1, 2: 1, 3: 2, 4: 2, 5: 2 };
+/** Old worlds whose ground still exists at the same place in the journey, so a saved spot on them is still good. */
+const V3_SAME_GROUND = new Set([0, 1, 5]);
 /** Pieces of the six-world journey that no longer exist. */
 const V3_GONE_FLAGS = new Set(['map:deep', 'map:aquila', 'met:cassian']);
 const V3_GONE_WORLDS = new Set(['deep', 'aquila']);

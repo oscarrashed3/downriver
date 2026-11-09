@@ -12,6 +12,7 @@ import { Planet } from './world/planet';
 import { Sky } from './world/sky';
 import { prepare, populate, FOX_SPOT, HOME_LIGHT, type WorldContent, type Interactable } from './world/content';
 import * as Q from './world/props2';
+import { randState, setRandState, skipRand } from './world/props';
 import { talkSpot, overShoulder, segmentClear, chooseShot } from './systems/stage';
 import { resolveSolids } from './world/collide';
 import { fireView } from './world/fire';
@@ -58,6 +59,8 @@ export type Mode = 'title' | 'cut' | 'play' | 'talk' | 'ride' | 'raft' | 'overla
 interface Ride { to: number; curve: THREE.Curve<THREE.Vector3>; s: number; dur: number; kite: boolean; arrive: () => void }
 
 const FOG_BASE = 0.0026;
+/** How many numbers the five later worlds of the six-world journey took from the shared prop generator. */
+const SIX_WORLD_LATER_RAND = 4441;
 
 export class Game {
   renderer: THREE.WebGLRenderer;
@@ -202,6 +205,7 @@ export class Game {
 
     const sunDir0 = new THREE.Vector3(0.5, 0.35, 0.8).normalize();
     const riverLon = Math.atan2(sunDir0.z, sunDir0.x) * 180 / Math.PI;
+    let afterPeaks = 0;
     WORLDS.forEach((w, i) => {
       const p = new Planet(w, i, riverLon);
       prepare(p);
@@ -210,7 +214,13 @@ export class Game {
       this.scene.add(p.group);
       this.planets.push(p);
       this.contents.push(populate(p, this.scene, i));
+      if (i === 0) afterPeaks = randState();
     });
+    // World 1 objects built after this point (Life, the echo stones, Chapter One's props) draw from the
+    // shared generator. Put it exactly where the six-world journey left it, so the Spring Peaks look the
+    // same however much the later worlds use.
+    setRandState(afterPeaks);
+    skipRand(SIX_WORLD_LATER_RAND);
     this.day = new DayCycle(riverLon);
     this.sky = new Sky(this.scene, this.day.sun, this.planets[0].center);
 
@@ -394,8 +404,7 @@ export class Game {
   buildTravelProps() {
     for (let i = 1; i < this.planets.length; i++) {
       const p = this.planets[i];
-      const off = (p.cfg.riverWidth + 1.4) / (p.R * Math.PI / 180);
-      const d = p.dirRiver(18, off);
+      const d = this.besideRiver(p, 18, p.cfg.riverWidth + 1.4);
       const dock = Q.dock();
       p.surfacePoint(d, -0.15, dock.position);
       orientTo(dock, d, p.surfacePoint(p.dirRiver(18, 0)).sub(dock.position));
@@ -614,8 +623,22 @@ export class Game {
   arrivalDir(i: number) {
     const p = this.planets[i];
     if (i === 0) return p.dirRiver(PK.benches[3][0] + 1.5, PK.benches[3][1] + 2);
-    const off = (p.cfg.riverWidth + 3.2) / (p.R * Math.PI / 180);
-    return p.dirRiver(20, off);
+    // Far enough from the channel to stand on dry bank, not in the water.
+    const w = p.cfg.riverWidth * 1.15 + 0.6;
+    return this.besideRiver(p, 20, Math.max(p.cfg.riverWidth + 3.2, w + 1.6));
+  }
+
+  /**
+   * A point at the given latitude about `metres` from the river's centre line.
+   * A longitude offset shrinks by sin(lat), so convert with that, then step outward
+   * until the real distance to the (meandering) river is at least `metres`.
+   */
+  besideRiver(p: Planet, lat: number, metres: number): THREE.Vector3 {
+    const degPerM = 1 / (p.R * Math.PI / 180 * Math.max(0.05, Math.sin(lat * Math.PI / 180)));
+    let off = metres * degPerM;
+    const d = p.dirRiver(lat, off);
+    for (let i = 0; i < 40 && p.riverNearest(d).dist < metres; i++) { off += 0.25 * degPerM; p.dirRiver(lat, off, d); }
+    return d;
   }
 
   /** Compile every material in view-independent order so a new world's first frame doesn't stall. */

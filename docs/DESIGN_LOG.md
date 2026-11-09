@@ -29,7 +29,7 @@
 6. Echo stones are discovered only by wandering; they need a faint sound you can follow.
 7. Footstep and ambient sounds are synthesized and thin; place themes are generative, not composed.
 8. Scene cameras are hand-placed orbits and can still clip a roof or a tree in odd spots.
-9. The other five worlds are Milestone 1 sketches, now visibly rougher than the Peaks.
+9. The other three worlds are Milestone 1 sketches, now visibly rougher than the Peaks.
 10. No touch or gamepad controls, and no settings screen beyond quality and mute.
 
 ## 2026-11-05 · Milestone 1
@@ -53,7 +53,7 @@
 ### Ten weakest things right now (next pass)
 1. Terrain is smooth but plain; ridges need painted rock bands and more silhouette variety.
 2. Characters are simple cones; they need idle animations and gestures for body language.
-3. The other five worlds are sketches: Keeper lines only, no puzzles yet.
+3. The other three worlds are sketches: Keeper lines only, no puzzles yet.
 4. No touch controls yet.
 5. Rain and snow particles are simple dots.
 6. The cloud sea is puffs plus sky gradient; a real volumetric layer would sell the scale.
