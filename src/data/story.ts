@@ -6,10 +6,8 @@ export const LETTER = 'Nilo. Follow the water. It always finds its way home. But
 export const CHAPTERS = [
   { n: 'Chapter One', title: 'Where the Water Begins' },
   { n: 'Chapter Two', title: 'The Ember Pines' },
-  { n: 'Chapter Three', title: 'The Green Deep' },
+  { n: 'Chapter Three', title: 'The Endless Sea' },
   { n: 'Chapter Four', title: 'The Glass Desert' },
-  { n: 'Chapter Five', title: 'Aquila' },
-  { n: 'Chapter Six', title: 'The Endless Sea' },
 ];
 
 export const MAIN_QUEST = 'Go home, to the light below the clouds.';

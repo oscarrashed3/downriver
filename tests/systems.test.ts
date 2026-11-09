@@ -41,8 +41,8 @@ describe('Spring Peaks snowpack puzzle', () => {
 describe('ripple system', () => {
   it('a stronger spring widens the river in every world below', () => {
     const r = createRiverState();
-    r.flow = 0.35; const thin = [0, 1, 2, 3, 4, 5].map(i => riverWidthFor(flowArrivingAt(r, i)));
-    r.flow = 0.95; const full = [0, 1, 2, 3, 4, 5].map(i => riverWidthFor(flowArrivingAt(r, i)));
+    r.flow = 0.35; const thin = [0, 1, 2, 3].map(i => riverWidthFor(flowArrivingAt(r, i)));
+    r.flow = 0.95; const full = [0, 1, 2, 3].map(i => riverWidthFor(flowArrivingAt(r, i)));
     full.forEach((w, i) => expect(w).toBeGreaterThan(thin[i]));
   });
 });

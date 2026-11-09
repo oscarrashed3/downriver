@@ -1,7 +1,7 @@
 import { PEAKS } from '../render/palette';
 import * as THREE from 'three';
 
-export type Shape = 'peaks' | 'pines' | 'jungle' | 'desert' | 'city' | 'sea';
+export type Shape = 'peaks' | 'pines' | 'desert' | 'sea';
 
 export interface WorldConfig {
   id: string;
@@ -27,10 +27,10 @@ export interface WorldConfig {
     snow?: string; ice?: string; water: string; waterDeep: string;
     light: string; ambient: string; fog: string; skyTop: string; skyHorizon: string;
   };
-  music: 'bells' | 'woodwind' | 'marimba' | 'pluck' | 'lyre' | 'strings';
+  music: 'bells' | 'woodwind' | 'pluck' | 'strings';
 }
 
-/** Worlds hang in the cloud sea in a slow descending spiral. Each south pole pours into the next north pole. */
+/** Four worlds hang in the cloud sea in a slow descending spiral. Each south pole pours into the next north pole. */
 function placeAt(i: number): THREE.Vector3 {
   const a = i * 1.15;
   return new THREE.Vector3(Math.cos(a) * 240, -i * 340, Math.sin(a) * 240);
@@ -50,7 +50,7 @@ export const WORLDS: WorldConfig[] = [
     music: 'bells',
   },
   {
-    id: 'pines', name: 'The Ember Pines', subtitle: 'a forest learning to burn well', shape: 'pines',
+    id: 'pines', name: 'The Ember Pines', subtitle: 'a young forest, still learning to burn well', shape: 'pines',
     center: placeAt(1), radius: 56, seed: 23, detail: 56, amplitude: 9,
     riverStartLat: 4, meander: 22, meanderWaves: 2.5, riverWidth: 2.8, riverBed: 0.6, bankWidth: 4, waterDepth: 0.55,
     palette: {
@@ -61,18 +61,18 @@ export const WORLDS: WorldConfig[] = [
     music: 'woodwind',
   },
   {
-    id: 'deep', name: 'The Green Deep', subtitle: 'terraces in the mist', shape: 'jungle',
-    center: placeAt(2), radius: 64, seed: 37, detail: 56, amplitude: 13,
-    riverStartLat: 4, meander: 26, meanderWaves: 3, riverWidth: 3.2, riverBed: 0.6, bankWidth: 4, waterDepth: 0.6,
+    id: 'sea', name: 'The Endless Sea', subtitle: 'many shores, one river', shape: 'sea',
+    center: placeAt(2), radius: 76, seed: 67, detail: 50, amplitude: 6, ocean: 1.6,
+    riverStartLat: 4, meander: 10, meanderWaves: 2, riverWidth: 3.0, riverBed: 1.2, bankWidth: 3, waterDepth: 0.6,
     palette: {
-      low: '#3f8a5a', mid: '#5fa860', high: '#2d6a45', rock: '#4d5a40', bank: '#8a7a50',
-      water: '#b9a46a', waterDeep: '#6a5530',
-      light: '#fff0c8', ambient: '#5a8a7a', fog: '#cfe3d4', skyTop: '#4f8a9a', skyHorizon: '#f6ead0',
+      low: '#e9dcc0', mid: '#cfe0a8', high: '#7fae7a', rock: '#c8a890', bank: '#f2e6cc',
+      water: '#7fe0e0', waterDeep: '#1f7a9a',
+      light: '#ffe6cc', ambient: '#7aa0c0', fog: '#cfe8ee', skyTop: '#4a7ab8', skyHorizon: '#ffd8c0',
     },
-    music: 'marimba',
+    music: 'strings',
   },
   {
-    id: 'desert', name: 'The Glass Desert', subtitle: 'dunes that never stay still', shape: 'desert',
+    id: 'desert', name: 'The Glass Desert', subtitle: 'where the river rests in the sand', shape: 'desert',
     center: placeAt(3), radius: 60, seed: 41, detail: 56, amplitude: 8,
     riverStartLat: 4, meander: 30, meanderWaves: 2, riverWidth: 2.2, riverBed: 0.5, bankWidth: 3, waterDepth: 0.55,
     palette: {
@@ -81,27 +81,5 @@ export const WORLDS: WorldConfig[] = [
       light: '#ffd9a8', ambient: '#b48a9a', fog: '#f4d2c0', skyTop: '#6a6ab0', skyHorizon: '#ffc8a0',
     },
     music: 'pluck',
-  },
-  {
-    id: 'aquila', name: 'Aquila', subtitle: 'the marble city on the flood plain', shape: 'city',
-    center: placeAt(4), radius: 70, seed: 53, detail: 56, amplitude: 5,
-    riverStartLat: 4, meander: 14, meanderWaves: 2, riverWidth: 3.6, riverBed: 0.4, bankWidth: 4, waterDepth: 0.6,
-    palette: {
-      low: '#9aa86a', mid: '#b8b07a', high: '#8a9a5a', rock: '#c8b89a', bank: '#d8ccb0',
-      water: '#8fc8d8', waterDeep: '#3a7a90',
-      light: '#fff0d8', ambient: '#9a9ab0', fog: '#efe0cc', skyTop: '#5a7ac0', skyHorizon: '#ffe0b8',
-    },
-    music: 'lyre',
-  },
-  {
-    id: 'sea', name: 'The Endless Sea', subtitle: 'where the river is remembered', shape: 'sea',
-    center: placeAt(5), radius: 76, seed: 67, detail: 50, amplitude: 6, ocean: 1.6,
-    riverStartLat: 4, meander: 10, meanderWaves: 2, riverWidth: 3.0, riverBed: 1.2, bankWidth: 3, waterDepth: 0.6,
-    palette: {
-      low: '#e9dcc0', mid: '#cfe0a8', high: '#7fae7a', rock: '#c8a890', bank: '#f2e6cc',
-      water: '#7fe0e0', waterDeep: '#1f7a9a',
-      light: '#ffe6cc', ambient: '#7aa0c0', fog: '#cfe8ee', skyTop: '#4a7ab8', skyHorizon: '#ffd8c0',
-    },
-    music: 'strings',
   },
 ];

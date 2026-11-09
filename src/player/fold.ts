@@ -42,9 +42,8 @@ export const FOLD_FORMS = [
   { id: 'boat', name: 'Boat', world: 'The Spring Peaks', flag: 'read-letter', text: 'Carries you down the river.' },
   { id: 'kite', name: 'Kite', world: 'The Spring Peaks', flag: 'power:kite', text: 'Opens while you fall, so you glide.' },
   { id: 'crane', name: 'Crane', world: 'The Ember Pines', flag: 'form:crane', text: 'Flies ahead and shows the way through smoke.' },
-  { id: 'lantern', name: 'Lantern', world: 'The Green Deep', flag: 'form:lantern', text: 'Glows in the dark under the roots.' },
-  { id: 'sail', name: 'Sail', world: 'The Glass Desert', flag: 'form:sail', text: 'Catches the wind over the dunes.' },
-  { id: 'umbrella', name: 'Umbrella', world: 'Aquila', flag: 'form:umbrella', text: 'Keeps the rain off, and floats you down from rooftops.' },
+  { id: 'sail', name: 'Sail', world: 'The Endless Sea', flag: 'form:sail', text: 'Catches the wind across open water.' },
+  { id: 'lantern', name: 'Lantern', world: 'The Glass Desert', flag: 'form:lantern', text: 'A small light over the dunes at night.' },
 ] as const;
 
 /** How Fold feels, from what is happening around you. Pure, so it can be tested. */

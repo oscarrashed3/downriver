@@ -335,11 +335,11 @@ export const SCRIPTS: Record<string, Script> = {
     id: 'oro', name: 'Oro', title: 'the Root Weaver',
     start: { trust: 0.5, worry: 0.6, openness: 0.5 },
     nodes: [
-      { type: 'say', text: 'The terraces used to stay green all year.' },
-      { type: 'say', text: 'Then we cut the forest to grow just one crop.' },
-      { type: 'say', text: 'Now every rain washes the hills away. See the river? Brown as tea.' },
+      { type: 'say', text: 'These slopes were all old trees once. Then we cut them, all at once.' },
+      { type: 'say', text: 'Now the young ones are growing back. Slowly. Too slowly for the rain.' },
+      { type: 'say', text: 'Every storm washes a little hill away. See the river? Brown as tea.' },
       { type: 'silence', seconds: 2, reward: 'Roots are hands holding the hill. We let go.' },
-      { type: 'give', items: ['map:deep', 'met:oro'] },
+      { type: 'give', items: ['met:oro'] },
     ],
     after: ['Come back with patient hands. Hills are slow to forgive.'],
   },
@@ -354,17 +354,6 @@ export const SCRIPTS: Record<string, Script> = {
     ],
     after: ['I drew you in the corner of a map. Small, with a lantern.'],
   },
-  cassian: {
-    id: 'cassian', name: 'Cassian', title: 'the last aqueduct engineer',
-    start: { trust: 0.4, worry: 0.7, openness: 0.4 },
-    nodes: [
-      { type: 'say', text: 'Welcome to Aquila. Mind the canals, they flood.' },
-      { type: 'say', text: 'I built half these aqueducts. Nobody remembers how they work.' },
-      { type: 'say', text: "In the forum they argue about higher walls. Walls won't drink a flood." },
-      { type: 'give', items: ['map:aquila', 'met:cassian'] },
-    ],
-    after: ['The marsh outside the walls used to drink the floods. Remember that.'],
-  },
   maren: {
     id: 'maren', name: 'Maren', title: 'the Salt Keeper',
     start: { trust: 0.5, worry: 0.7, openness: 0.5 },
@@ -372,10 +361,10 @@ export const SCRIPTS: Record<string, Script> = {
       { type: 'say', text: 'You carried that drop all the way down?' },
       { type: 'say', text: 'The sea is rising. There is salt in our wells now.' },
       { type: 'say', text: 'My family has to choose: stay, or go. There is no right answer.' },
-      { type: 'say', text: 'Go to the lighthouse at the end of the marsh. The sea has been waiting for you.' },
+      { type: 'say', text: 'The river does not end here. It crosses the sea, and goes on down to the sand.' },
       { type: 'give', items: ['map:sea', 'met:maren'] },
     ],
-    after: ['Go on. The lighthouse is at the very end of the river.'],
+    after: ['Go on. The river rests where the sand begins. There is a light there.'],
   },
 };
 
@@ -587,11 +576,9 @@ export const RETURN_LINES: Record<string, ReturnSet[]> = {
       'Write back, if you like. I carry replies. No charge. No hurry.',
       'Lovely handwriting, your writer. Slanted, like they never stop walking.',
     ] },
-    { when: ['visited:1'], lines: ['The pines down there smell of smoke. Mind your paper friend.'] },
-    { when: ['visited:2'], lines: ['Green Deep. Lovely mud. I lost a boot there last spring.'] },
-    { when: ['visited:3'], lines: ['Desert mail is the worst. The sand reads everything first.'] },
-    { when: ['visited:4'], lines: ['Aquila has canals for streets. I deliver by umbrella boat.'] },
-    { when: ['visited:5'], lines: ['The sea. The end of my route. Or the start. I forget which.'] },
+    { when: ['visited:1'], lines: ['The pines down there smell of smoke. Mind your paper friend.', 'Forest mud. Lovely. I lost a boot there last spring.'] },
+    { when: ['visited:2'], lines: ['The sea. Every letter gets wet there. Nobody minds.'] },
+    { when: ['visited:3'], lines: ['Desert mail is the worst. The sand reads everything first.', 'The dunes. The end of my route. Or the start. I forget which.'] },
   ],
 };
 

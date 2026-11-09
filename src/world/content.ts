@@ -3,10 +3,16 @@ import * as THREE from 'three';
 import type { Planet } from './planet';
 import * as P from './props';
 import { preparePeaks, populatePeaks } from './peaks';
-import { orientTo } from './sphere';
+import { orientTo, angleBetween } from './sphere';
 import { Npc, LOOKS } from '../systems/npc';
 import { SCRIPTS } from '../data/scripts';
 import type { Landmark } from '../systems/mapView';
+import { WORLDS } from './worlds';
+
+/** Where the fox waits in the forest (river lat, lon offset). Trees keep clear of it. */
+export const FOX_SPOT = { lat: 78, lon: 9 } as const;
+/** The home light: a lighthouse on the dunes beside the river's end, in the last world. */
+export const HOME_LIGHT = { lat: 166, lon: 40 } as const;
 
 export interface Interactable {
   id: string;
@@ -38,11 +44,11 @@ export function prepare(p: Planet) {
     p.flattens.push({ dir: p.dirRiver(lat, lon), radius, height, blend });
   switch (p.cfg.id) {
     case 'peaks': preparePeaks(p); break;
-    case 'pines': f(70, 22, 6, 3, 6); f(92, -18, 10, 2.5, 8); f(176, 0, 9, 1.5, 6); break;
-    case 'deep': f(86, 16, 7, 3, 6); f(176, 0, 9, 1.5, 6); break;
-    case 'desert': f(86, -26, 14, 1.6, 8); f(176, 0, 9, 1.2, 6); break;
-    case 'aquila': f(85, 0, 34, 1.4, 10); f(176, 0, 9, 1.2, 6); break;
-    case 'sea': f(172, 0, 7, 3.2, 6); break;
+    case 'pines': f(70, 22, 6, 3, 6); f(86, 16, 7, 3, 6); f(92, -18, 10, 2.5, 8); f(176, 0, 9, 1.5, 6); break;
+    // The river ends here: no edge, only a quiet pad on the dunes for the lighthouse.
+    case 'desert': f(86, -26, 14, 1.6, 8); f(HOME_LIGHT.lat, HOME_LIGHT.lon, 7, 1.6, 6); break;
+    // The edge pad stands above the ocean (1.6), so the lip where the river falls on stays dry.
+    case 'sea': f(176, 0, 9, 3.0, 6); break;
   }
 }
 
@@ -90,26 +96,24 @@ export function populate(p: Planet, scene: THREE.Scene, index: number): WorldCon
     }
   };
 
-  // Every world: the edge where the river pours on to the next world.
-  if (p.cfg.id !== 'sea') { const a = put(P.edgeArch(p.cfg.palette.rock), 176.5, 0, 0, 'river'); c.refs.edge = a; lm('The edge', 176, 0, 'arch'); }
+  // Every world but the last: the edge where the river pours on to the next world.
+  if (index < WORLDS.length - 1) { const a = put(P.edgeArch(p.cfg.palette.rock), 176.5, 0, 0, 'river'); c.refs.edge = a; lm('The edge', 176, 0, 'arch'); }
 
   switch (p.cfg.id) {
     case 'peaks': populatePeaks(p, scene, c, put, npc, lm); break;
     case 'pines': {
-      scatter(160, () => P.pine(6 + P.rand() * 6, P.rand() < 0.25), [8, 170], 8);
-      scatter(60, () => P.sprout(), [20, 160], 6);
+      // A young forest: pines and sprouts, a few old giants and their fungus, a fire tower, a keeper of the roots.
+      const fox = new THREE.Vector3(); p.dirRiver(FOX_SPOT.lat, FOX_SPOT.lon, fox);
+      const clear = (la: number, lo: number) => angleBetween(p.dirRiver(la, lo), fox) * p.R > 6;
+      scatter(160, () => P.pine(6 + P.rand() * 6, P.rand() < 0.25), [8, 170], 8, clear);
+      scatter(60, () => P.sprout(), [20, 160], 6, clear);
+      scatter(12, () => P.giantTree(), [10, 170], 14, clear);
+      scatter(30, () => P.fungus(), [10, 170], 6, clear);
       put(P.tower(), 70, 22, 0); lm('Fire tower', 70, 22, 'tower');
       put(P.hut('#8a6a50', '#a8503a'), 92, -22, 0, 'river'); put(P.hut('#9a7a60', '#8a4030'), 95, -14, 0, 'river');
-      npc('tamsin', 73, 18);
-      break;
-    }
-    case 'deep': {
-      scatter(36, () => P.giantTree(), [10, 170], 14);
-      scatter(80, () => P.fungus(), [10, 170], 6);
-      scatter(40, () => P.pine(4, false), [20, 160], 8);
-      npc('oro', 86, 15);
       put(P.hut('#a88a60', '#3a7a50'), 88, 20, 0, 'river');
-      lm('Terraces', 80, 30, 'hut');
+      npc('tamsin', 73, 18);
+      npc('oro', 86, 15);
       break;
     }
     case 'desert': {
@@ -118,26 +122,18 @@ export function populate(p: Planet, scene: THREE.Scene, index: number): WorldCon
       scatter(14, () => P.arch(), [20, 160], 14);
       npc('sefa', 84, -14);
       lm('Sahra, the wandering town', 86, -27, 'hut');
-      break;
-    }
-    case 'aquila': {
-      put(P.temple(), 74, 22, 0, 'river'); lm('Temple', 74, 22, 'arch');
-      put(P.amphitheater(), 98, -26, 0, 'river'); lm('Amphitheater', 98, -26, 'arch');
-      for (let i = 0; i < 26; i++) { const la = 72 + P.rand() * 28, lo = (P.rand() > 0.5 ? 1 : -1) * (9 + P.rand() * 22); put(P.cityHouse(), la, lo, 0, 'river'); }
-      for (let i = 0; i < 6; i++) put(P.column(7), 84 + i * 1.6, 8, 0);
-      const aq = P.aqueduct(10); put(aq, 118, -30, 0, new THREE.Vector3(0, 0, 1)); lm('Aqueduct', 118, -30, 'arch');
-      scatter(40, () => P.olive(), [20, 160], 10, (la) => la < 65 || la > 110);
-      npc('cassian', 86, 5);
+      // The river's end: it slows, spreads and rests in the sand. A lighthouse keeps watch beside it.
+      put(P.lighthouse(), HOME_LIGHT.lat, HOME_LIGHT.lon, 0); c.refs.lighthouse = true;
+      lm('The lighthouse', HOME_LIGHT.lat, HOME_LIGHT.lon, 'tower');
+      lm('Where the river rests', 178, 0, 'spring');
       break;
     }
     case 'sea': {
       for (let i = 0; i < 10; i++) put(P.stiltHouse(), 70 + i * 6, (i % 2 ? 1 : -1) * (7 + P.rand() * 3), -0.5, 'river');
       scatter(50, () => P.mangrove(), [30, 165], 5, () => true);
-      put(P.lighthouse(), 172, 3, 0); c.refs.lighthouse = true; lm('The lighthouse', 172, 3, 'tower');
       npc('maren', 101, 5);
       break;
     }
   }
-  void index;
   return c;
 }

@@ -91,6 +91,5 @@ export const LOOKS: Record<string, NpcLook> = {
   tamsin: { skin: '#d8b090', hair: '#2a2020', hairStyle: 'long', top: '#d8a070', coat: '#a8503a', coatLen: 0.7, trousers: '#3a3030', boots: '#2a2020', idle: 'none', voice: 1.1 },
   oro: { skin: '#8a5a40', hair: '#1a1410', hairStyle: 'short', top: '#c8a050', coat: '#3a7a50', coatLen: 0.6, trousers: '#4a3a28', boots: '#3a2a1a', hat: 'wide', hatColor: '#c8a050', height: 0.95, idle: 'none', voice: 0.9 },
   sefa: { skin: '#b07850', hair: '#1a1410', hairStyle: 'long', top: '#5a7ab0', coat: '#e8c8a0', coatLen: 1, dress: true, trousers: '#8a6a4a', boots: '#6a4a2a', scarf: '#5a7ab0', idle: 'none', voice: 1.2 },
-  cassian: { skin: '#d8b090', hair: '#e8e4dc', hairStyle: 'short', top: '#f0e8d8', coat: '#f0e8d8', coatLen: 1, dress: true, trousers: '#c8b8a0', boots: '#6a4a2a', beard: '#e8e4dc', shawl: '#a83a3a', height: 1.05, idle: 'none', voice: 0.8 },
   maren: { skin: '#c89070', hair: '#3a2a20', hairStyle: 'bun', top: '#e8e0d0', coat: '#3a6a90', coatLen: 0.8, trousers: '#3a3a48', boots: '#3a2a20', idle: 'none', voice: 1.05 },
 };

@@ -15,10 +15,8 @@ export const PIECES: MapPiece[] = [
   { id: 'map:ridge', world: 'peaks', label: 'Kite Ridge', lat: [30, 70], lon: [20, 75] },
   { id: 'map:bridge', world: 'peaks', label: 'The old bridge and the way down to the edge', lat: [60, 180], lon: [-40, 40] },
   { id: 'map:pines', world: 'pines', label: 'The Ember Pines', lat: [0, 180], lon: [-70, 70] },
-  { id: 'map:deep', world: 'deep', label: 'The Green Deep', lat: [0, 180], lon: [-70, 70] },
-  { id: 'map:desert', world: 'desert', label: 'The Glass Desert', lat: [0, 180], lon: [-70, 70] },
-  { id: 'map:aquila', world: 'aquila', label: 'Aquila', lat: [0, 180], lon: [-70, 70] },
   { id: 'map:sea', world: 'sea', label: 'The Endless Sea', lat: [0, 180], lon: [-70, 70] },
+  { id: 'map:desert', world: 'desert', label: 'The Glass Desert', lat: [0, 180], lon: [-70, 70] },
 ];
 
 /** The fog grid: 2 degree cells over latitude 0..180 and longitude offset -180..180. */

@@ -320,66 +320,6 @@ export function arch(): THREE.Group {
   return g;
 }
 
-export function column(h = 7): THREE.Group {
-  const g = new THREE.Group();
-  const m = toon('#f2ead8');
-  g.add(mesh(new THREE.CylinderGeometry(0.55, 0.62, h, 10), m, 0, h / 2, 0));
-  g.add(mesh(new THREE.BoxGeometry(1.6, 0.4, 1.6), m, 0, h + 0.2, 0));
-  g.add(mesh(new THREE.BoxGeometry(1.6, 0.4, 1.6), m, 0, 0.2, 0));
-  return g;
-}
-
-export function temple(): THREE.Group {
-  const g = new THREE.Group();
-  const m = toon('#f2ead8');
-  g.add(mesh(new THREE.BoxGeometry(18, 1.2, 11), m, 0, 0.6, 0));
-  for (let i = 0; i < 6; i++) for (const z of [-4.5, 4.5]) { const c = column(8); c.position.set(-7.5 + i * 3, 1.2, z); g.add(c); }
-  g.add(mesh(new THREE.BoxGeometry(19, 1, 12), m, 0, 9.9, 0));
-  const roof = mesh(new THREE.CylinderGeometry(0.01, 6.6, 19.5, 3, 1), toon('#c8704a'), 0, 12.2, 0);
-  roof.rotation.z = Math.PI / 2; roof.scale.set(1, 1, 0.45); g.add(roof);
-  return g;
-}
-
-export function aqueduct(len = 9): THREE.Group {
-  const g = new THREE.Group();
-  const m = toon('#e8d4b0');
-  for (let i = 0; i < len; i++) {
-    const a = arch(); a.scale.setScalar(0.9); a.position.x = i * 7.2; g.add(a);
-    (a.children as THREE.Mesh[]).forEach(c => (c.material = m));
-  }
-  g.add(mesh(new THREE.BoxGeometry(len * 7.2, 1.2, 2.2), m, (len - 1) * 3.6, 11.2, 0));
-  return g;
-}
-
-export function amphitheater(): THREE.Group {
-  const g = new THREE.Group();
-  const m = toon('#ece0c8');
-  for (let i = 0; i < 5; i++) {
-    const r = 6 + i * 2.2;
-    const ring = mesh(new THREE.CylinderGeometry(r, r, 1, 28, 1, true, 0, Math.PI), m, 0, i * 1 + 0.5, 0);
-    g.add(ring);
-    const step = mesh(new THREE.RingGeometry(r - 2.2, r, 28, 1, 0, Math.PI), m, 0, i * 1 + 1, 0);
-    step.rotation.x = -Math.PI / 2; g.add(step);
-  }
-  return g;
-}
-
-export function cityHouse(): THREE.Group {
-  const g = new THREE.Group();
-  const w = 3 + rand() * 3, d = 3 + rand() * 3, h = 2.5 + rand() * 3;
-  g.add(mesh(new THREE.BoxGeometry(w, h, d), toon(rand() > 0.5 ? '#f4e8d0' : '#ead2a8'), 0, h / 2, 0));
-  const roof = mesh(new THREE.ConeGeometry(Math.max(w, d) * 0.75, 1.6, 4), toon('#c8704a'), 0, h + 0.8, 0);
-  roof.rotation.y = Math.PI / 4; roof.scale.set(w / Math.max(w, d), 1, d / Math.max(w, d)); g.add(roof);
-  return g;
-}
-
-export function olive(): THREE.Group {
-  const g = new THREE.Group();
-  g.add(mesh(new THREE.CylinderGeometry(0.2, 0.35, 2, 5), toon('#6a5a4a'), 0, 1, 0));
-  g.add(mesh(new THREE.IcosahedronGeometry(1.5, 0), toon('#8a9a6a'), 0, 2.6, 0));
-  return g;
-}
-
 export function stiltHouse(): THREE.Group {
   const g = new THREE.Group();
   const w = toon('#8a6a50');

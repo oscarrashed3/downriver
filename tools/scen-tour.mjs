@@ -10,9 +10,10 @@ export default async ({ page, shot, ev, key }) => {
   await tp(0, 20, -4, 'spring');
   await tp(0, 41, 9, 'ysolde', 30);
   await tp(0, 64, -16, 'village', 160);
-  await tp(1, 70, 14, 'pines');
-  await tp(2, 80, 8, 'deep');
+  await tp(1, 70, 14, 'forest');
+  await tp(1, 84, 8, 'forest-roots', 40);
+  await tp(2, 96, 2, 'sea');
+  await tp(2, 168, 4, 'sea-edge', 180);
   await tp(3, 82, -8, 'desert', 30);
-  await tp(4, 92, 3, 'aquila');
-  await tp(5, 96, 2, 'sea');
+  await tp(3, 150, 6, 'desert-end');
 };

@@ -10,7 +10,7 @@ import { stormPanel } from './paintedPanels';
 
 export const LETTER_TEXT = LETTER;
 
-/** A slow drift over the cloud sea: all six worlds hang below, and far down one light blinks. */
+/** A slow drift over the cloud sea: all four worlds hang below, and far down one light blinks. */
 export function titleCamera(g: Game, t: number): CamPose {
   const c = g.skyView.center;
   const a = 0.6 + t * 0.012;
@@ -121,8 +121,8 @@ export function wakeBeats(g: Game): Beat[] {
 
 /** After the letter: "Look down." The camera swings out past the edge of the world to the home light far below. */
 export function lookDownBeats(g: Game): Beat[] {
-  const p0 = g.planets[0], sea = g.planets[5], pl = g.player;
-  const dirH = sea.center.clone().sub(p0.center).setY(0).normalize();
+  const p0 = g.planets[0], home = g.planets[g.planets.length - 1], pl = g.player;
+  const dirH = home.center.clone().sub(p0.center).setY(0).normalize();
   const out: CamPose = {
     pos: p0.center.clone().addScaledVector(dirH, p0.R + 125).add(new THREE.Vector3(0, 30, 0)),
     look: g.beaconPos.clone(), up: new THREE.Vector3(0, 1, 0),
