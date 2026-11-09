@@ -59,6 +59,8 @@ const FRAG = /* glsl */ `
     float lobes = 0.085 * sin(ang * 5.0 + seed * 6.28) + 0.055 * sin(ang * 9.0 + seed * 17.0) + 0.035 * sin(ang * 15.0 + seed * 29.0);
     float edge = r + lobes * mix(smoothstep(-0.7, 0.2, uv.y), 1.6, vWisp);
     float a = smoothstep(1.0, mix(0.8, 0.25, vWisp), edge) * vShape.y;
+    // never reach the card's own border, so no puff shows a straight cut edge
+    a *= smoothstep(1.0, 0.86, max(abs(uv.x), abs(uv.y)));
     if (a < 0.01) discard;
     // a fake rounded normal, in view space
     float rr = min(dot(uv, uv), 1.0);

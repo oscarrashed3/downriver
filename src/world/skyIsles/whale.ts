@@ -559,6 +559,8 @@ const RELIGHT_GLSL = /* glsl */ `
   vec3 wNn = normalize(vPNormal); vec3 wV = normalize(cameraPosition - vPWorld);
   // cool blue-violet in the shade, a warm sunlit top
   vec3 shadeL = uShadeCol * (0.82 + 0.18 * (wNn.y * 0.5 + 0.5));
+  // (the shade takes a little of the light's colour, so a whale seen against a low sun stays dusty, not navy)
+  shadeL = mix(shadeL, vec3(dot(shadeL, vec3(0.333))) * (0.7 + 0.4 * uSunCol), 0.3);
   vec3 litL = mix(vec3(1.0), uSunCol, 0.6) * 1.1 + vec3(0.05, 0.05, 0.06);
   vec3 lightL = mix(shadeL, litL, lum);
   lightL += uSunCol * vec3(0.1, 0.07, 0.02) * smoothstep(0.55, 0.95, wNn.y) * lum;
