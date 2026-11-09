@@ -37,6 +37,8 @@ export interface RiderRig {
   wrists?: THREE.Object3D[];
   coatPanels?: { pivot: THREE.Object3D }[];
   hoodTip?: THREE.Object3D | null;
+  /** A long coat's skirt (Nilo): pulled in close while lying on the wing, so it does not swallow the body. */
+  coat?: THREE.Object3D | null;
   scarfTail?: THREE.Object3D[];
 }
 
@@ -61,6 +63,7 @@ export function glidePose(r: RiderRig, g: GlidePoseInput) {
   const k = clamp(g.k);
   // the hood's point is blown flatter while flying
   if (r.hoodTip) r.hoodTip.scale.set(1, 1 - 0.3 * k, 1 - 0.15 * k);
+  if (r.coat) r.coat.scale.set(1 - 0.16 * k, 1 - 0.3 * k, 1 - 0.42 * k);
   if (k <= 0.001) return;
   const bank = g.bank ?? 0, dive = clamp(g.dive ?? 0), wind = clamp(g.wind ?? 0.6), t = g.t;
   const flap = (f: number, ph: number) => Math.sin(t * f * (0.6 + wind) + ph);
@@ -185,24 +188,35 @@ const cap = (r: number, l: number) => new THREE.CapsuleGeometry(r, l, 4, 10);
 const cyl = (a: number, b: number, h: number, n = 10) => new THREE.CylinderGeometry(a, b, h, n);
 const tor = (r: number, t: number, arc = Math.PI * 2) => new THREE.TorusGeometry(r, t, 6, 14, arc);
 
+const box = (x: number, y: number, z: number) => new THREE.BoxGeometry(x, y, z);
+/** A lathed shape from (radius, y) pairs. */
+const lathe = (pts: [number, number][], n = 12) => new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), n);
+/** Half a disc (the open mouth): the lower half of a circle, facing +Z. */
+const halfDisc = (r: number) => new THREE.CircleGeometry(r, 14, Math.PI, Math.PI);
+
 export type RacerKind = 'zephy' | 'lark' | 'wren';
 
 /** How a stand-in racer looks. */
 export interface RacerLook {
   skin: string; hair: string; shirt: string; vest?: string; trousers: string; boots: string; scarf: string;
-  hat?: string; braids?: number; bun?: boolean; height: number; old?: boolean; harness?: string;
+  hat?: string; braids?: number; bun?: boolean;
+  /** Overall scale (1.2 makes a child about 1.5 m tall with the hair). */
+  height: number; old?: boolean; harness: string; satchel: string; glove: string;
 }
 export const RACERS: Record<RacerKind, RacerLook> = {
-  // Zephy: the fast boy from Sailtown, red scarf, a leather flying harness over a white shirt
-  zephy: { skin: '#c99068', hair: '#3a2418', shirt: '#f1ead8', vest: '#8a5a36', trousers: '#5d4a3c', boots: '#5a3824', scarf: '#e04a3a', height: 1.42, harness: '#6a4428', braids: 1 },
-  // Lark: two long braids, a yellow scarf, a cream smock
-  lark: { skin: '#eac0a0', hair: '#5a3624', shirt: '#efe2c4', vest: '#c8a46a', trousers: '#6a5a48', boots: '#6a4430', scarf: '#f2c43a', height: 1.32, braids: 2, harness: '#7a5030' },
+  // Zephy: the fast boy from Sailtown, messy hair, red scarf, a leather flying harness over a cream shirt
+  zephy: { skin: '#c99068', hair: '#4a2c1c', shirt: '#f1ead8', vest: '#9a6a3e', trousers: '#5d4a3c', boots: '#5a3824', scarf: '#d8402f', height: 1.2, harness: '#6a4428', satchel: '#a87440', glove: '#6a4630' },
+  // Lark: two long braids, a yellow scarf, a cream smock and a green waistcoat
+  lark: { skin: '#eac0a0', hair: '#6a3e26', shirt: '#efe2c4', vest: '#7fa04e', trousers: '#6a5a48', boots: '#6a4430', scarf: '#f2c43a', height: 1.1, braids: 2, harness: '#7a5030', satchel: '#b88a4a', glove: '#7a5236' },
   // Gran Wren: the oldest racer, white bun, straw hat, a blue coat
-  wren: { skin: '#e4b896', hair: '#f2eee4', shirt: '#3e64a8', vest: '#2f4f8c', trousers: '#3a3a4a', boots: '#4a3428', scarf: '#5aa0e6', hat: '#e8d090', bun: true, height: 1.36, old: true, harness: '#5a4030' },
+  wren: { skin: '#e4b896', hair: '#f2eee4', shirt: '#3e64a8', vest: '#2f4f8c', trousers: '#3a3a4a', boots: '#4a3428', scarf: '#5aa0e6', hat: '#e8d090', bun: true, height: 1.14, old: true, harness: '#5a4030', satchel: '#8a6038', glove: '#5a3e2c' },
 };
 
 /**
  * A small racer with the Person joint layout, so glidePose works on it. Feet at the root when standing.
+ * Tapered legs and boots with a sole, mitten gloves with a thumb, a face with eye shapes, brows and a big
+ * open smile, a hair silhouette of its own (Zephy's mop, Lark's braids, Gran Wren's bun and straw hat),
+ * a flying harness with straps and a satchel on the back (what you see from a chase camera).
  * update() gives it a simple stand, run and blink; then glidePose lays it on the wing.
  */
 export class StandInRider implements RiderRig {
@@ -216,6 +230,8 @@ export class StandInRider implements RiderRig {
   H = 1;
   arms: { sh: THREE.Group; el: THREE.Group; hand: THREE.Group }[] = [];
   legs: { thigh: THREE.Group; knee: THREE.Group }[] = [];
+  ankles: THREE.Group[] = [];
+  wrists: THREE.Group[] = [];
   scarfTail: THREE.Group[] = [];
   /** A point in each palm (left, right), for things held: a kite string, the bar. */
   hands: THREE.Group[] = [];
@@ -223,6 +239,8 @@ export class StandInRider implements RiderRig {
   hairTails: THREE.Group[] = [];
   /** Where the long scarf ends leave the neck (child of the torso). */
   scarfRoot = new THREE.Group();
+  /** Between the shoulder blades, for a cape (child of the torso). */
+  backRoot = new THREE.Group();
   private eyes: THREE.Object3D[] = [];
   private phase = 0;
   private blink = 2;
@@ -234,105 +252,127 @@ export class StandInRider implements RiderRig {
     this.body.scale.setScalar(this.H);
     this.body.add(this.hips); this.hips.position.y = this.hipY;
     this.hips.add(this.torso);
-    // legs: thigh, shin, boot with a turned cuff
+    // legs: tapered thigh and shin, a boot with a flared cuff, a foot with a sole and a toe cap
     for (const s of [-1, 1]) {
       const thigh = new THREE.Group(); thigh.position.set(0.085 * s, -0.02, 0);
-      k.add(thigh, cap(0.075, 0.16), L.trousers, [0, -0.14, 0]);
+      k.add(thigh, sph(0.08, 10, 8), L.trousers, [0, -0.01, 0]);
+      k.add(thigh, cyl(0.08, 0.062, 0.3), L.trousers, [0, -0.15, 0]);
       const knee = new THREE.Group(); knee.position.y = -0.3;
-      k.add(knee, cap(0.065, 0.15), L.trousers, [0, -0.12, 0]);
-      k.add(knee, cyl(0.072, 0.068, 0.12), L.boots, [0, -0.22, 0]);
-      k.add(knee, tor(0.072, 0.018), L.boots, [0, -0.16, 0], { r: [Math.PI / 2, 0, 0] });
-      k.add(knee, sph(0.075, 12, 8), L.boots, [0, -0.29, 0.04], { s: [0.95, 0.7, 1.55] });
+      k.add(knee, sph(0.062, 10, 8), L.trousers, [0, 0, 0]);
+      k.add(knee, cyl(0.06, 0.05, 0.16), L.trousers, [0, -0.08, 0]);
+      k.add(knee, lathe([[0.0, -0.27], [0.052, -0.27], [0.054, -0.2], [0.062, -0.15], [0.07, -0.12], [0.066, -0.115], [0.0, -0.115]], 12), L.boots, [0, 0, 0]);
+      const ankle = new THREE.Group(); ankle.position.y = -0.27; knee.add(ankle); this.ankles.push(ankle);
+      k.add(ankle, sph(0.058, 12, 8), L.boots, [0, -0.012, 0.045], { s: [0.95, 0.68, 1.75] });
+      k.add(ankle, box(0.1, 0.018, 0.2), '#3a2418', [0, -0.045, 0.045], { line: false });
       thigh.add(knee); this.hips.add(thigh); this.legs.push({ thigh, knee });
     }
-    // torso: shirt, vest or coat, belt, a flying harness strap across the chest
-    k.add(this.torso, cap(0.14, 0.16), L.shirt, [0, 0.2, 0], { s: [1, 1, 0.78] });
+    // torso: shirt, waistcoat or coat, belt, a flying harness (shoulder straps, chest strap, belt) and a satchel on the back
+    k.add(this.torso, cap(0.135, 0.16), L.shirt, [0, 0.2, 0], { s: [1, 1, 0.78] });
     k.add(this.torso, sph(0.13, 12, 8), L.trousers, [0, 0.02, 0], { s: [1.08, 0.7, 0.85] });
     if (L.vest) {
-      k.add(this.torso, cyl(0.155, 0.17, 0.26, 12), L.vest, [0, 0.17, -0.004], { s: [1, 1, 0.8] });
-      if (L.old) k.add(this.torso, cyl(0.17, 0.23, 0.26, 12), L.vest, [0, -0.06, 0], { s: [1, 1, 0.82] }); // coat skirt
+      k.add(this.torso, cyl(0.145, 0.158, 0.24, 14), L.vest, [0, 0.18, -0.006], { s: [1, 1, 0.8] });
+      if (L.old) k.add(this.torso, lathe([[0.158, 0.06], [0.17, -0.04], [0.2, -0.16], [0.21, -0.2]], 14), L.vest, [0, 0, 0], { s: [1, 1, 0.82] }); // coat skirt
     }
-    if (L.harness) {
-      k.add(this.torso, tor(0.155, 0.014), L.harness, [0, 0.03, 0], { r: [Math.PI / 2, 0, 0], s: [1.02, 0.82, 1] });
-      for (const s of [-1, 1]) k.add(this.torso, cyl(0.013, 0.013, 0.34, 5), L.harness, [0.07 * s, 0.2, 0.108], { r: [0, 0, 0.22 * s] });
-      k.add(this.torso, cyl(0.03, 0.03, 0.012, 8), '#c8a050', [0, 0.1, 0.12], { r: [Math.PI / 2, 0, 0], line: false });
-    }
-    // arms
+    k.add(this.torso, cyl(0.15, 0.15, 0.035, 14), L.harness, [0, 0.06, 0], { s: [1.02, 1, 0.82] }); // belt
+    k.add(this.torso, box(0.04, 0.03, 0.015), '#d8b060', [0, 0.06, 0.128], { line: false }); // buckle
     for (const s of [-1, 1]) {
-      const sh = new THREE.Group(); sh.position.set(0.175 * s, 0.33, 0);
-      k.add(sh, cap(0.055, 0.14), L.old ? L.vest! : L.shirt, [0, -0.1, 0]);
-      k.add(sh, sph(0.066, 10, 8), L.old ? L.vest! : L.shirt, [0, -0.01, 0]);
+      k.add(this.torso, box(0.035, 0.32, 0.016), L.harness, [0.07 * s, 0.2, -0.112], { r: [0.08, 0, 0.12 * s] }); // back straps
+      k.add(this.torso, box(0.035, 0.3, 0.016), L.harness, [0.065 * s, 0.21, 0.112], { r: [-0.08, 0, -0.1 * s] }); // front straps
+    }
+    k.add(this.torso, box(0.15, 0.03, 0.016), L.harness, [0, 0.24, 0.118]); // chest strap
+    k.add(this.torso, box(0.13, 0.03, 0.016), L.harness, [0, 0.26, -0.118]);
+    // satchel on the back: body, a rounded flap, a buckle
+    k.add(this.torso, box(0.17, 0.13, 0.07), L.satchel, [0.02, 0.15, -0.15], { r: [0, 0, -0.08] });
+    k.add(this.torso, cyl(0.045, 0.045, 0.172, 10), L.satchel, [0.02, 0.21, -0.15], { r: [0, 0, Math.PI / 2 - 0.08], s: [1, 1, 0.9] });
+    k.add(this.torso, box(0.16, 0.07, 0.012), L.harness, [0.022, 0.19, -0.188], { r: [0, 0, -0.08] });
+    k.add(this.torso, box(0.03, 0.03, 0.012), '#d8b060', [0.022, 0.165, -0.196], { line: false });
+    // arms: sleeve, rolled cuff, a leather mitten glove with a thumb
+    for (const s of [-1, 1]) {
+      const sh = new THREE.Group(); sh.position.set(0.172 * s, 0.33, 0);
+      const sleeve = L.old ? L.vest! : L.shirt;
+      k.add(sh, sph(0.064, 10, 8), sleeve, [0, -0.01, 0]);
+      k.add(sh, cyl(0.06, 0.05, 0.22), sleeve, [0, -0.11, 0]);
       const el = new THREE.Group(); el.position.y = -0.22;
-      k.add(el, cap(0.048, 0.12), L.shirt, [0, -0.08, 0]);
-      k.add(el, tor(0.05, 0.016), L.old ? L.vest! : L.harness ?? L.shirt, [0, -0.15, 0], { r: [Math.PI / 2, 0, 0] });
-      k.add(el, sph(0.045, 10, 8), '#6a4630', [0, -0.205, 0.008], { s: [0.95, 1.1, 0.8] }); // leather glove
+      k.add(el, sph(0.05, 10, 8), sleeve, [0, 0, 0]);
+      k.add(el, cyl(0.05, 0.043, 0.15), sleeve, [0, -0.075, 0]);
+      k.add(el, cyl(0.05, 0.052, 0.04, 12), L.glove, [0, -0.155, 0]); // glove cuff
+      const wrist = new THREE.Group(); wrist.position.y = -0.17; el.add(wrist); this.wrists.push(wrist);
+      k.add(wrist, sph(0.042, 12, 9), L.glove, [0, -0.04, 0.006], { s: [0.95, 1.15, 0.72] }); // the mitten
+      k.add(wrist, cap(0.016, 0.03), L.glove, [0.035 * -s, -0.025, 0.02], { r: [0.4, 0, 0.6 * s] }); // thumb
       sh.rotation.z = 0.1 * s;
       const hand = new THREE.Group(); hand.position.set(0, -0.21, 0.01); el.add(hand); this.hands.push(hand);
       sh.add(el); this.torso.add(sh); this.arms.push({ sh, el, hand });
     }
-    // scarf: a thick wrap at the neck; the long ends are ribbons the wing streams (see KiteWing)
-    k.add(this.torso, tor(0.085, 0.045), L.scarf, [0, 0.39, 0.0], { r: [Math.PI / 2, 0, 0] });
-    k.add(this.torso, sph(0.06, 8, 6), L.scarf, [0.06, 0.37, -0.08], { s: [1, 0.8, 0.9] }); // the knot
-    this.scarfRoot.position.set(0.06, 0.36, -0.1);
+    // scarf: a thick wrap at the neck and a knot; the long ends are ribbons the wing streams (see KiteWing)
+    k.add(this.torso, tor(0.085, 0.05), L.scarf, [0, 0.385, 0.0], { r: [Math.PI / 2, 0, 0], s: [1.1, 1, 1] });
+    k.add(this.torso, sph(0.06, 8, 6), L.scarf, [0.05, 0.37, -0.09], { s: [1.1, 0.85, 0.9] });
+    this.scarfRoot.position.set(0.04, 0.37, -0.1);
     this.torso.add(this.scarfRoot);
+    this.backRoot.position.set(0, 0.33, -0.12);
+    this.torso.add(this.backRoot);
     // head
     this.neck.position.y = 0.4; this.torso.add(this.neck);
     k.add(this.neck, cyl(0.04, 0.05, 0.08, 8), L.skin, [0, 0.02, 0]);
-    this.head.position.y = 0.05; this.head.scale.setScalar(1.32); this.neck.add(this.head);
-    k.add(this.head, sph(0.13, 16, 12), L.skin, [0, 0.14, 0], { s: [1, 1.04, 0.98] });
-    k.add(this.head, sph(0.095, 12, 9), L.skin, [0, 0.085, 0.03], { s: [1.08, 0.8, 1] });
+    this.head.position.y = 0.05; this.head.scale.setScalar(1.34); this.neck.add(this.head);
+    k.add(this.head, sph(0.13, 18, 14), L.skin, [0, 0.14, 0], { s: [1, 1.04, 0.98] });
+    k.add(this.head, sph(0.095, 14, 10), L.skin, [0, 0.085, 0.03], { s: [1.1, 0.82, 1] });
     for (const s of [-1, 1]) {
-      k.add(this.head, sph(0.025, 8, 6), L.skin, [0.128 * s, 0.13, 0], { s: [0.6, 1, 0.9] }); // ears
-      k.add(this.head, sph(0.03, 8, 6), '#f0a090', [0.07 * s, 0.1, 0.1], { s: [1, 0.6, 0.4], line: false }); // cheeks
-      const eye = new THREE.Group(); eye.position.set(0.048 * s, 0.15, 0.118);
-      k.add(eye, sph(0.019, 10, 8), '#2a1c22', [0, 0, 0], { s: [0.85, 1.3, 0.5], line: false });
-      k.add(eye, sph(0.006, 6, 4), '#ffffff', [0.006 * s, 0.01, 0.009], { line: false });
+      k.add(this.head, sph(0.026, 8, 6), L.skin, [0.128 * s, 0.13, 0], { s: [0.6, 1, 0.9] }); // ears
+      k.add(this.head, new THREE.CircleGeometry(0.024, 12), '#f09a8a', [0.074 * s, 0.1, 0.101], { r: [0, 0.55 * s, 0], line: false }); // cheeks
+      // eyes: tall dark ovals with a big glint and a small one, set wide like the game's children
+      const eye = new THREE.Group(); eye.position.set(0.047 * s, 0.148, 0.123);
+      k.add(eye, sph(0.021, 12, 9), '#2a1c22', [0, 0, 0], { s: [0.82, 1.3, 0.45], line: false });
+      k.add(eye, sph(0.0075, 6, 4), '#ffffff', [0.006 * s, 0.01, 0.009], { line: false });
+      k.add(eye, sph(0.004, 6, 4), '#ffffff', [-0.005 * s, -0.009, 0.009], { line: false });
       this.head.add(eye); this.eyes.push(eye);
-      k.add(this.head, new THREE.BoxGeometry(0.045, 0.011, 0.01), L.old ? '#c8c0b4' : L.hair, [0.05 * s, 0.195, 0.122], { r: [0, 0, (L.old ? 0.2 : -0.12) * s], line: false });
+      // brows: lifted, happy
+      k.add(this.head, tor(0.026, 0.0055, Math.PI * 0.7), L.old ? '#c8c0b4' : L.hair, [0.048 * s, 0.176, 0.124], { r: [0, 0, Math.PI * 0.15], line: false });
     }
-    k.add(this.head, sph(0.017, 8, 6), L.skin, [0, 0.12, 0.13], { line: false });
-    k.add(this.head, tor(0.026, 0.0065, Math.PI), '#6a3030', [0, 0.085, 0.118], { r: [0, 0, Math.PI], line: false }); // a grin
-    // hair: a cap that follows the skull, and tufts that break its outline (no helmet)
-    k.add(this.head, sph(0.132, 14, 10), L.hair, [0, 0.175, -0.025], { s: [1.04, 0.86, 1.04] });
+    k.add(this.head, sph(0.017, 8, 6), L.skin, [0, 0.118, 0.13], { line: false }); // nose
+    // a big open smile: a dark half-moon, a pink tongue, a row of teeth
+    k.add(this.head, halfDisc(0.034), '#5a2226', [0, 0.084, 0.1275], { r: [-0.25, 0, 0], s: [1.15, 0.9, 1], line: false });
+    k.add(this.head, halfDisc(0.022), '#e0707a', [0, 0.073, 0.129], { r: [-0.25, 0, 0], s: [1.1, 0.6, 1], line: false });
+    k.add(this.head, box(0.058, 0.009, 0.004), '#fbf6ee', [0, 0.08, 0.1285], { r: [-0.25, 0, 0], line: false });
+    // hair: a cap that follows the skull and tufts that break its outline (no helmet)
+    k.add(this.head, sph(0.134, 16, 12), L.hair, [0, 0.176, -0.026], { s: [1.05, 0.88, 1.05] });
     if (!L.old) {
-      for (let i = 0; i < 5; i++) { const a = -0.9 + i * 0.45; k.add(this.head, new THREE.ConeGeometry(0.04, 0.12, 6), L.hair, [Math.sin(a) * 0.085, 0.235, 0.085 + Math.cos(a) * 0.01], { r: [1.9, 0, -a * 0.6] }); }
-      for (let i = 0; i < 7; i++) { const a = -2.2 + i * 0.73; k.add(this.head, new THREE.ConeGeometry(0.045, 0.13, 6), L.hair, [Math.sin(a) * 0.12, 0.2 + Math.cos(i * 1.7) * 0.03, Math.cos(a) * 0.12 - 0.02], { r: [Math.cos(a) * 1.4, 0, -Math.sin(a) * 1.4] }); }
+      // a fringe across the brow, and tufts all round
+      for (let i = 0; i < 6; i++) { const a = -0.95 + i * 0.38; k.add(this.head, new THREE.ConeGeometry(0.038, 0.11, 6), L.hair, [Math.sin(a) * 0.088, 0.225, 0.088 + Math.cos(a) * 0.01], { r: [1.95, 0, -a * 0.6] }); }
+      const n = L.braids ? 6 : 9;
+      for (let i = 0; i < n; i++) { const a = -2.3 + i * (4.6 / (n - 1)); k.add(this.head, new THREE.ConeGeometry(0.05, L.braids ? 0.11 : 0.16, 6), L.hair, [Math.sin(a) * 0.12, 0.21 + Math.cos(i * 1.7) * 0.03, Math.cos(a) * 0.12 - 0.03], { r: [Math.cos(a) * 1.5, 0, -Math.sin(a) * 1.5] }); }
+      if (!L.braids) for (let i = 0; i < 4; i++) k.add(this.head, new THREE.ConeGeometry(0.05, 0.15, 6), L.hair, [-0.06 + i * 0.04, 0.29, -0.02 - i * 0.02], { r: [-0.6 - i * 0.2, 0, 0.5 - i * 0.3] }); // the mop on top
     }
-    if (L.bun) k.add(this.head, sph(0.06, 10, 8), L.hair, [0, 0.27, -0.09]);
+    if (L.bun) { k.add(this.head, sph(0.065, 12, 9), L.hair, [0, 0.25, -0.12]); k.add(this.head, tor(0.05, 0.012), '#5aa0e6', [0, 0.235, -0.1], { r: [0.9, 0, 0], line: false }); }
     if (L.braids) {
       const n = L.braids;
       for (let b = 0; b < n; b++) {
         const s = n === 1 ? 0 : b === 0 ? -1 : 1;
-        const tail = new THREE.Group(); tail.position.set(0.1 * s, 0.13, -0.08); this.head.add(tail);
-        for (let i = 0; i < 6; i++) k.add(tail, sph(0.03 - i * 0.002, 8, 6), L.hair, [0, -0.04 - i * 0.045, -i * 0.006], { s: [1, 1.2, 1] });
-        k.add(tail, sph(0.02, 6, 5), L.scarf, [0, -0.31, -0.04], { line: false }); // a ribbon tie
+        const tail = new THREE.Group(); tail.position.set(0.105 * s, 0.13, -0.07); this.head.add(tail);
+        // a plaited braid: lumps that alternate side to side, a ribbon bow, a tuft at the end
+        for (let i = 0; i < 7; i++) k.add(tail, sph(0.036 - i * 0.002, 9, 7), L.hair, [(i % 2 ? 0.008 : -0.008), -0.03 - i * 0.05, -i * 0.006], { s: [1, 1.25, 1], r: [0, 0, (i % 2 ? 0.4 : -0.4)] });
+        k.add(tail, sph(0.028, 8, 6), L.scarf, [0.024, -0.38, -0.04], { s: [1.2, 0.7, 0.6], line: false });
+        k.add(tail, sph(0.028, 8, 6), L.scarf, [-0.024, -0.38, -0.04], { s: [1.2, 0.7, 0.6], line: false });
+        k.add(tail, new THREE.ConeGeometry(0.03, 0.07, 6), L.hair, [0, -0.43, -0.045], { r: [Math.PI, 0, 0] });
         this.hairTails.push(tail);
       }
     }
     if (L.hat) {
       // a real straw hat: a lathed brim that dips at the front and back and turns up at the edge,
-      // a pinched crown, a blue band, and a darker plaited edge
+      // a pinched crown, a blue band, a plaited edge and a red flower
       const hat = new THREE.Group(); hat.position.set(0, 0.255, -0.01); hat.rotation.x = -0.1; this.head.add(hat);
-      const brim = new THREE.LatheGeometry([
-        new THREE.Vector2(0.1, 0.012), new THREE.Vector2(0.16, 0.0), new THREE.Vector2(0.23, -0.012), new THREE.Vector2(0.28, -0.012),
-        new THREE.Vector2(0.305, 0.004), new THREE.Vector2(0.3, 0.012), new THREE.Vector2(0.24, 0.006), new THREE.Vector2(0.1, 0.022),
-      ], 28);
+      const brim = lathe([[0.1, 0.012], [0.16, 0.0], [0.23, -0.012], [0.28, -0.012], [0.305, 0.004], [0.3, 0.012], [0.24, 0.006], [0.1, 0.022]], 28);
       const bp = brim.attributes.position as THREE.BufferAttribute;
       for (let i = 0; i < bp.count; i++) { const x = bp.getX(i), z = bp.getZ(i), r = Math.hypot(x, z); bp.setY(i, bp.getY(i) - 0.035 * (r / 0.3) * (z * z) / (r * r + 1e-6)); }
       brim.computeVertexNormals();
       k.add(hat, brim, L.hat!, [0, 0, 0]);
-      const crown = new THREE.LatheGeometry([
-        new THREE.Vector2(0.118, 0.0), new THREE.Vector2(0.122, 0.05), new THREE.Vector2(0.115, 0.095), new THREE.Vector2(0.085, 0.118),
-        new THREE.Vector2(0.03, 0.105), new THREE.Vector2(0.0, 0.1),
-      ], 20);
-      k.add(hat, crown, L.hat!, [0, 0.01, 0]);
-      k.add(hat, cyl(0.124, 0.124, 0.03, 20), '#3e64a8', [0, 0.027, 0], { line: false }); // band
-      k.add(hat, tor(0.3, 0.008), '#c4a462', [0, 0.008, 0], { r: [Math.PI / 2, 0, 0], line: false }); // plaited edge
-      k.add(hat, sph(0.03, 8, 6), '#e04a3a', [0.1, 0.035, 0.06], { s: [1, 0.7, 0.5], line: false }); // a red flower in the band
+      k.add(hat, lathe([[0.118, 0.0], [0.122, 0.05], [0.115, 0.095], [0.085, 0.118], [0.03, 0.105], [0.0, 0.1]], 20), L.hat!, [0, 0.01, 0]);
+      k.add(hat, cyl(0.124, 0.124, 0.03, 20), '#3e64a8', [0, 0.027, 0], { line: false });
+      k.add(hat, tor(0.3, 0.008), '#c4a462', [0, 0.008, 0], { r: [Math.PI / 2, 0, 0], line: false });
+      k.add(hat, sph(0.03, 8, 6), '#e04a3a', [0.1, 0.035, 0.06], { s: [1, 0.7, 0.5], line: false });
       this.hairTails.push(hat);
     }
     k.bake();
-    addOutlines(this.root, '#3a2a2e', 0.009);
+    addOutlines(this.root, '#3a2a2e', 0.008);
   }
 
   /** Stand (speed 0) or run (m/s), blink. Call before glidePose. */
@@ -346,9 +386,11 @@ export class StandInRider implements RiderRig {
       const o = i ? Math.PI : 0, L = this.legs[i];
       L.thigh.rotation.set(Math.sin(ph + o) * 0.8 * run, 0, 0);
       L.knee.rotation.set(Math.max(0, -Math.cos(ph + o)) * 1.3 * run + 0.05, 0, 0);
+      this.ankles[i].rotation.set(0, 0, 0);
       const A = this.arms[i], s = i ? 1 : -1;
       A.sh.rotation.set(-Math.sin(ph + o) * 0.7 * run, 0, 0.1 * s);
       A.el.rotation.set(-0.3 - run * 0.9, 0, 0);
+      this.wrists[i].rotation.set(0, 0, 0);
     }
     this.head.rotation.set(-run * 0.15, 0, 0);
     this.blink -= dt;
@@ -360,10 +402,10 @@ export class StandInRider implements RiderRig {
   /** Braids and the hat brim flutter in the wind (call after glidePose). */
   flutter(t: number, wind: number, k: number) {
     this.hairTails.forEach((h, i) => {
-      if (h.children.length && i < (this.look.braids ?? 0)) {
+      if (i < (this.look.braids ?? 0)) {
         // braids stream back over the shoulders when prone (towards -Y of the head, which is backwards)
-        h.rotation.x = lerp(0.1, 0.6 + Math.sin(t * 9 * (0.5 + wind) + i) * 0.18 * wind, k);
-        h.rotation.z = Math.sin(t * 7 + i * 2) * 0.12 * wind * k;
+        h.rotation.x = lerp(0.1, 0.75 + Math.sin(t * 9 * (0.5 + wind) + i) * 0.2 * wind, k);
+        h.rotation.z = Math.sin(t * 7 + i * 2) * 0.14 * wind * k + (i ? 0.15 : -0.15) * k;
       } else h.rotation.x = -0.12 + Math.sin(t * 13) * 0.04 * wind * k; // the hat brim shivers
     });
   }

@@ -1,34 +1,50 @@
-// Festival kites over Sailtown: classic diamond kites on two cross spars (on the flyer's side, where you
-// see them), sewn from eight bright patchwork panels with a bound hem, flying on long sagging strings from a
-// roof, a pole or a child's hand, bobbing and waggling in the wind, with fluttering tails: a thin main tail
-// with bow-tie knots, two fishtailed streamers, and a pennant off each end of the cross spar.
+// Festival kites over Sailtown (pictures 2 and 4): hand-sewn kites in three shapes (the classic diamond,
+// a bowed diamond with round shoulders, a six-sided kite), each in one of four panel layouts, with the
+// spars showing through the cloth, a thin hem in a darker shade of the kite's own colour (no black ink),
+// flying on long sagging strings from a roof, a festival pole or a child's hand, bobbing and waggling in
+// the wind. The tails are what makes them festive: a bow-tie tail (a cord with broad bows knotted along
+// it), two or three broad banded streamers, and tassels at the side points of some kites.
 //
-// FestivalKite is one hero kite (its own string, 4 draw calls + ink on the spars).
-// KiteParade is a whole sky of them, instanced: every kite body, every frame, every tail bundle and every
-// string together cost 4 draw calls, however many kites there are. The kites move on the CPU (a matrix
-// each, cheap for a few hundred) and their cloth and tails ripple in the vertex shader.
+// FestivalKite is one hero kite (its own string; 3 draw calls).
+// KiteParade is a whole sky of them, instanced: every kite body, every tail bundle and every string
+// together cost 3 draw calls however many kites there are. The kites move on the CPU (a matrix each,
+// cheap for a few hundred) and their cloth and tails ripple in the vertex shader.
+//
+// The cloth stays out of the depth buffer (drawn as a sorted transparent so the finish pass does not ink
+// a black outline round it); its own hem draws the edge instead.
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { toon } from '../props';
-import { addOutlines } from '../../render/paint';
 import { shapedToon, ribbonMesh, ribbonUniforms, KiteStrings, type RibbonSpec } from './kiteCloth';
 
 /** Festival colours (red, yellow, blue, orange, and friends) to draw kite palettes from. */
-export const FESTIVAL = ['#d94a3a', '#f2c24a', '#4a7cc8', '#f08a44', '#ee8a78', '#8cc46a', '#e8809a', '#a48ad4', '#5ab4b4'];
+export const FESTIVAL = ['#d94a3a', '#f2c24a', '#4a7cc8', '#f08a44', '#ee8a78', '#8cc46a', '#e8809a', '#a48ad4', '#5ab4b4', '#f6ecd4'];
+
+/** 0 diamond, 1 bowed diamond (round shoulders), 2 six-sided. */
+export type KiteShape = 0 | 1 | 2;
+/** 0 eight wedges, 1 quarters with a diamond inset, 2 bands with a stripe down the spine, 3 a border round a sun. */
+export type KitePattern = 0 | 1 | 2 | 3;
 
 // ---------------------------------------------------------------- the kite's cloth
 
 const KITE_VERT = /* glsl */ `
   uniform float uW, uTop, uBot, uBow, uPhase, uFlut;
-  varying vec2 vK; varying vec3 vA; varying vec3 vB; varying vec3 vCc;
+  varying vec2 vK; varying vec3 vA; varying vec3 vB; varying vec3 vCc; varying vec3 vDd; varying float vPat;
   #ifdef KITE_INST
-    attribute vec3 iColA; attribute vec3 iColB; attribute vec3 iColC; attribute float iSeed;
+    attribute vec3 iColA; attribute vec3 iColB; attribute vec3 iColC; attribute vec3 iColD; attribute float iSeed; attribute vec2 iShape;
   #else
-    uniform vec3 uColA, uColB, uColC; uniform float uSeed;
+    uniform vec3 uColA, uColB, uColC, uColD; uniform float uSeed; uniform vec2 uShape;
   #endif
-  vec3 kite(vec2 c, float seed) {
-    float hw = uW * 0.5 * (c.y > 0.0 ? 1.0 - c.y : 1.0 + c.y);
-    vec3 p = vec3(c.x * hw, c.y > 0.0 ? c.y * uTop : c.y * uBot, 0.0);
+  // half-width of the kite at height c.y (-1 bottom point .. 1 top)
+  float halfW(float y, float shp) {
+    float d = y > 0.0 ? 1.0 - y : 1.0 + y;
+    if (shp < 0.5) return d;
+    if (shp < 1.5) return y > 0.0 ? sqrt(max(0.0, 1.0 - y)) * (1.0 - 0.15 * y) : d;
+    float ay = abs(y);
+    return ay < 0.35 ? 1.0 : mix(1.0, 0.5, (ay - 0.35) / 0.65);
+  }
+  vec3 kite(vec2 c, float seed, float shp) {
+    float hw = uW * 0.5 * halfW(c.y, shp);
+    float top = shp > 1.5 ? uTop * 1.25 : uTop;
+    vec3 p = vec3(c.x * hw, c.y > 0.0 ? c.y * top : c.y * uBot, 0.0);
     // bowed back by the wind between the spars
     p.z -= uBow * (1.0 - c.x * c.x) * (1.0 - c.y * c.y) * (0.85 + 0.15 * sin(uPhase * 0.4 + seed * 5.0));
     // the loose edges shiver
@@ -38,47 +54,74 @@ const KITE_VERT = /* glsl */ `
   }
   void shape(out vec3 P, out vec3 N) {
     #ifdef KITE_INST
-      float seed = iSeed; vA = iColA; vB = iColB; vCc = iColC;
+      float seed = iSeed; vA = iColA; vB = iColB; vCc = iColC; vDd = iColD; vec2 sh = iShape;
     #else
-      float seed = uSeed; vA = uColA; vB = uColB; vCc = uColC;
+      float seed = uSeed; vA = uColA; vB = uColB; vCc = uColC; vDd = uColD; vec2 sh = uShape;
     #endif
     vec2 c = uv;
-    P = kite(c, seed);
-    vec3 du = kite(c + vec2(0.02, 0.0), seed) - P;
-    vec3 dv = kite(c + vec2(0.0, 0.02), seed) - P;
+    P = kite(c, seed, sh.x);
+    vec3 du = kite(c + vec2(0.02, 0.0), seed, sh.x) - P;
+    vec3 dv = kite(c + vec2(0.0, 0.02), seed, sh.x) - P;
     vec3 n = cross(du, dv);
     N = dot(n, n) > 1e-14 ? normalize(n) : vec3(0.0, 0.0, 1.0);
-    vK = c;
+    vK = c; vPat = sh.y;
   }
 `;
 const KITE_FRAG_PARS = /* glsl */ `
-  varying vec2 vK; varying vec3 vA; varying vec3 vB; varying vec3 vCc;
-  uniform float uW, uTop, uBot; uniform vec3 uColD;
+  varying vec2 vK; varying vec3 vA; varying vec3 vB; varying vec3 vCc; varying vec3 vDd; varying float vPat;
+  float band(float d, float w) { float aa = max(fwidth(d), 1e-4); return 1.0 - smoothstep(w - aa, w + aa, d); }
 `;
 const KITE_FRAG = /* glsl */ `
   {
-    vec2 c = vK;
-    // eight patchwork triangles: each quarter split from the middle out to its edge, four colours round
-    float q = (c.x < 0.0 ? 1.0 : 0.0) + (c.y < 0.0 ? 2.0 : 0.0);
-    float hlf = abs(c.x) > abs(c.y) ? 1.0 : 0.0;
-    float k = mod(q * 2.0 + hlf + (q > 1.5 ? 1.0 : 0.0), 4.0);
-    vec3 col = k < 0.5 ? vA : k < 1.5 ? vB : k < 2.5 ? vCc : uColD;
-    // crisp seams along the spars and the diagonals, and a broad bound hem
-    float aaX = max(fwidth(c.x) * 0.8, 1e-4), aaY = max(fwidth(c.y) * 0.8, 1e-4), aaD = max(fwidth(abs(c.x) - abs(c.y)) * 0.8, 1e-4);
-    float seam = max(1.0 - smoothstep(0.014 - aaX, 0.014 + aaX, abs(c.x)), 1.0 - smoothstep(0.014 - aaY, 0.014 + aaY, abs(c.y)));
-    seam = max(seam, 1.0 - smoothstep(0.012 - aaD, 0.012 + aaD, abs(abs(c.x) - abs(c.y))));
-    float edge = min(1.0 - abs(c.x), 1.0 - abs(c.y));
-    float aaE = max(fwidth(edge), 1e-4);
-    float hem = 1.0 - smoothstep(0.075 - aaE, 0.075 + aaE, edge);
-    col = mix(col, vec3(0.97, 0.93, 0.84), hem);
-    float hemLine = 1.0 - smoothstep(0.012 - aaE, 0.012 + aaE, abs(edge - 0.075));
-    col *= 1.0 - max(seam, hemLine) * 0.35;
+    vec2 c = vK; float ax = abs(c.x), ay = abs(c.y);
+    vec3 col = vA; float seam = 0.0;
+    if (vPat < 0.5) {
+      // eight wedges: each quarter split from the middle out, four colours round
+      float q = (c.x < 0.0 ? 1.0 : 0.0) + (c.y < 0.0 ? 2.0 : 0.0);
+      float hlf = ax > ay ? 1.0 : 0.0;
+      float k = mod(q * 2.0 + hlf + (q > 1.5 ? 1.0 : 0.0), 4.0);
+      col = k < 0.5 ? vA : k < 1.5 ? vB : k < 2.5 ? vCc : vDd;
+      seam = band(abs(ax - ay), 0.012);
+    } else if (vPat < 1.5) {
+      // quarters, with a diamond inset where the spars cross
+      col = c.y > 0.0 ? (c.x > 0.0 ? vA : vB) : (c.x > 0.0 ? vB : vA);
+      float dm = ax + ay;
+      if (dm < 0.42) col = vCc;
+      if (dm < 0.2) col = vDd;
+      seam = max(band(abs(dm - 0.42), 0.012), band(abs(dm - 0.2), 0.01));
+    } else if (vPat < 2.5) {
+      // bands across, and a stripe down the spine
+      col = c.y > 0.18 ? vA : c.y > -0.12 ? vB : vCc;
+      if (ax < 0.16) col = vDd;
+      seam = max(band(abs(c.y - 0.18), 0.01), max(band(abs(c.y + 0.12), 0.01), band(abs(ax - 0.16), 0.01)));
+    } else {
+      // a broad border round a sun
+      float edge0 = min(1.0 - ax, 1.0 - ay);
+      col = edge0 < 0.3 ? vB : vA;
+      float r = length(vec2(c.x, c.y * 1.2));
+      if (r < 0.3) col = vCc;
+      if (r < 0.3 && fract(atan(c.y, c.x) * 1.91) < 0.5 && r > 0.18) col = vDd;
+      seam = max(band(abs(edge0 - 0.3), 0.01), band(abs(r - 0.3), 0.01));
+    }
+    // seams along the spars too
+    seam = max(seam, max(band(ax, 0.008), band(ay, 0.008)));
+    vec3 base = col;
+    col *= 1.0 - seam * 0.28;
+    // the spars behind the cloth: a honey line with a soft shadow beside it
+    float spar = max(band(ax, 0.022), band(ay, 0.02));
+    float sparSh = max(band(ax, 0.05), band(ay, 0.045)) - spar;
+    col = mix(col, col * 0.78, sparSh * 0.6);
+    col = mix(col, vec3(0.78, 0.56, 0.3), spar * 0.8);
+    // a thin hem in a darker shade of the kite's own colour (instead of a black outline)
+    float edge = min(1.0 - ax, 1.0 - ay);
+    col = mix(col, base * 0.5, band(edge, 0.035));
+    col = mix(col, base * 0.82, band(abs(edge - 0.07), 0.008));
     diffuseColor.rgb = col;
   }
 `;
 
 function kiteUniforms(w: number, h: number) {
-  return { uW: { value: w }, uTop: { value: h * 0.36 }, uBot: { value: h * 0.64 }, uBow: { value: w * 0.08 }, uPhase: { value: 0 }, uFlut: { value: w * 0.02 }, uColD: { value: new THREE.Color('#f6ecd4') } };
+  return { uW: { value: w }, uTop: { value: h * 0.36 }, uBot: { value: h * 0.64 }, uBow: { value: w * 0.08 }, uPhase: { value: 0 }, uFlut: { value: w * 0.02 } };
 }
 
 /** The kite's cloth grid: uv.x from -1 to 1 across, uv.y from -1 (bottom point) to 1 (top point). */
@@ -95,30 +138,35 @@ function kiteGrid(nx = 8, ny = 12) {
   return g;
 }
 
-/** The two cross spars (on the flyer's side of the cloth, so they show), lashed where they cross. Kite is w wide, h tall. */
-function sparGeometry(w: number, h: number) {
-  const top = h * 0.36, bot = h * 0.64, r = 0.016 * Math.max(1, w);
-  const v = new THREE.CylinderGeometry(r, r, (top + bot) * 0.97, 6); v.translate(0, (top - bot) / 2, 0.025);
-  const x = new THREE.CylinderGeometry(r, r, w * 0.97, 6); x.rotateZ(Math.PI / 2); x.translate(0, 0, 0.045);
-  const k = new THREE.SphereGeometry(r * 2.4, 8, 6); k.translate(0, 0, 0.04);
-  const parts = [v, x, k].map(g => { g.deleteAttribute('uv'); return g; });
-  return mergeGeometries(parts)!;
+/** A kite cloth material: toon, painted, kept out of the depth buffer (its own hem is its outline). */
+function kiteMaterial(key: string, U: Record<string, THREE.IUniform>, inst: boolean) {
+  const { mat, depth } = shapedToon({ key, uniforms: U, vertex: KITE_VERT, fragPars: KITE_FRAG_PARS, fragColor: KITE_FRAG, translucency: 0.55, variation: 0.25 });
+  if (inst) { mat.defines = { ...mat.defines, KITE_INST: '' }; depth.defines = { KITE_INST: '' }; }
+  mat.transparent = true; mat.depthWrite = false;
+  return { mat, depth };
 }
 
-/** Tail ribbons hanging from the bottom point and the cross spar's ends, in kite space (they trail along -Z of their mesh). */
-function tailSpecs(w: number, h: number, colors: string[], seed: number, inst: boolean): RibbonSpec[] {
-  const bot = -h * 0.64, top = h * 0.36;
+/**
+ * Tail ribbons in kite space (they trail along -Z of their mesh, which is turned to hang down the kite):
+ * a bow-tie tail from the bottom point, two or three broad banded streamers, tassels at the side points.
+ */
+function tailSpecs(w: number, h: number, shape: number, colors: string[], seed: number, inst: boolean, streamers = 2, tassels = false): RibbonSpec[] {
+  const bot = -h * 0.64;
   const col = (i: number) => colors[i % colors.length];
-  // the mesh is turned so its -Z hangs down the kite: roots are given in that turned frame (x, -z, y)
   const at = (x: number, y: number): [number, number, number] => [x, 0, y];
-  const th = inst ? 1.6 : 1; // far kites get a little more width so their tails still read
+  const th = inst ? 1.2 : 1;
   const specs: RibbonSpec[] = [
-    { root: at(0, bot), length: h * 2.7, width: 0.03 * th, color: '#f6ecd4', color2: col(0), bows: 6, seed: seed, amp: 0.9, taper: 0.1, slot: 0 },
-    { root: at(0.04, bot), length: h * 1.9, width: 0.06 * th, color: col(1), seed: seed + 0.37, amp: 1.2, taper: 0.5, notch: 1.3, slot: 1 },
-    { root: at(-0.04, bot), length: h * 1.55, width: 0.055 * th, color: col(2), seed: seed + 0.71, amp: 1.3, taper: 0.5, notch: 1.3, slot: 2 },
-    { root: at(w * 0.48, top - h * 0.36), length: h * 0.95, width: 0.035 * th, color: col(1), seed: seed + 1.3, amp: 1.3, taper: 0.4, notch: 1, slot: 1 },
-    { root: at(-w * 0.48, top - h * 0.36), length: h * 0.95, width: 0.035 * th, color: col(2), seed: seed + 1.9, amp: 1.3, taper: 0.4, notch: 1, slot: 2 },
+    // the bow-tie tail: a cord with broad bows knotted along it
+    { root: at(0, bot), length: h * 2.8, width: 0.035 * th * w, color: '#f6ecd4', color2: col(0), bows: 6, seed, amp: 0.85, taper: 0.1, slot: 0 },
+    { root: at(0.05 * w, bot), length: h * 2.1, width: 0.16 * th * w, color: col(1), color2: col(2), stripes: 4, seed: seed + 0.37, amp: 1.1, taper: 0.35, notch: 1.1, slot: 1 },
+    { root: at(-0.05 * w, bot), length: h * 1.7, width: 0.14 * th * w, color: col(2), color2: col(3), stripes: 3, seed: seed + 0.71, amp: 1.25, taper: 0.35, notch: 1.1, slot: 2 },
   ];
+  if (streamers > 2) specs.push({ root: at(0, bot + 0.02), length: h * 1.35, width: 0.09 * th * w, color: col(3), color2: col(0), stripes: 2, seed: seed + 1.13, amp: 1.3, taper: 0.4, notch: 1, slot: 0 });
+  if (tassels) {
+    // the side points: on a six-sided kite the corners of the waist, on a diamond the cross spar's ends
+    const sideY = shape === 2 ? h * 0.36 * 1.25 * 0.35 : 0, sideX = w * 0.5 * 0.97;
+    for (const s of [-1, 1]) for (let i = 0; i < 2; i++) specs.push({ root: at(s * sideX, sideY - i * 0.02), length: h * (0.42 + i * 0.12), width: 0.045 * th * w, color: col(i + (s > 0 ? 1 : 2)), seed: seed + 2 + i * 0.3 + s, amp: 1.4, taper: 0.5, slot: (i + (s > 0 ? 1 : 2)) % 3 });
+  }
   return specs;
 }
 
@@ -129,19 +177,19 @@ const TAIL_TURN = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0
 /** Where a kite flies at time t, and how it is turned: shared by the hero kite and the parade. */
 function kitePose(anchor: THREE.Vector3, height: number, wind: THREE.Vector3, seed: number, t: number, pos: THREE.Vector3, quat: THREE.Quaternion) {
   const side = _a.set(-wind.z, 0, wind.x).normalize();
-  const dist = height * 0.62;
+  const dist = height * (0.5 + 0.25 * Math.abs(Math.sin(seed * 2.3)));
   const sw = Math.sin(t * 0.31 + seed * 4) * 0.7 + Math.sin(t * 0.83 + seed * 9) * 0.3;
   pos.copy(anchor).addScaledVector(wind, dist + Math.sin(t * 0.4 + seed) * height * 0.03)
-    .addScaledVector(side, sw * height * 0.1)
+    .addScaledVector(side, sw * height * 0.1 + Math.sin(seed * 5.1) * height * 0.15)
     .add(_b.set(0, height + Math.sin(t * 0.57 + seed * 3) * height * 0.04 + Math.sin(t * 1.9 + seed) * 0.12, 0));
-  // face upwind towards the flyer, tipped back about 25 degrees (a real kite's angle to the wind), so the
-  // tails hang down and blow back downwind; waggle round the face, and nod
+  // face upwind towards the flyer, tipped back (a real kite's angle to the wind), so the tails hang down
+  // and blow back downwind; waggle round the face and nod, each kite leaning its own way
   _d.copy(pos).addScaledVector(wind, -1).add(_c.set(0, -0.45, 0));
   _m.lookAt(pos, _d, _c.set(0, 1, 0));
   quat.setFromRotationMatrix(_m);
-  // lookAt points -Z at the target; turn round so the kite's face (+Z) looks at it
   quat.multiply(_q2.setFromAxisAngle(_c.set(0, 1, 0), Math.PI));
-  const roll = Math.sin(t * 1.15 + seed * 7) * 0.14 + Math.sin(t * 2.7 + seed * 3) * 0.04 - sw * 0.15;
+  const lean = (((seed * 3.7) % 1) - 0.5) * 0.6;
+  const roll = lean + Math.sin(t * 1.15 + seed * 7) * 0.14 + Math.sin(t * 2.7 + seed * 3) * 0.04 - sw * 0.15;
   const nod = Math.sin(t * 1.6 + seed * 5) * 0.06 - 0.1;
   quat.multiply(_q2.setFromEuler(_e.set(nod, 0, roll)));
 }
@@ -161,14 +209,19 @@ export interface FestivalKiteOpts {
   seed: number;
   /** Kite width in metres (default 1.3; height is 1.4 x width). */
   size?: number;
+  shape?: KiteShape;
+  pattern?: KitePattern;
+  /** Broad streamers in the tail (2 or 3), and tassels at the side points. */
+  streamers?: number;
+  tassels?: boolean;
   /** Horizontal wind direction (default the game's wind). */
   wind?: THREE.Vector3;
 }
 
-/** One diamond kite on its string. root holds the kite (moved every update) and the string. */
+/** One festival kite on its string. root holds the kite (moved every update) and the string. */
 export class FestivalKite {
   root = new THREE.Group();
-  /** The kite itself (cloth, spars, tails), posed every update. */
+  /** The kite itself (cloth, tails), posed every update. */
   kite = new THREE.Group();
   anchor: THREE.Vector3;
   height: number;
@@ -185,17 +238,17 @@ export class FestivalKite {
     this.anchor = opts.anchor.clone(); this.height = opts.height; this.seed = opts.seed;
     this.wind = (opts.wind ?? new THREE.Vector3(1, 0, 0.3)).clone().setY(0).normalize();
     const cols = [...opts.colors, '#f6ecd4', '#f2c24a', '#4a7cc8'].slice(0, 4);
-    this.U = { ...kiteUniforms(w, h), uColA: { value: new THREE.Color(cols[0]) }, uColB: { value: new THREE.Color(cols[1]) }, uColC: { value: new THREE.Color(cols[2]) }, uSeed: { value: opts.seed } };
-    (this.U.uColD.value as THREE.Color).set(cols[3]);
-    const { mat, depth } = shapedToon({ key: 'festkite2', uniforms: this.U, vertex: KITE_VERT, fragPars: KITE_FRAG_PARS, fragColor: KITE_FRAG, translucency: 0.3, variation: 0.2 });
-    const cloth = new THREE.Mesh(kiteGrid(10, 14), mat);
+    const shape = opts.shape ?? 0, pattern = opts.pattern ?? 0;
+    this.U = {
+      ...kiteUniforms(w, h), uColA: { value: new THREE.Color(cols[0]) }, uColB: { value: new THREE.Color(cols[1]) }, uColC: { value: new THREE.Color(cols[2]) },
+      uColD: { value: new THREE.Color(cols[3]) }, uSeed: { value: opts.seed }, uShape: { value: new THREE.Vector2(shape, pattern) },
+    };
+    const { mat, depth } = kiteMaterial('festkite3', this.U, false);
+    const cloth = new THREE.Mesh(kiteGrid(10, 16), mat);
     cloth.customDepthMaterial = depth; cloth.castShadow = true; cloth.userData.noOutline = true;
-    const spars = new THREE.Mesh(sparGeometry(w, h), toon('#6e4a2c'));
-    spars.castShadow = true;
-    addOutlines(spars, '#3a2a2e', 0.006);
-    const tails = ribbonMesh(tailSpecs(w, h, cols, opts.seed, false), this.RU, { seg: 48, key: 'fest' }).mesh;
+    const tails = ribbonMesh(tailSpecs(w, h, shape, cols, opts.seed, false, opts.streamers ?? 2, opts.tassels ?? shape === 2), this.RU, { seg: 48, key: 'fest' }).mesh;
     tails.quaternion.copy(TAIL_TURN);
-    this.kite.add(cloth, spars, tails);
+    this.kite.add(cloth, tails);
     // the string: a gentle sag from the anchor up to the bridle
     this.string = new KiteStrings(1, 24, { alpha: [0.85], width: 0.008, minPx: 1.2, fade: [30, 120] });
     this.root.add(this.kite, this.string.mesh);
@@ -216,7 +269,7 @@ export class FestivalKite {
 
 // ---------------------------------------------------------------- a sky full of kites
 
-export interface ParadeKite { anchor: THREE.Vector3; height: number; colors: string[]; seed: number; size?: number }
+export interface ParadeKite { anchor: THREE.Vector3; height: number; colors: string[]; seed: number; size?: number; shape?: KiteShape; pattern?: KitePattern }
 
 export interface KiteParadeOpts {
   /** Give every kite yourself, or let the parade scatter `count` of them round `center`. */
@@ -225,19 +278,22 @@ export interface KiteParadeOpts {
   center?: THREE.Vector3;
   radius?: number;
   height?: [number, number];
+  /** Kite widths to scatter between (metres). */
+  size?: [number, number];
+  /** Where the scattered strings are tied (roof ridges, poles, hands); scattered round `center` if not given. */
+  anchors?: THREE.Vector3[];
   seed?: number;
   wind?: THREE.Vector3;
   /** Draw the strings (default true). */
   strings?: boolean;
 }
 
-/** Dozens of festival kites with their tails and strings, in four draw calls. */
+/** Dozens of festival kites with their tails and strings, in three draw calls. */
 export class KiteParade {
   root = new THREE.Group();
   kites: ParadeKite[];
   wind: THREE.Vector3;
   private cloth: THREE.InstancedMesh;
-  private spars: THREE.InstancedMesh;
   private tails: THREE.InstancedMesh;
   private strings: KiteStrings | null = null;
   private U: Record<string, THREE.IUniform>;
@@ -252,44 +308,47 @@ export class KiteParade {
     const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
     if (opts.kites) this.kites = opts.kites;
     else {
-      const n = opts.count ?? 30, c = opts.center ?? new THREE.Vector3(), R = opts.radius ?? 60, [h0, h1] = opts.height ?? [12, 34];
+      const n = opts.count ?? 30, c = opts.center ?? new THREE.Vector3(), R = opts.radius ?? 60, [h0, h1] = opts.height ?? [12, 34], [s0, s1] = opts.size ?? [1.2, 3.2];
       this.kites = [];
       for (let i = 0; i < n; i++) {
         const a = rnd() * Math.PI * 2, r = Math.sqrt(rnd()) * R;
         const pick = () => FESTIVAL[Math.floor(rnd() * FESTIVAL.length)];
-        let A = pick(), B = pick(); while (B === A) B = pick();
+        const A = pick(); let B = pick(); while (B === A) B = pick();
         let C = pick(); while (C === A || C === B) C = pick();
-        this.kites.push({ anchor: new THREE.Vector3(c.x + Math.cos(a) * r, c.y + rnd() * 6, c.z + Math.sin(a) * r), height: h0 + rnd() * (h1 - h0), colors: [A, B, C], seed: rnd() * 10, size: 1.8 + rnd() * 1.4 });
+        let D = pick(); while (D === A || D === B || D === C) D = pick();
+        const anchor = opts.anchors?.length ? opts.anchors[i % opts.anchors.length].clone() : new THREE.Vector3(c.x + Math.cos(a) * r, c.y + rnd() * 6, c.z + Math.sin(a) * r);
+        const sz = s0 + Math.pow(rnd(), 1.6) * (s1 - s0);
+        this.kites.push({ anchor, height: h0 + rnd() * (h1 - h0), colors: [A, B, C, D], seed: rnd() * 10, size: sz, shape: Math.floor(rnd() * 3) as KiteShape, pattern: Math.floor(rnd() * 4) as KitePattern });
       }
     }
     const n = this.kites.length, w = KiteParade.W, h = w * 1.4;
     // shared shapes for a 1.3 m kite; each instance scales to its own size
     this.U = kiteUniforms(w, h);
-    const { mat, depth } = shapedToon({ key: 'paradekite2', uniforms: this.U, vertex: KITE_VERT, fragPars: KITE_FRAG_PARS, fragColor: KITE_FRAG, translucency: 0.3, variation: 0.2 });
-    mat.defines = { ...mat.defines, KITE_INST: '' }; depth.defines = { KITE_INST: '' };
+    const { mat, depth } = kiteMaterial('paradekite3', this.U, true);
     const grid = kiteGrid(6, 10);
-    const cA = new Float32Array(n * 3), cB = new Float32Array(n * 3), cC = new Float32Array(n * 3), sd = new Float32Array(n);
+    const cA = new Float32Array(n * 3), cB = new Float32Array(n * 3), cC = new Float32Array(n * 3), cD = new Float32Array(n * 3), sd = new Float32Array(n), shp = new Float32Array(n * 2);
     const col = new THREE.Color();
     this.kites.forEach((k, i) => {
-      col.set(k.colors[0]).toArray(cA, i * 3); col.set(k.colors[1] ?? k.colors[0]).toArray(cB, i * 3); col.set(k.colors[2] ?? '#f6ecd4').toArray(cC, i * 3);
-      sd[i] = k.seed;
+      col.set(k.colors[0]).toArray(cA, i * 3); col.set(k.colors[1] ?? k.colors[0]).toArray(cB, i * 3);
+      col.set(k.colors[2] ?? '#f6ecd4').toArray(cC, i * 3); col.set(k.colors[3] ?? '#f6ecd4').toArray(cD, i * 3);
+      sd[i] = k.seed; shp[i * 2] = k.shape ?? 0; shp[i * 2 + 1] = k.pattern ?? 0;
     });
     const inst = (g: THREE.BufferGeometry) => {
       g.setAttribute('iColA', new THREE.InstancedBufferAttribute(cA, 3));
       g.setAttribute('iColB', new THREE.InstancedBufferAttribute(cB, 3));
       g.setAttribute('iColC', new THREE.InstancedBufferAttribute(cC, 3));
+      g.setAttribute('iColD', new THREE.InstancedBufferAttribute(cD, 3));
       g.setAttribute('iSeed', new THREE.InstancedBufferAttribute(sd, 1));
+      g.setAttribute('iShape', new THREE.InstancedBufferAttribute(shp, 2));
     };
     inst(grid);
     this.cloth = new THREE.InstancedMesh(grid, mat, n);
     this.cloth.customDepthMaterial = depth; this.cloth.castShadow = true; this.cloth.userData.noOutline = true;
-    this.spars = new THREE.InstancedMesh(sparGeometry(w, h), toon('#6e4a2c'), n);
-    this.spars.userData.noOutline = true;
-    const tm = ribbonMesh(tailSpecs(w, h, ['#ffffff'], 0, true), this.RU, { seg: 24, count: n, key: 'parade' });
+    const tm = ribbonMesh(tailSpecs(w, h, 0, ['#ffffff'], 0, true, 3, false), this.RU, { seg: 24, count: n, key: 'parade' });
     this.tails = tm.mesh as THREE.InstancedMesh;
     inst(this.tails.geometry);
-    for (const m of [this.cloth, this.spars, this.tails]) m.frustumCulled = false;
-    this.root.add(this.cloth, this.spars, this.tails);
+    for (const m of [this.cloth, this.tails]) m.frustumCulled = false;
+    this.root.add(this.cloth, this.tails);
     if (opts.strings !== false) {
       // each string a little different: some catch the light, some are lost against the sky
       const alpha = this.kites.map((_, i) => 0.3 + 0.45 * ((i * 0.618) % 1));
@@ -310,13 +369,13 @@ export class KiteParade {
       const sc = (kt.size ?? w) / w;
       kitePose(kt.anchor, kt.height, this.wind, kt.seed, t, this.pos, this.quat);
       _m.compose(this.pos, this.quat, _s.setScalar(sc));
-      this.cloth.setMatrixAt(i, _m); this.spars.setMatrixAt(i, _m);
+      this.cloth.setMatrixAt(i, _m);
       _q.copy(this.quat).multiply(TAIL_TURN);
       _m.compose(this.pos, _q, _s.setScalar(sc));
       this.tails.setMatrixAt(i, _m);
       if (this.strings) this.strings.curve(i, kt.anchor, bridle(this.pos, this.quat, kt.size ?? w, _d), 0.05);
     });
-    this.cloth.instanceMatrix.needsUpdate = true; this.spars.instanceMatrix.needsUpdate = true; this.tails.instanceMatrix.needsUpdate = true;
+    this.cloth.instanceMatrix.needsUpdate = true; this.tails.instanceMatrix.needsUpdate = true;
     this.strings?.commit();
   }
 }

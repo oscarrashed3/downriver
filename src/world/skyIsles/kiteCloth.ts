@@ -30,6 +30,10 @@ export interface ShapedOpts {
   rim?: number;
   /** Shade every triangle flat (crisp facets, like folded paper). */
   flat?: boolean;
+  /** GLSL float (0..1) in the fragment shader: how much of the sun gets through here (spars and seams cast shadow lines). */
+  transmitMask?: string;
+  /** Colour of the light that comes through (default a warm glow). */
+  transmitTint?: string;
 }
 
 /** A toon material with a shader-built shape, and its depth twin for shadows. */
@@ -55,7 +59,7 @@ export function shapedToon(o: ShapedOpts): { mat: THREE.MeshToonMaterial; depth:
           float back = clamp(-dot(nW, uSun), 0.0, 1.0);
           vec3 vW = normalize(vPWorld - cameraPosition);
           float toward = 0.4 + 0.6 * clamp(dot(vW, uSun), 0.0, 1.0);
-          outgoingLight += diffuseColor.rgb * uSunCol * back * toward * ${tr};
+          outgoingLight += diffuseColor.rgb * uSunCol * ${o.transmitTint ?? 'vec3(1.08, 0.94, 0.74)'} * back * toward * ${tr} * (${o.transmitMask ?? '1.0'});
         }
         #include <opaque_fragment>`);
   };
@@ -117,6 +121,7 @@ const RIBBON_VERT = /* glsl */ `
   uniform vec3 uFlow;     // which way the air carries the ribbons (local space, unit)
   uniform vec3 uDroop;    // pulled this way more and more towards the free end (local space; gravity when slow)
   uniform float uLenK;    // reeled in: 1 full length, 0 nothing left
+  uniform float uSwing;   // how far the waves swing side to side (1 = a ribbon, 3 = a big scarf's slow S)
   varying vec2 vRib; varying vec3 vCol2; varying vec3 vStripe;
   vec3 ribCentre(float s, out float tw) {
     float L = aRib.x * uLenK, seed = aRib.y, amp = aRib.z * uAmp;
@@ -131,8 +136,8 @@ const RIBBON_VERT = /* glsl */ `
     vec3 up = normalize(cross(dir, abs(dir.x) > 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
     vec3 sd = cross(up, dir);
     float A = amp * env * min(L, 3.0);
-    c += up * (sin(ph) * 0.75 + sin(ph * 1.7 + 1.3) * 0.25) * A * 0.12;
-    c += sd * sin(ph * 0.61 + seed * 3.1) * A * 0.09;
+    c += up * (sin(ph) * 0.75 + sin(ph * 1.7 + 1.3) * 0.25) * A * 0.12 * uSwing;
+    c += sd * sin(ph * 0.61 + seed * 3.1) * A * 0.09 * uSwing;
     tw = sin(ph * 0.83 + seed * 2.0) * 0.7 * env * amp + (fract(seed) - 0.5) * 0.4;
     return c;
   }
@@ -166,7 +171,7 @@ const RIBBON_VERT = /* glsl */ `
     #endif
   }
 `;
-const RIBBON_FRAG_PARS = /* glsl */ `varying vec2 vRib; varying vec3 vCol2; varying vec3 vStripe;
+const RIBBON_FRAG_PARS = /* glsl */ `varying vec2 vRib; varying vec3 vCol2; varying vec3 vStripe; uniform float uFray;
   #ifdef RIB_INST
     varying vec3 vRibCol;
   #endif`;
@@ -176,6 +181,14 @@ const RIBBON_FRAG = /* glsl */ `
   #endif
   if (vStripe.x > 0.5 && fract(vRib.x * vStripe.x) < 0.5) diffuseColor.rgb = vCol2;
   if (vStripe.z > 0.5) diffuseColor.rgb = vCol2;
+  // torn, frayed ends: strands of uneven length with gaps between them
+  if (uFray > 0.0 && vStripe.z < 0.5) {
+    float st = floor(vRib.y * 7.0);
+    float h = fract(sin(st * 91.7 + 3.3) * 43758.5453);
+    float cut = 1.0 - uFray * (0.12 + 0.88 * h);
+    float gap = abs(fract(vRib.y * 7.0) - 0.5);
+    if (vRib.x > cut || (vRib.x > 1.0 - uFray * 1.15 && gap > 0.34)) discard;
+  }
   // a slightly darker hem along both edges
   float edge = min(vRib.y, 1.0 - vRib.y);
   diffuseColor.rgb *= 0.9 + 0.1 * smoothstep(0.0, 0.15, edge);
@@ -184,7 +197,7 @@ const RIBBON_FRAG = /* glsl */ `
 /** Uniforms one ribbon bundle shares; drive uPhase (and the rest) from the owner's update. */
 export function ribbonUniforms() {
   return {
-    uPhase: { value: 0 }, uAmp: { value: 1 }, uWaveK: { value: 1.6 }, uLenK: { value: 1 },
+    uPhase: { value: 0 }, uAmp: { value: 1 }, uWaveK: { value: 1.6 }, uLenK: { value: 1 }, uSwing: { value: 1 }, uFray: { value: 0 },
     uFlow: { value: new THREE.Vector3(0, 0, -1) }, uDroop: { value: new THREE.Vector3(0, -0.08, 0) },
   };
 }
