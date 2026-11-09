@@ -106,7 +106,13 @@ export function clump(radius: number, color: string, seed: number, squash = 0.8)
   return g;
 }
 
-const LEAF = { oak: ['#5c9a3a', '#68a743', '#5a9440'], round: ['#76b048', '#82b84c', '#6ca845'], poplar: ['#4e8c3a', '#5a963c'], blossom: ['#f2c4d4', '#f6d8e2', '#fff0f2'] };
+// each tree takes one family (deep blue-green, mid green or warm yellow-green), so neighbouring trees read apart
+const LEAF = {
+  oak: [['#4f8a44', '#5a9648', '#4a8040'], ['#5c9a3a', '#68a743', '#5a9440'], ['#6f9e3c', '#7cab44', '#689638']],
+  round: [['#76b048', '#82b84c', '#6ca845'], ['#8cb84e', '#98c258', '#84b04a'], ['#5f9e4a', '#6aa850', '#58944a']],
+  poplar: [['#4e8c3a', '#5a963c']],
+  blossom: [['#f2c4d4', '#f6d8e2', '#fff0f2'], ['#fff2ec', '#fbe4e8', '#ffffff']],
+};
 export type TreeKind = 'oak' | 'round' | 'poplar' | 'blossom';
 const bark = () => toonMat('#7d5c42', 0.6, 0.6);
 
@@ -140,21 +146,24 @@ function limb(from: THREE.Vector3, to: THREE.Vector3, r: number): THREE.Mesh {
 /** A meadow tree of the given kind; scale 1 is a full-grown tree about 5-7 m tall. */
 export function islandTree(kind: TreeKind, rng: () => number, scale = 1): THREE.Group {
   const g = new THREE.Group();
-  const cols = LEAF[kind];
+  const fams = LEAF[kind];
+  const cols = fams[Math.floor(rng() * fams.length)];
   const pick = () => cols[Math.floor(rng() * cols.length)];
   const seed = () => Math.floor(rng() * 99999);
   if (kind === 'oak') {
-    const h = (2.2 + rng() * 1.0) * scale;
-    g.add(trunk(h, 0.34 * scale, rng));
+    const h = (2.0 + rng() * 1.0) * scale;
+    g.add(trunk(h, 0.36 * scale, rng));
     const top = new THREE.Vector3(0, h, 0);
-    const cw = (2.6 + rng() * 0.8) * scale;
-    // limbs out to the main masses of the crown
-    const nl = 3 + Math.floor(rng() * 2);
+    // a broad, lopsided crown: its masses of very different sizes, one side heavier
+    const cw = (2.8 + rng() * 1.2) * scale;
+    const heavy = rng() * TAU;
+    const nl = 4 + Math.floor(rng() * 2);
     for (let i = 0; i < nl; i++) {
       const a = (i / nl) * TAU + rng() * 0.7;
-      const tip = new THREE.Vector3(Math.cos(a) * cw * 0.55, h + (0.8 + rng() * 0.8) * scale, Math.sin(a) * cw * 0.55);
-      g.add(limb(top.clone().add(new THREE.Vector3(0, -0.4 * scale, 0)), tip, 0.14 * scale));
-      const c = clump((1.2 + rng() * 0.45) * scale, pick(), seed(), 0.78);
+      const k = 0.75 + 0.35 * Math.cos(a - heavy);
+      const tip = new THREE.Vector3(Math.cos(a) * cw * 0.58 * k, h + (0.6 + rng() * 1.0) * scale, Math.sin(a) * cw * 0.58 * k);
+      g.add(limb(top.clone().add(new THREE.Vector3(0, -0.4 * scale, 0)), tip, 0.15 * scale));
+      const c = clump((0.95 + rng() * 0.75) * k * scale, pick(), seed(), 0.72);
       c.position.copy(tip).add(new THREE.Vector3(0, 0.4 * scale, 0));
       g.add(c);
     }

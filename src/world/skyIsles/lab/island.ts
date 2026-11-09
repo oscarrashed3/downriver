@@ -1,4 +1,4 @@
-// Lab piece: the floating islands. A hero island (radius 16, a waterfall, a cottage), a tall narrow one, a flat slab,
+// Lab piece: the floating islands. A hero island (radius 16, a 5 m waterfall, a cottage), a tall narrow one, a flat slab,
 // a far one, and floating islets, in a band of painted cumulus round the islands' lower halves (as in picture 1).
 // Views: hero (across the gap, fall to one side), cliff (close on a face), under (looking up), fall (its foot in
 // the clouds), tall (the tall island), far (all of them at scale).
@@ -37,12 +37,14 @@ export default function (ctx: LabCtx): LabPiece {
   const FALL = 1.75;
   const hero = add(buildFloatingIsland({
     seed: 3, radius: 16, wobble: 0.9, cliffDepth: 13, underDepth: 22,
-    waterfalls: [{ angle: FALL, width: 3.4, length: 52 }], trees: 13, flowers: 24, cottages: 1, lobes: 2,
+    waterfalls: [{ angle: FALL, width: 5, length: 52 }], trees: 9, flowers: 8, cottages: 1, lobes: 3,
   }), 0, 0, 0, 0);
   // a tall narrow one (tapering, with deep bays), a flat slab, and a far one
-  add(buildFloatingIsland({ seed: 11, radius: 8.5, wobble: 1.4, cliffDepth: 12, underDepth: 13, taper: 0.28, waterfalls: [{ angle: 2.5, width: 2.0, length: 56 }], trees: 4, flowers: 6 }), 54, 7, -42, 0.3);
-  add(buildFloatingIsland({ seed: 23, radius: 6.5, wobble: 1.0, cliffDepth: 3.5, underDepth: 9, trees: 3, flowers: 4 }), -44, -9, -34, 1.1);
-  add(buildFloatingIsland({ seed: 41, radius: 11, wobble: 0.8, cliffDepth: 7, underDepth: 17, waterfalls: [{ angle: 2.0, width: 2.4, length: 66 }], trees: 7, flowers: 8, cottages: 1 }), 10, 18, -120, 0.6);
+  add(buildFloatingIsland({ seed: 11, radius: 8.5, wobble: 1.4, cliffDepth: 12, underDepth: 13, taper: 0.28, waterfalls: [{ angle: 2.5, width: 2.8, length: 56 }], trees: 4, flowers: 3 }), 54, 7, -42, 0.3);
+  add(buildFloatingIsland({ seed: 23, radius: 6.5, wobble: 1.0, cliffDepth: 3.5, underDepth: 9, trees: 3, flowers: 2 }), -44, -9, -34, 1.1);
+  add(buildFloatingIsland({ seed: 41, radius: 11, wobble: 0.8, cliffDepth: 7, underDepth: 17, waterfalls: [{ angle: 2.0, width: 3.4, length: 66 }], trees: 6, flowers: 4, cottages: 1 }), 10, 18, -120, 0.6);
+  // debug: ?nowater hides the falls, spray and rainbows (to judge the rock behind them)
+  if (ctx.params.has('nowater')) for (const isl of islands) isl.group.traverse(o => { if (o.renderOrder >= 2) o.visible = false; });
   for (const isl of islands) {
     const parts: string[] = [];
     isl.group.traverse(o => { const m = o as THREE.Mesh; if (!m.isMesh) return; const g = m.geometry as THREE.InstancedBufferGeometry; const t = (g.index ? g.index.count : g.attributes.position.count) / 3 * (g.isInstancedBufferGeometry ? g.instanceCount : 1); parts.push((m.name || (m.material as THREE.Material).type) + ':' + Math.round(t)); });
@@ -66,7 +68,8 @@ export default function (ctx: LabCtx): LabPiece {
   cloudSea(scene, -80, -46);
 
   // the close cliff view looks at the hero's wall a quarter turn round from the fall
-  const ca = 2.75, sh = hero.shape;
+  // (on the sun's side, so the light rakes across the strata and the shade side shows at the corners)
+  const ca = 1.05, sh = hero.shape;
   const wy = -5, w = sh.wall(ca, wy);
   const wp = new THREE.Vector3(Math.cos(ca) * w.r, wy, Math.sin(ca) * w.r);
   const out = new THREE.Vector3(Math.cos(ca), 0, Math.sin(ca));
