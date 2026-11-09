@@ -6,6 +6,7 @@ import { orientTo, anyTangent } from '../world/sphere';
 import { clamp, lerp } from '../world/noise';
 import { resolveSolids, deckUnder } from '../world/collide';
 import { Motion } from './motion';
+import { glidePose } from '../world/skyIsles/kiteRider';
 
 export type MoveMode = 'walk' | 'climb' | 'raft' | 'ride' | 'still';
 
@@ -37,6 +38,11 @@ export class Player {
   /** Gliding under the kite (after Tor's gift). */
   canGlide = false;
   gliding = false;
+  /** Sky Isles: 0..1 lying flat on a kite-wing (see world/skyIsles/kiteWing.ts). 0 leaves every pose as it was. */
+  glidePose = 0;
+  /** With glidePose: the wing's bank (radians, + = right wing down) and how steep a dive (0..1). */
+  glideBank = 0;
+  glideDive = 0;
   /** Pose requests from the story and small joys. */
   pose: Partial<PoseInput> = {};
   lookAt: THREE.Vector3 | null = null;
@@ -303,6 +309,7 @@ export class Player {
       });
       this.lastMove.set(0, 0, 0);
     }
+    if (this.glidePose > 0) glidePose(this.person, { k: this.glidePose, bank: this.glideBank, dive: this.glideDive, wind: clamp(sp / 20), t });
     const glow = this.hasDrop ? (0.25 + this.dropGlow * 0.75) * (0.35 + 0.65 * this.warmth) : 0;
     this.lanternLight.intensity = glow * 1.1;
     (this.dropMesh.material as THREE.MeshBasicMaterial).color.setHSL(0.11, 0.95, 0.4 + glow * 0.5);
