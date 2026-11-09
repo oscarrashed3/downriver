@@ -1,30 +1,33 @@
 import * as THREE from 'three';
-import { leafClump } from '../../render/foliage';
 import {
   Kit, T, rng, pick, type Rnd, uvMetres, boxM, archShape, archRing, archTop, ropeGeo, sagLine, clothGrid, wobble, tint, townMat,
-  WALL_TILE, STONE_TILE, WOOD_TILE,
+  CELL, WALL_TILE, STONE_TILE, WOOD_TILE,
 } from './sailtownKit';
-import { roseGeo, hydrangeaGeo, blossomGeo, flowerGeo, type FlowerKind } from './sailtownFlora';
+import { Cards, headCard, plantGeo, PETALS, type FlowerKind } from './sailtownFlora';
+import { addLeafMass, addHydrangeaBush, addRoses, addIvy, climbPath, HYDRANGEA, type WallPoint } from './sailtownGreen';
 
 /**
  * Sailtown, the windfolk village (World 2, Sky Isles): round cream stone cottages under blue scalloped slate,
  * windmills whose lattice sails turn, wind chimes at the doors, laundry and bunting in the wind, the market stall,
- * the arched footbridge, fences, planters, and the golden race gate of the kite-wing race.
+ * the arched footbridge, fences, low stone walls, flagstone lanes, planters, and the golden race gate of the
+ * kite-wing race.
  *
  * Every builder returns a THREE.Group with its static parts merged into one mesh per material (a cottage is about
- * ten draw calls with its ink). Anything that moves sets userData.update(dt, t); cloth (sheets, flags, pennants,
- * awning) moves in the vertex shader and costs nothing per frame. Put everything in a TownAnimator to run it all:
+ * a dozen draw calls with its ink). Anything that moves sets userData.update(dt, t); cloth (sheets, flags, pennants,
+ * awning, streamers) moves in the vertex shader and costs nothing per frame. Put everything in a TownAnimator:
  *
  *   const town = new TownAnimator();
  *   scene.add(town.add(roundCottage({ seed: 3 })));
  *   ...each frame: town.update(dt, t);   when Nilo passes a door: town.ringNear(niloPos, 1.5);
+ *
+ * Meadow, flower beds and trees live in sailtownFlora / sailtownGreen (re-exported at the bottom).
  */
 
 // ---------------------------------------------------------------- palette
 
 export const SAIL = {
   wall: '#f4e8d0', wallWarm: '#f1dfc0', stone: '#e8dbc0', stoneDark: '#cdbb9b',
-  slate: ['#5f7fb0', '#56739f', '#6d8fc0', '#4d6a98', '#7495c2', '#5a77a8'],
+  slate: ['#4e6a94', '#47618a', '#5a759c', '#425a82', '#617ba3', '#536d96', '#3c5480'],
   timber: '#7a5434', timberDark: '#5a3c26', weathered: '#9a7a58', plank: '#a87a4e',
   door: ['#8a5a34', '#7a4e2e', '#94643a'], shutters: ['#c8794a', '#b8693c', '#5d84b4', '#7fa36a'],
   iron: '#3a3238', brass: '#e4b350', silver: '#d8dde4', glass: '#4a6886',
@@ -32,6 +35,27 @@ export const SAIL = {
   roses: ['#f592b4', '#f7b0c6', '#ee7aa2', '#fff4f6', '#f46a86'],
   box: ['#e8475e', '#f07aa0', '#ffffff', '#f2c53d', '#b48ae0'],
   green: ['#5c8c3e', '#4f7f38', '#6b9a46', '#46733a'],
+  /** Flagstones: warm sand and ochre, a step darker than the walls. */
+  flag: ['#dcc49a', '#d2b386', '#e0cba4', '#c9a676', '#d8bc8c', '#cdb48e', '#c4a272'],
+  terracotta: '#c8693f',
+};
+
+/**
+ * Sailtown's light, after picture 2's hazy afternoon: a warm key, cooler but light shadows (never purple), a warm
+ * ground bounce, and a pale warm haze that fades the depth toward the horizon. The world's sky and daylight own the
+ * real values; this is the look the props were tuned under (the lab applies it).
+ */
+export const SAILTOWN_LIGHT = {
+  day: {
+    sun: '#ffefd6', sunIntensity: 2.75, sunDir: [0.5, 0.66, 0.36] as [number, number, number],
+    ambSky: '#b4c4dc', ambSkyK: 0.66, ambGround: '#b8a27e', ambGroundK: 0.42, rim: '#ffe2b0',
+    fog: '#e4e2d6', fogDensity: 0.0062, skyTop: '#7ea6dc', skyHorizon: '#f2ead8',
+  },
+  golden: {
+    sun: '#ffc68a', sunIntensity: 2.5, sunDir: [0.75, 0.2, -0.62] as [number, number, number],
+    ambSky: '#c6b4b0', ambSkyK: 0.62, ambGround: '#b89474', ambGroundK: 0.44, rim: '#ffcf90',
+    fog: '#f0d8b6', fogDensity: 0.006, skyTop: '#76a0dc', skyHorizon: '#ffdcac',
+  },
 };
 
 // ---------------------------------------------------------------- animation
@@ -188,93 +212,135 @@ export function addBasket(kit: Kit, m: THREE.Matrix4, r: Rnd, rad = 0.2, fill?: 
   });
 }
 
-/** Leafy mound with blossoms (flower boxes, foot of walls): leaf cards and bloom heads in one palette. */
+/**
+ * A flower box or wall-foot planting: leafy mounds with blossom cards in one palette, and trailing strands that
+ * spill over the front edge. Built in its own frame (+Z out, y = 0 at the soil).
+ */
 function addBloomMound(kit: Kit, m: THREE.Matrix4, r: Rnd, w: number, d: number, h: number, palette: readonly string[], blooms = 10, trailing = 0) {
   kit.with(m, () => {
-    const nC = Math.max(1, Math.round(w / 0.3));
+    const nC = Math.max(1, Math.round(w / 0.26));
     for (let i = 0; i < nC; i++) {
       const x = -w / 2 + (i + 0.5) * (w / nC);
-      const cl = leafClump({ radius: Math.min(0.24, h * 1.1), color: '#ffffff', cards: 10, squash: 0.7, seed: Math.floor(r() * 9999), core: false });
-      kit.addClump(cl, pick(r, SAIL.green), T(x + (r() - 0.5) * 0.05, h * 0.6, (r() - 0.5) * d * 0.3, 0, r() * 6, 0, 1, 0.8, d / 0.42));
+      addLeafMass(kit, T(x + (r() - 0.5) * 0.05, h * 0.55, (r() - 0.5) * d * 0.2, 0, r() * 6, 0), r, { radius: Math.min(0.2, h * 1.1), squash: 0.7, flat: Math.min(1, d / 0.36), color: pick(r, SAIL.green), size: 0.12, ao: 0.45 });
     }
-    for (let i = 0; i < trailing; i++) {
-      const cl = leafClump({ radius: 0.14, color: '#ffffff', cards: 6, squash: 1.4, seed: Math.floor(r() * 9999), core: false });
-      kit.addClump(cl, pick(r, SAIL.green), T(-w / 2 + r() * w, -0.05 - r() * 0.15, d * 0.45, 0, 0, 0, 1, 1.5, 0.6));
-    }
+    const cs = new Cards();
+    const cells = [CELL.cosmos, CELL.buttercup, CELL.rose, CELL.daisy];
     for (let i = 0; i < blooms; i++) {
-      const c = new THREE.Color(pick(r, palette));
-      kit.add(blossomGeo(c, new THREE.Color('#f2c84a'), 1.5 + r() * 0.6), 'bloom', null,
-        T(-w / 2 + r() * w, h * (0.8 + r() * 0.6), (r() - 0.3) * d * 0.7, -0.5 + r() * 0.3, r() * 6, (r() - 0.5) * 0.6));
+      const c = new THREE.Color(pick(r, palette)).multiplyScalar(0.92 + r() * 0.12);
+      const x = -w / 2 + r() * w, z = (r() - 0.25) * d * 0.7;
+      headCard(cs, new THREE.Vector3(x, h * (0.85 + r() * 0.6), z), 0.06 + r() * 0.04, pick(r, cells), c, 1, 0.5 + r() * 0.5, Math.PI / 2 + (r() - 0.5) * 1.6, r() * 6);
     }
+    // a cascade of small leaves and flowers over the front
+    const trail: WallPoint[] = [];
+    for (let i = 0; i < trailing; i++) {
+      const x = -w / 2 + r() * w;
+      for (let k = 0; k < 3; k++) trail.push({ p: new THREE.Vector3(x + (r() - 0.5) * 0.05, -0.02 - k * 0.11, d * 0.52), n: new THREE.Vector3(0, 0.1, 1).normalize(), s: 0.55 - k * 0.1 });
+    }
+    if (trail.length) addIvy(kit, trail, r, { colors: ['#4f7f38', '#5c8c3e', '#6b9a46'], perPoint: 3 });
+    for (let i = 0; i < trailing * 2; i++) {
+      const c = new THREE.Color(pick(r, palette));
+      headCard(cs, new THREE.Vector3(-w / 2 + r() * w, -0.05 - r() * 0.2, d * 0.56), 0.045 + r() * 0.02, CELL.alyssum, c, 1, 1.3, Math.PI / 2, r() * 6);
+    }
+    kit.add(cs.build(), 'flora', null);
   });
+}
+
+/** A plant prototype with its tint baked into the vertex colours (for merging into a prop instead of instancing). */
+function bakedPlant(kind: Parameters<typeof plantGeo>[0], color: THREE.Color) {
+  const g = plantGeo(kind).clone();
+  const c = g.attributes.color as THREE.BufferAttribute, t = g.attributes.aTint as THREE.BufferAttribute;
+  for (let i = 0; i < c.count; i++) if (t.getX(i) > 0.5) c.setXYZ(i, c.getX(i) * color.r, c.getY(i) * color.g, c.getZ(i) * color.b);
+  return g;
 }
 
 // ---------------------------------------------------------------- slate roof
 
-interface ConeRoof { eaveR: number; y0: number; height: number; seed: number; base?: readonly string[]; tileW?: number; courseH?: number; flare?: number }
+interface ConeRoof {
+  eaveR: number; y0: number; height: number; seed: number; base?: readonly string[]; tileW?: number; courseH?: number;
+  /** 'cone': a straight cone with a soft bell kick at the eaves. 'onion': the bulging windmill cap. */
+  shape?: 'cone' | 'onion';
+  /** How much the eaves kick out (0 = straight cone). */
+  kick?: number;
+  /** The soffit's colour (the underside of the eaves). */
+  soffit?: string;
+}
+
+/** An onion-cap profile r/eaveR against s: bulging out above the curb, then drawing in to a point. */
+const ONION: [number, number][] = [[0, 1], [0.16, 1.13], [0.34, 1.08], [0.52, 0.86], [0.7, 0.55], [0.86, 0.26], [1, 0.03]];
+function onionR(s: number) {
+  const k = Math.min(ONION.length - 2, Math.floor(s * (ONION.length - 1)));
+  const [s0, r0] = ONION[k], [s1, r1] = ONION[k + 1];
+  const p = ONION[Math.max(0, k - 1)][1], q = ONION[Math.min(ONION.length - 1, k + 2)][1];
+  const t = Math.min(1, Math.max(0, (s - s0) / (s1 - s0)));
+  // Catmull-Rom between the profile points
+  return 0.5 * ((2 * r0) + (-p + r1) * t + (2 * p - 5 * r0 + 4 * r1 - q) * t * t + (-p + 3 * r0 - 3 * r1 + q) * t * t * t);
+}
 
 /**
- * A conical roof of layered scalloped slates: courses of round-bottomed tiles, each tile its own shade of blue,
- * the lower edge lifted and given a thickness so every course casts a little step. Under it, a planked soffit.
- * Returns the apex height and the slope functions, so chimneys can sit on it.
+ * A roof of layered scalloped slates: courses of small round-bottomed tiles, each its own shade of blue (with a few
+ * lichened and a few paler ones), the lower edge lifted with a thickness so every course casts a little step.
+ * Under it, a planked soffit. Returns the apex height and the profile, so chimneys and finials can sit on it.
  */
 function slateCone(kit: Kit, o: ConeRoof) {
   const r = rng(o.seed);
   const pal = (o.base ?? SAIL.slate).map(c => new THREE.Color(c));
-  // profile: y rises as k*s + (1-k)*s^2, shallow at the eaves and steeper toward the tip (a soft witch hat);
-  // defined past the eave too (s < 0), where the bottom scallops hang
-  const k = 1 / (o.flare ?? 1.3);
-  const rad = (s: number) => o.eaveR * (1 - s);
-  const yy = (s: number) => o.y0 + o.height * (k * s + (1 - k) * s * s);
-  const dyds = (s: number) => o.height * (k + 2 * (1 - k) * s);
-  const slant = Math.hypot(o.eaveR, o.height);
-  const sMax = 0.9, courseH = o.courseH ?? 0.27, tileW = o.tileW ?? 0.3;
+  const onion = o.shape === 'onion', kick = o.kick ?? 0.5;
+  // profile in s (0 at the eave, 1 at the tip); defined past the eave too (s < 0), where the bottom scallops hang
+  const rad = (s: number) => onion ? o.eaveR * onionR(Math.max(0, s)) + (s < 0 ? -s * o.eaveR : 0) : o.eaveR * (1 - s);
+  const yy = (s: number) => o.y0 + o.height * (onion ? s : s - kick * s * Math.pow(Math.max(0, 1 - s), 4));
+  const eps = 1e-3;
+  const dr = (s: number) => (rad(s + eps) - rad(s - eps)) / (2 * eps), dy = (s: number) => (yy(s + eps) - yy(s - eps)) / (2 * eps);
+  const speed = (s: number) => Math.hypot(dr(s), dy(s));
+  let slant = 0; for (let i = 0; i < 40; i++) slant += speed((i + 0.5) / 40) / 40;
+  const sMax = 0.9, courseH = o.courseH ?? 0.19, tileW = o.tileW ?? 0.22;
   const nC = Math.max(3, Math.round(slant * sMax / courseH));
   const ds = sMax / nC;
-  const thick = 0.045, scallop = 0.075;
+  const thick = 0.035, scallop = 0.055;
   const pos: number[] = [], nor: number[] = [], cl: number[] = [], idx: number[] = [];
-  const P = new THREE.Vector3(), N = new THREE.Vector3(), D = new THREE.Vector3();
-  const normalAt = (th: number, s: number, out: THREE.Vector3) => out.set(Math.sin(th) * dyds(s), o.eaveR, Math.cos(th) * dyds(s)).normalize();
+  const N = new THREE.Vector3(), D = new THREE.Vector3();
+  const normalAt = (th: number, s: number, out: THREE.Vector3) => out.set(Math.sin(th) * dy(s), -dr(s), Math.cos(th) * dy(s)).normalize();
   const pointAt = (th: number, s: number, lift: number, out: THREE.Vector3) => {
     normalAt(th, s, N);
     return out.set(Math.sin(th) * rad(s), yy(s), Math.cos(th) * rad(s)).addScaledVector(N, lift);
   };
-  const K = 4;
+  const lichen = new THREE.Color('#a3aa72'), pale = new THREE.Color('#9fb3cf'), moss = new THREE.Color('#7f9a5a');
+  const K = 3;
   for (let i = 0; i < nC; i++) {
-    const sB = i * ds, sT = Math.min(sMax + 0.03, (i + 1) * ds + ds * 0.5);
+    const sB = i * ds, sT = Math.min(sMax + 0.03, (i + 1) * ds + ds * 0.55);
     const rMid = rad(sB + ds * 0.5);
     const nT = Math.max(6, Math.round((Math.PI * 2 * rMid) / tileW));
     const off = (i % 2) * 0.5 + r() * 0.1;
-    const gap = 0.012 / Math.max(0.2, rMid);
+    const gap = 0.01 / Math.max(0.2, rMid);
+    const sp = speed(sB);
     for (let j = 0; j < nT; j++) {
       const th0 = ((j + off) / nT) * Math.PI * 2 + gap, th1 = ((j + 1 + off) / nT) * Math.PI * 2 - gap;
-      const c = pal[Math.floor(r() * pal.length)].clone().multiplyScalar(0.9 + r() * 0.2);
-      if (r() < 0.07) c.lerp(new THREE.Color('#a9b8c8'), 0.45);          // a weathered pale slate
-      if (r() < 0.04 && i < 3) c.lerp(new THREE.Color('#7f9a5a'), 0.35);  // a touch of moss low down
+      const c = pal[Math.floor(r() * pal.length)].clone().multiplyScalar(0.88 + r() * 0.2);
+      const roll = r();
+      if (roll < 0.05) c.lerp(lichen, 0.4);           // lichen
+      else if (roll < 0.1) c.lerp(pale, 0.38);        // a weathered, paler slate
+      else if (roll < 0.13 && i < 4) c.lerp(moss, 0.3);
       const lipC = c.clone().multiplyScalar(0.55);
-      const liftJ = r() * 0.012, dropJ = (r() - 0.5) * 0.02;
-      const tilt = (r() - 0.5) * 0.2;
+      const liftJ = r() * 0.01, dropJ = (r() - 0.5) * 0.016;
+      const tilt = (r() - 0.5) * 0.24;
       const base = pos.length / 3;
       for (let k = 0; k <= K; k++) {
         const f = k / K, th = th0 + (th1 - th0) * f;
-        const drop = (scallop * Math.sqrt(Math.max(0, 1 - (2 * f - 1) ** 2)) + dropJ) / slant;
-        // top (under the course above), bottom (scalloped, lifted), lip (back down to the roof)
+        const drop = (scallop * Math.sqrt(Math.max(0, 1 - (2 * f - 1) ** 2)) + dropJ) / sp;
         const top = pointAt(th, sT, 0.004, new THREE.Vector3());
         const bot = pointAt(th, sB - drop, thick + liftJ, new THREE.Vector3());
         normalAt(th, sB, N);
         const lip = bot.clone().addScaledVector(N, -thick * 1.1);
         normalAt(th, (sB + sT) / 2, N);
         N.x += Math.cos(th) * tilt; N.z -= Math.sin(th) * tilt; N.normalize();
-        // the lip faces down the slope
-        D.set(Math.sin(th) * o.eaveR, -dyds(sB), Math.cos(th) * o.eaveR).normalize();
+        D.set(-Math.sin(th) * dr(sB), -dy(sB), -Math.cos(th) * dr(sB)).normalize();
         pos.push(top.x, top.y, top.z, bot.x, bot.y, bot.z, lip.x, lip.y, lip.z);
         nor.push(N.x, N.y, N.z, N.x, N.y, N.z, D.x, D.y, D.z);
-        cl.push(c.r * 0.9, c.g * 0.9, c.b * 0.9, c.r, c.g, c.b, lipC.r, lipC.g, lipC.b);
+        cl.push(c.r * 0.86, c.g * 0.86, c.b * 0.88, c.r, c.g, c.b, lipC.r, lipC.g, lipC.b);
       }
       for (let k = 0; k < K; k++) {
         const a = base + k * 3, b = base + (k + 1) * 3;
-        idx.push(a, a + 1, b + 1, a, b + 1, b);              // face
-        idx.push(a + 1, a + 2, b + 2, a + 1, b + 2, b + 1);  // lip
+        idx.push(a, a + 1, b + 1, a, b + 1, b);
+        idx.push(a + 1, a + 2, b + 2, a + 1, b + 2, b + 1);
       }
     }
   }
@@ -283,16 +349,15 @@ function slateCone(kit: Kit, o: ConeRoof) {
   g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
   g.setAttribute('color', new THREE.Float32BufferAttribute(cl, 3));
   g.setIndex(idx);
-  // make the lip faces agree with their downslope normals and the faces with theirs
   kit.add(orient(g), 'slate', null);
-  // a smooth dark cap where the courses meet, and the soffit underneath
+  // a smooth cap where the courses meet, and the soffit underneath
   const capProf: [number, number][] = [];
-  for (let i = 0; i <= 4; i++) { const s = sMax - 0.04 + (1 - sMax + 0.04) * (i / 4); capProf.push([rad(s) + 0.035 * (1 - i / 4) + 0.01, yy(s) + 0.03]); }
+  for (let i = 0; i <= 4; i++) { const s = sMax - 0.04 + (1 - sMax + 0.04) * (i / 4); capProf.push([rad(s) + 0.03 * (1 - i / 4) + 0.01, yy(s) + 0.03]); }
   kit.add(lathe(capProf, 16, 1), 'slate', new THREE.Color(pal[3]).multiplyScalar(0.85));
   const soff: [number, number][] = [];
-  for (let i = 0; i <= 6; i++) { const s = (i / 6) * 0.95; soff.push([rad(s), yy(s) - 0.03]); }
-  kit.add(lathe(soff, 40, WOOD_TILE, false), 'wood', '#8a6446');
-  return { apex: yy(1), rad, yy, slant, nC };
+  for (let i = 0; i <= 8; i++) { const s = (i / 8) * 0.95; soff.push([rad(s), yy(s) - 0.03]); }
+  kit.add(lathe(soff, 40, WOOD_TILE, false), 'wood', o.soffit ?? '#c4a47e');
+  return { apex: yy(1), rad, yy, slant, nC, normalAt };
 }
 
 // ---------------------------------------------------------------- windows and doors
@@ -431,9 +496,14 @@ export interface CottageOpts {
   wall?: string;
   door?: string;
   shutter?: string;
-  /** Number of windows besides the door (1..5). */
+  /** Number of ground-floor windows besides the door (1..5). */
   windows?: number;
+  /** Number of upper-floor windows (0..4). */
+  upperWindows?: number;
   roses?: boolean;
+  /** Rose colours (default pinks and reds). */
+  rosePalette?: readonly string[];
+  ivy?: boolean;
   chimney?: boolean;
   /** Hang wind chimes beside the door. */
   chimes?: boolean;
@@ -441,49 +511,59 @@ export interface CottageOpts {
   vane?: boolean;
   /** Flower-box colours. */
   flowers?: readonly string[];
+  /** Hydrangeas round the footing: a palette from HYDRANGEA, or null for none. */
+  hydrangea?: readonly string[] | null;
 }
 
 /**
- * A round windfolk cottage: a slightly tapered cylinder of cream plaster over stone, a broad cone of blue scalloped
- * slates with a deep overhang on timber rafters, an arched door at +Z with stone steps, shuttered windows with
- * flower boxes, climbing roses, a stone chimney, and optionally wind chimes and a whale weather vane.
- * userData: chimney (top of the flue, local), door (threshold, local), chime (Chime when chimes), radius.
+ * A round windfolk cottage after picture 2: a tall, slightly tapered cylinder of cream plaster over stone, two rows
+ * of shuttered windows (flower boxes below), a broad cone of small blue scalloped slates whose eaves kick out low
+ * and deep over timber rafters, an arched door at +Z with stone steps, rambling roses that climb beside the door,
+ * round the arch and spill along the eave, ivy, hydrangeas at the footing, a stone chimney, and optionally wind
+ * chimes and a whale weather vane.
+ * userData: chimney (top of the flue, local), door (threshold, local), chime (Chime when chimes), radius (eave).
  */
 export function roundCottage(opts: CottageOpts = {}): THREE.Group {
   const seed = opts.seed ?? 1, r = rng(seed);
-  const R = opts.radius ?? 2.3, H = opts.wallHeight ?? 2.9, taper = 0.93, Rt = R * taper;
-  const roofH = opts.roofHeight ?? R * 1.05, over = opts.overhang ?? 0.75;
+  const R = opts.radius ?? 2.3, H = opts.wallHeight ?? R * 1.62, taper = 0.93, Rt = R * taper;
+  const over = opts.overhang ?? 0.55 + R * 0.14;
+  const eaveR = Rt + over;
+  const roofH = opts.roofHeight ?? eaveR * 1.02;
   const lean = Math.atan2(R - Rt, H);
   const rAt = (y: number) => R + (Rt - R) * (y / H);
+  const wallAt = (a: number, y: number, out = 0): WallPoint => ({ p: new THREE.Vector3(Math.sin(a) * (rAt(y) + out), y, Math.cos(a) * (rAt(y) + out)), n: new THREE.Vector3(Math.sin(a), 0, Math.cos(a)) });
   const g = new THREE.Group(); g.name = 'roundCottage';
   const kit = new Kit();
 
   // walls: a lathe with many rows, nudged by noise so it reads hand-built, with the doorway cut out at +Z
-  const dw = 0.98, dh = 2.05;
+  const dw = 0.98, dh = 2.1;
   const prof: [number, number][] = [];
-  for (let i = 0; i <= 12; i++) { const y = 0.3 + (H - 0.3) * (i / 12); prof.push([rAt(y), y]); }
+  for (let i = 0; i <= 16; i++) { const y = 0.3 + (H - 0.3) * (i / 16); prof.push([rAt(y), y]); }
   const doorCut = (a: number, y: number) => { const x = Math.sin(a) * R; return Math.cos(a) > 0 && Math.abs(x) < dw / 2 + 0.05 && y - 0.3 < archTop(dw + 0.1, dh + 0.05, x); };
   const wall = wobble(lathe(prof, 64, WALL_TILE, true, 0, Math.PI * 2, doorCut), 0.022, 2.1, seed);
   kit.add(wall, 'wall', new THREE.Color(opts.wall ?? SAIL.wall).multiplyScalar(0.97 + r() * 0.05));
-  // stone footing, flared
-  kit.add(wobble(lathe([[R + 0.16, -0.1], [R + 0.12, 0.2], [R + 0.04, 0.4]], 40, STONE_TILE), 0.02, 3, seed + 1), 'stone', SAIL.stoneDark);
-  // timber wall plate and rafter tails under the eaves
-  kit.add(lathe([[Rt + 0.05, H - 0.12], [Rt + 0.06, H + 0.06]], 40, WOOD_TILE), 'wood', SAIL.timberDark);
-  const eaveR = Rt + over;
-  const roofY0 = H + 0.02;
-  // the roof
-  const roof = slateCone(kit, { eaveR, y0: roofY0, height: roofH, seed: seed * 7 + 3 });
-  // rafter ends under the soffit, following the slope, and a fascia board round the eave
-  const sWall = 1 - (Rt + 0.05) / eaveR, sEnd = 0.07;
-  const nRaf = Math.round((Math.PI * 2 * Rt) / 0.42);
+  // stone footing, flared, and a string course at the upper floor
+  kit.add(wobble(lathe([[R + 0.16, -0.1], [R + 0.12, 0.2], [R + 0.04, 0.42]], 40, STONE_TILE), 0.02, 3, seed + 1), 'stone', SAIL.stoneDark);
+  const ySc = H * 0.5;
+  kit.add(lathe([[rAt(ySc) + 0.01, ySc - 0.07], [rAt(ySc) + 0.06, ySc - 0.03], [rAt(ySc) + 0.06, ySc + 0.03], [rAt(ySc) + 0.01, ySc + 0.07]], 48, STONE_TILE), 'stone', SAIL.stone);
+
+  // the roof: low, deep eaves; the slope meets the wall top just above it
+  const kick = 0.5;
+  const sWallTop = 1 - Rt / eaveR;
+  const roofY0 = H + 0.05 - roofH * (sWallTop - kick * sWallTop * Math.pow(1 - sWallTop, 4));
+  const roof = slateCone(kit, { eaveR, y0: roofY0, height: roofH, seed: seed * 7 + 3, kick, soffit: '#c8aa84' });
+  // the wall plate, rafter ends under the soffit following the slope, and a fascia round the eave
+  kit.add(lathe([[Rt + 0.03, H - 0.16], [Rt + 0.07, H + 0.04]], 40, WOOD_TILE), 'wood', SAIL.timber);
+  const sEnd = 0.04;
+  const nRaf = Math.round((Math.PI * 2 * Rt) / 0.5);
   for (let i = 0; i < nRaf; i++) {
     const a = (i / nRaf) * Math.PI * 2;
-    const r0 = roof.rad(sWall), r1 = roof.rad(sEnd), y0 = roof.yy(sWall) - 0.09, y1 = roof.yy(sEnd) - 0.09;
+    const r0 = roof.rad(sWallTop), r1 = roof.rad(sEnd), y0 = roof.yy(sWallTop) - 0.08, y1 = roof.yy(sEnd) - 0.08;
     const len = Math.hypot(r0 - r1, y0 - y1);
-    kit.add(boxM(0.07, 0.09, len, WOOD_TILE), 'wood', SAIL.timber,
+    kit.add(boxM(0.08, 0.1, len, WOOD_TILE), 'wood', '#9a7352',
       T(Math.sin(a) * (r0 + r1) / 2, (y0 + y1) / 2, Math.cos(a) * (r0 + r1) / 2, 0, a, 0).multiply(T(0, 0, 0, Math.atan2(y0 - y1, r1 - r0), 0, 0)));
   }
-  kit.add(lathe([[eaveR - 0.03, roofY0 - 0.14], [eaveR - 0.01, roofY0 + 0.02]], 48, WOOD_TILE), 'wood', SAIL.timberDark);
+  kit.add(lathe([[eaveR - 0.03, roofY0 - 0.12], [eaveR - 0.01, roofY0 + 0.02]], 56, WOOD_TILE), 'wood', SAIL.timber);
   // finial: a turned wooden knob and a brass ball
   kit.add(postGeo(0.04, 0.07, 0.35), 'wood', SAIL.timberDark, T(0, roof.apex + 0.12, 0));
   kit.add(new THREE.SphereGeometry(0.08, 10, 8), 'brass', SAIL.brass, T(0, roof.apex + 0.34, 0));
@@ -492,78 +572,100 @@ export function roundCottage(opts: CottageOpts = {}): THREE.Group {
   addDoor(kit, T(0, 0.3, rAt(1.3) - 0.04, -lean, 0, 0), r, { w: dw, h: dh, color: opts.door ?? pick(r, SAIL.door) });
   g.userData.door = new THREE.Vector3(0, 0, R + 0.6);
 
-  // windows round the wall, never over the door
+  // windows: a ground-floor row with flower boxes, and a smaller upper row between them, never over the door
   const shutter = opts.shutter ?? pick(r, SAIL.shutters);
   const nWin = Math.max(0, Math.min(5, opts.windows ?? 3));
-  const winAngles = [0.95, -1.05, 2.1, -2.2, Math.PI].slice(0, nWin);
+  const winAngles = [1.0, -1.05, 2.15, -2.2, Math.PI].slice(0, nWin);
   winAngles.forEach((a, i) => {
-    const y = 1.25, wy = y + 0.6;
+    const y = 1.0, wy = y + 0.45;
     const m = T(Math.sin(a) * (rAt(wy) - 0.03), y, Math.cos(a) * (rAt(wy) - 0.03), 0, a, 0).multiply(T(0, 0, 0, -lean, 0, 0));
-    addWindow(kit, m, r, { w: 0.68, h: 0.86, shutter, box: i < 3 ? (opts.flowers ?? SAIL.box) : null, arched: i % 2 === 1 });
+    addWindow(kit, m, r, { w: 0.66, h: 0.84, shutter, box: i < 3 ? (opts.flowers ?? SAIL.box) : null, arched: i % 2 === 1 });
+  });
+  const nUp = Math.max(0, Math.min(4, opts.upperWindows ?? 3));
+  const upAngles = [0.55, -0.6, 1.6, -1.65].slice(0, nUp);
+  const yUp = Math.min(H * 0.56 + 0.1, roofY0 - 0.85);
+  upAngles.forEach((a, i) => {
+    const wy = yUp + 0.35;
+    const m = T(Math.sin(a) * (rAt(wy) - 0.03), yUp, Math.cos(a) * (rAt(wy) - 0.03), 0, a, 0).multiply(T(0, 0, 0, -lean, 0, 0));
+    addWindow(kit, m, r, { w: 0.52, h: 0.66, shutter, box: i === 0 ? (opts.flowers ?? SAIL.box) : null, arched: i % 2 === 0 });
   });
 
-  // chimney through the back slope
+  // chimney through the slope, on the side away from the door
   if (opts.chimney !== false) {
-    const ca = 2.55 + r() * 0.4, s = 0.42;
-    const cr = roof.rad(s) - 0.15, cy = roof.yy(s);
-    const ch = 1.5;
-    const cm = T(Math.sin(ca) * cr, cy - 0.5 + ch / 2, Math.cos(ca) * cr, 0, ca, 0);
+    const ca = 2.2 + r() * 1.6, s = 0.4;
+    const cr = roof.rad(s) - 0.12, cy = roof.yy(s);
+    const ch = 1.7;
+    const cm = T(Math.sin(ca) * cr, cy - 0.55 + ch / 2, Math.cos(ca) * cr, 0, ca, 0);
     kit.with(cm, () => {
-      const cg = wobble(boxM(0.6, ch, 0.6, STONE_TILE), 0.0, 1, 0);
-      kit.add(cg, 'stone', SAIL.stone);
-      kit.add(boxM(0.76, 0.1, 0.76, STONE_TILE), 'stone', SAIL.stoneDark, T(0, ch / 2 + 0.05, 0));
-      kit.add(new THREE.CylinderGeometry(0.11, 0.13, 0.26, 8), 'plain', '#b8653f', T(0.1, ch / 2 + 0.22, 0.05));
-      kit.add(new THREE.CylinderGeometry(0.09, 0.11, 0.2, 8), 'plain', '#a85a38', T(-0.14, ch / 2 + 0.19, -0.08));
+      kit.add(wobble(boxM(0.62, ch, 0.62, STONE_TILE), 0.012, 4, seed), 'stone', SAIL.stone);
+      kit.add(boxM(0.8, 0.1, 0.8, STONE_TILE), 'stone', SAIL.stoneDark, T(0, ch / 2 + 0.05, 0));
+      kit.add(boxM(0.7, 0.06, 0.7, STONE_TILE), 'stone', SAIL.stoneDark, T(0, ch * 0.18, 0));
+      kit.add(new THREE.CylinderGeometry(0.11, 0.13, 0.28, 8), 'plain', '#b8653f', T(0.1, ch / 2 + 0.24, 0.05));
+      kit.add(new THREE.CylinderGeometry(0.09, 0.11, 0.2, 8), 'plain', '#a85a38', T(-0.14, ch / 2 + 0.2, -0.08));
     });
-    g.userData.chimney = new THREE.Vector3(Math.sin(ca) * cr + 0.1, cy - 0.5 + ch + 0.4, Math.cos(ca) * cr);
+    g.userData.chimney = new THREE.Vector3(Math.sin(ca) * cr + 0.1, cy - 0.55 + ch + 0.45, Math.cos(ca) * cr);
   }
 
-  // climbing roses: up one side of the door, over the arch, and spilling along the eave
+  // rambling roses: up one side of the door, round the arch, along under the eave, and over the eave's edge
   const roseSide = r() > 0.5 ? 1 : -1;
   if (opts.roses !== false) {
-    const side = roseSide;
-    const path: [number, number][] = [];   // [angle, y]
-    const a0 = side * (dw / 2 + 0.35) / R;
-    for (let y = 0.35; y < H - 0.1; y += 0.28) path.push([a0 + Math.sin(y * 2.3) * 0.05, y]);
-    for (let k = 1; k <= 4; k++) path.push([a0 - side * k * 0.13, dh + 0.42 + Math.sin(k) * 0.08]);
-    for (let k = 1; k <= 4; k++) path.push([a0 + side * k * 0.16, H - 0.15 - (k % 2) * 0.1]);
-    for (const [a, y] of path) {
-      const rr = rAt(y) + 0.06;
-      const m = T(Math.sin(a) * rr, y, Math.cos(a) * rr, 0, a, 0);
-      const cl = leafClump({ radius: 0.24 + r() * 0.1, color: '#ffffff', cards: 11, squash: 0.85, seed: Math.floor(r() * 9999), core: false });
-      kit.addClump(cl, pick(r, SAIL.green), m.clone().multiply(T(0, 0, 0, 0, 0, r() * 3, 1, 1, 0.5)));
-      const rc = new THREE.Color(pick(r, SAIL.roses.slice(0, 3)));
-      for (let i = 0; i < 4; i++) {
-        kit.add(roseGeo(rc.clone().multiplyScalar(0.92 + r() * 0.16), 1.0 + r() * 0.5), 'bloom', null,
-          m.clone().multiply(T((r() - 0.5) * 0.4, (r() - 0.5) * 0.4, 0.1 + r() * 0.06, Math.PI / 2 - 0.3 + r() * 0.4, 0, r() * 6)));
-      }
+    const side = roseSide, pts: WallPoint[] = [];
+    const a0 = side * (dw / 2 + 0.3) / R;
+    for (let y = 0.45; y < dh + 0.1; y += 0.3) pts.push({ ...wallAt(a0 + Math.sin(y * 2.3) * 0.04, y, 0.02), s: 1.0 + (y < 1 ? 0.15 : 0) });
+    // round the arch: from the rose side over the top to the far shoulder
+    for (let k = 0; k <= 6; k++) {
+      const t = k / 6, ang = side > 0 ? t * Math.PI * 0.9 : Math.PI - t * Math.PI * 0.9;
+      const ax = Math.cos(ang) * (dw / 2 + 0.24), ay = 0.3 + dh - dw / 2 + Math.sin(ang) * (dw / 2 + 0.24);
+      pts.push({ ...wallAt(ax / R, ay, 0.03), s: 0.85 });
+    }
+    // up to the eave beside the door, then spreading along the wall top under the eave
+    const yTop = Math.min(H - 0.35, roofY0 + 0.55);
+    for (let y = dh + 0.4; y < yTop; y += 0.26) pts.push({ ...wallAt(a0 + 0.03 * side, y, 0.02), s: 0.95 });
+    for (let k = 1; k <= 6; k++) {
+      if (r() < k * 0.07) continue;
+      for (const dir of [1, -0.7]) pts.push({ ...wallAt(a0 + side * dir * k * 0.15, yTop - 0.12 - r() * 0.35 * (k / 6), 0.02), s: 0.95 - k * 0.07 });
+    }
+    // draped over the eave's edge where the climber meets it: masses laid on the slates, leaning out
+    for (let k = -2; k <= 3; k++) {
+      const a = a0 + side * k * 0.17, s = 0.02 + r() * 0.05;
+      const p = new THREE.Vector3(Math.sin(a) * roof.rad(s), roof.yy(s) + 0.02, Math.cos(a) * roof.rad(s));
+      const n = roof.normalAt(a, s, new THREE.Vector3()).lerp(new THREE.Vector3(Math.sin(a), -0.1, Math.cos(a)), 0.55).normalize();
+      pts.push({ p, n, s: 0.8 });
+    }
+    addRoses(kit, pts, r, { palette: opts.rosePalette, blooms: 9 });
+  }
+  // ivy climbing the back and one side
+  if (opts.ivy !== false) {
+    for (let k = 0; k < 2; k++) {
+      const a0 = (k === 0 ? Math.PI : -roseSide * 1.55) + (r() - 0.5) * 0.4;
+      const main = climbPath(r, a0, 0.4, H * (0.55 + r() * 0.35), 0.22, 0.1, (a, y) => ({ ...wallAt(a, y, 0.01), s: 1.1 - y / H * 0.4 }));
+      const spur = climbPath(r, a0 + 0.25, 0.3, H * 0.4, 0.22, 0.15, (a, y) => ({ ...wallAt(a, y, 0.01), s: 0.9 }));
+      addIvy(kit, [...main, ...spur], r, { perPoint: 6 });
     }
   }
-  // flowering bushes round the footing (not in front of the door)
-  for (let i = 0; i < 6; i++) {
-    const a = (i / 6) * Math.PI * 2 + 0.6 + r() * 0.3;
-    if (Math.abs(Math.atan2(Math.sin(a), Math.cos(a))) < 0.45) continue;
-    const m = T(Math.sin(a) * (R + 0.25), 0.25, Math.cos(a) * (R + 0.25), 0, a, 0);
-    const cl = leafClump({ radius: 0.42 + r() * 0.15, color: '#ffffff', cards: 14, squash: 0.75, seed: Math.floor(r() * 9999), core: false });
-    kit.addClump(cl, pick(r, SAIL.green), m);
-    const fc = new THREE.Color(pick(r, ['#f07aa0', '#ffffff', '#b48ae0', '#f6a2bf']));
-    for (let k = 0; k < 7; k++) kit.add(blossomGeo(fc.clone().multiplyScalar(0.9 + r() * 0.2), undefined, 1.2), 'bloom', null,
-      m.clone().multiply(T((r() - 0.5) * 0.7, 0.05 + r() * 0.35, 0.15 + r() * 0.25, -0.7 + r() * 0.5, 0, (r() - 0.5))));
+  // hydrangeas and leafy bushes round the footing (never in front of the door)
+  const hyd = opts.hydrangea === undefined ? pick(r, [HYDRANGEA.blue, HYDRANGEA.violet, HYDRANGEA.pink]) : opts.hydrangea;
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2 + 0.5 + r() * 0.3;
+    if (Math.abs(Math.atan2(Math.sin(a), Math.cos(a))) < 0.5) continue;
+    const m = T(Math.sin(a) * (R + 0.3), 0, Math.cos(a) * (R + 0.3), 0, a, 0);
+    if (hyd && i % 2 === 0) addHydrangeaBush(kit, m, r, { radius: 0.42 + r() * 0.12, palette: hyd });
+    else addLeafMass(kit, m.clone().multiply(T(0, 0.3, 0)), r, { radius: 0.42 + r() * 0.14, squash: 0.75, color: pick(r, SAIL.green), ao: 0.45 });
   }
 
   // chime bracket beside the door
   if (opts.chimes !== false) {
-    const ca = -roseSide * (dw / 2 + 0.55) / R, cy = 2.45;   // on the side away from the roses
+    const ca = -roseSide * (dw / 2 + 0.55) / R, cy = 2.55;   // on the side away from the roses
     const rr = rAt(cy);
     const bm = T(Math.sin(ca) * rr, cy, Math.cos(ca) * rr, 0, ca, 0);
     kit.with(bm, () => {
-      kit.add(new THREE.BoxGeometry(0.035, 0.035, 0.42), 'plain', SAIL.iron, T(0, 0, 0.21));
-      kit.add(new THREE.BoxGeometry(0.03, 0.3, 0.03), 'plain', SAIL.iron, T(0, -0.12, 0.04, -0.75, 0, 0));
-      kit.add(new THREE.TorusGeometry(0.05, 0.008, 4, 10), 'plain', SAIL.iron, T(0, 0.0, 0.32, 0, Math.PI / 2, 0));
-      kit.add(new THREE.BoxGeometry(0.12, 0.2, 0.03), 'plain', SAIL.iron, T(0, 0, 0.0));
+      kit.add(new THREE.BoxGeometry(0.04, 0.04, 0.55), 'plain', SAIL.iron, T(0, 0, 0.27));
+      kit.add(new THREE.BoxGeometry(0.035, 0.38, 0.035), 'plain', SAIL.iron, T(0, -0.15, 0.06, -0.75, 0, 0));
+      kit.add(new THREE.TorusGeometry(0.06, 0.01, 4, 10), 'plain', SAIL.iron, T(0, 0.0, 0.42, 0, Math.PI / 2, 0));
+      kit.add(new THREE.BoxGeometry(0.14, 0.24, 0.03), 'plain', SAIL.iron, T(0, 0, 0.0));
     });
-    const chimes = doorChimes({ seed: seed + 5, tubes: 6 });
-    chimes.position.set(Math.sin(ca) * (rr + 0.4), cy - 0.02, Math.cos(ca) * (rr + 0.4));
+    const chimes = doorChimes({ seed: seed + 5, tubes: 7, size: 1.5 });
+    chimes.position.set(Math.sin(ca) * (rr + 0.5), cy - 0.02, Math.cos(ca) * (rr + 0.5));
     chimes.rotation.y = ca;
     g.add(chimes);
     g.userData.chime = chimes.userData.chime;
@@ -576,7 +678,9 @@ export function roundCottage(opts: CottageOpts = {}): THREE.Group {
     v.position.set(0, roof.apex + 0.42, 0);
     g.add(v);
   }
-  g.userData.radius = R + over;
+  g.userData.radius = eaveR;
+  g.userData.wallRadius = R;
+  g.userData.eaveY = roofY0;
   g.userData.tris = kit.tris;
   return g;
 }
@@ -620,7 +724,8 @@ export class Chime {
   root: THREE.Group;
   energy = 0;
   onStrike: ((tube: number, volume: number) => void) | null = null;
-  private tubes: THREE.InstancedMesh;
+  /** Each tube's mesh and instance slot (a set may mix metals, one InstancedMesh each). */
+  private slots: [THREE.InstancedMesh, number][];
   private body: THREE.Group;
   private n: number;
   private attach: THREE.Vector3[] = [];
@@ -635,8 +740,9 @@ export class Chime {
   private swing: number;
 
   /** calm scales the idle sway in the breeze; swing scales how far a ring throws the tubes. */
-  constructor(root: THREE.Group, body: THREE.Group, tubes: THREE.InstancedMesh, attach: THREE.Vector3[], len: number[], seed: number, calm = 1, swing = 1) {
-    this.root = root; this.body = body; this.tubes = tubes; this.n = attach.length; this.attach = attach; this.len = len; this.calm = calm; this.swing = swing;
+  constructor(root: THREE.Group, body: THREE.Group, tubes: THREE.InstancedMesh | [THREE.InstancedMesh, number][], attach: THREE.Vector3[], len: number[], seed: number, calm = 1, swing = 1) {
+    this.root = root; this.body = body; this.n = attach.length; this.attach = attach; this.len = len; this.calm = calm; this.swing = swing;
+    this.slots = Array.isArray(tubes) ? tubes : attach.map((_, i) => [tubes, i] as [THREE.InstancedMesh, number]);
     const r = rng(seed);
     for (let i = 0; i < this.n; i++) { this.phase.push(r() * 6.28); this.nextStrike.push(0); }
   }
@@ -655,13 +761,14 @@ export class Chime {
       this.e.set(ax, 0, az); this.q.setFromEuler(this.e);
       this.s.set(1, this.len[i] / 0.3, 1);
       this.m.compose(this.attach[i], this.q, this.s);
-      this.tubes.setMatrixAt(i, this.m);
+      const [mesh, slot] = this.slots[i];
+      mesh.setMatrixAt(slot, this.m);
       if (this.energy > 0.12 && t > this.nextStrike[i]) {
         this.nextStrike[i] = t + 0.18 + Math.random() * 0.5 / E;
         this.onStrike?.(i, Math.min(1, E * 0.5));
       }
     }
-    this.tubes.instanceMatrix.needsUpdate = true;
+    for (const [mesh] of this.slots) mesh.instanceMatrix.needsUpdate = true;
   }
 }
 
@@ -705,12 +812,16 @@ export function doorChimes(opts: ChimeOpts = {}): THREE.Group {
   kit.add(new THREE.ConeGeometry(discR * 0.6, 0.06 * S, 12), 'wood', SAIL.timberDark, T(0, discY + 0.045 * S, 0));
   // clapper and wind sail on a long cord through the middle
   const clY = discY - 0.26 * S;
-  kit.add(new THREE.CylinderGeometry(0.003, 0.003, 0.62 * S, 3), 'plain', '#3a3238', T(0, discY - 0.31 * S, 0));
+  kit.add(new THREE.CylinderGeometry(0.004, 0.004, 0.72 * S, 3), 'plain', '#3a3238', T(0, discY - 0.36 * S, 0));
   kit.add(new THREE.CylinderGeometry(0.045 * S, 0.045 * S, 0.02 * S, 10), 'wood', SAIL.plank, T(0, clY, 0));
   const tas = opts.tassel ?? '#d8443a';
-  kit.add(new THREE.BoxGeometry(0.09 * S, 0.14 * S, 0.008), 'plain', tas, T(0, discY - 0.6 * S, 0));
-  kit.add(new THREE.ConeGeometry(0.03 * S, 0.14 * S, 6).rotateX(Math.PI), 'plain', tas, T(0, discY - 0.74 * S, 0));
-  kit.add(new THREE.SphereGeometry(0.018 * S, 6, 4), 'brass', SAIL.brass, T(0, discY - 0.66 * S, 0));
+  // a paper wind-sail, a brass bead, a knot and a long thread tassel
+  kit.add(new THREE.BoxGeometry(0.12 * S, 0.2 * S, 0.008), 'plain', '#f6efe2', T(0, discY - 0.52 * S, 0));
+  kit.add(new THREE.BoxGeometry(0.12 * S, 0.035 * S, 0.01), 'plain', tas, T(0, discY - 0.44 * S, 0));
+  kit.add(new THREE.SphereGeometry(0.028 * S, 8, 6), 'brass', SAIL.brass, T(0, discY - 0.66 * S, 0));
+  kit.add(new THREE.SphereGeometry(0.03 * S, 8, 6), 'plain', tas, T(0, discY - 0.71 * S, 0, 0, 0, 0, 1, 0.8, 1));
+  kit.add(new THREE.CylinderGeometry(0.02 * S, 0.045 * S, 0.22 * S, 10, 1, true), 'plain', tas, T(0, discY - 0.84 * S, 0));
+  kit.add(new THREE.CylinderGeometry(0.035 * S, 0.035 * S, 0.02 * S, 10), 'brass', SAIL.brass, T(0, discY - 0.74 * S, 0));
   kit.build(body, { outline: false });
   // tubes
   const metal = opts.metal ?? 'silver';
@@ -747,11 +858,57 @@ export interface WindmillOpts {
   /** A wooden gallery round the tower. */
   gallery?: boolean;
   shutter?: string;
+  ivy?: boolean;
 }
 
 /**
- * A windmill: a tall tapered tower of cream plaster, small shuttered windows climbing it, an arched door, a gallery,
- * a slate cap, and four lattice sails with canvas that turn (userData.update). userData.rotor is the turning group.
+ * Canvas for one sail: a grid of panels between the bars, bellied between each pair of bars, with seams (darker rows at
+ * every bar, darker columns between the cloths) and a patch or two in an older cloth. x across the frame, y along.
+ */
+function sailCanvas(r: Rnd, x0: number, x1: number, y0: number, y1: number, bars: number[], patchK = 1) {
+  const pos: number[] = [], nor: number[] = [], uvs: number[] = [], cl: number[] = [], idx: number[] = [];
+  const cols = 4, rowsPer = 2;
+  const base = [new THREE.Color('#f3ead6'), new THREE.Color('#ece0c8')];
+  const patches: [number, number, number, number, THREE.Color][] = [];
+  for (let i = 0; i < patchK; i++) {
+    const py = y0 + r() * (y1 - y0) * 0.8, pc = Math.floor(r() * cols);
+    patches.push([pc, py, py + 0.35 + r() * 0.4, 0, new THREE.Color(pick(r, ['#ddc9a2', '#d8b48e', '#e3d3b0']))]);
+  }
+  const ys: number[] = [y0, ...bars.filter(b => b > y0 + 0.05 && b < y1 - 0.05), y1];
+  for (let b = 0; b < ys.length - 1; b++) for (let k = 0; k < rowsPer; k++) {
+    const ya = ys[b] + (ys[b + 1] - ys[b]) * (k / rowsPer), yb = ys[b] + (ys[b + 1] - ys[b]) * ((k + 1) / rowsPer);
+    for (let c = 0; c < cols; c++) {
+      const xa = x0 + (x1 - x0) * (c / cols), xb = x0 + (x1 - x0) * ((c + 1) / cols);
+      let col = base[c % 2].clone();
+      const ym = (ya + yb) / 2;
+      for (const [pc, p0, p1, , pcol] of patches) if (pc === c && ym > p0 && ym < p1) col = pcol.clone();
+      const v = pos.length / 3;
+      for (const [x, y] of [[xa, ya], [xb, ya], [xb, yb], [xa, yb]]) {
+        const u = (x - x0) / (x1 - x0), t = (y - ys[b]) / (ys[b + 1] - ys[b]);
+        const z = 0.1 * Math.sin(u * Math.PI) * Math.pow(Math.sin(t * Math.PI), 0.6);
+        pos.push(x, y, z); nor.push(0, 0, 1); uvs.push(x, y);
+        // seams: darker at the bars and the cloth joins
+        const seam = (t < 0.02 || t > 0.98 ? 0.86 : 1) * (Math.abs(u * cols - Math.round(u * cols)) < 0.02 ? 0.88 : 1);
+        cl.push(col.r * seam, col.g * seam, col.b * seam);
+      }
+      idx.push(v, v + 1, v + 2, v, v + 2, v + 3);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(cl, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
+/**
+ * A windmill: a tall tapered tower of cream plaster with windows climbing it, an arched door under a little slate
+ * hood, a gallery, a slate onion cap with a tail pole down to the gallery, and four open lattice sails (whips, sail
+ * bars and hemlaths) whose canvas is only partly spread, two of them furled and tied (userData.update turns them).
+ * userData.rotor is the turning group.
  */
 export function windmill(opts: WindmillOpts = {}): THREE.Group {
   const seed = opts.seed ?? 1, r = rng(seed);
@@ -772,21 +929,29 @@ export function windmill(opts: WindmillOpts = {}): THREE.Group {
   });
   kit.add(wobble(lathe(prof, 72, WALL_TILE, true, 0, Math.PI * 2, cut), 0.025, 1.7, seed), 'wall', new THREE.Color(SAIL.wall).multiplyScalar(0.98 + r() * 0.04));
   kit.add(wobble(lathe([[R + 0.2, -0.1], [R + 0.15, 0.25], [R + 0.03, 0.45]], 36, STONE_TILE), 0.02, 3, seed), 'stone', SAIL.stoneDark);
-  // a stone string course two-thirds up, and the cap curb
-  const yc = H * 0.62;
-  kit.add(lathe([[rAt(yc) + 0.02, yc - 0.1], [rAt(yc) + 0.09, yc - 0.04], [rAt(yc) + 0.09, yc + 0.05], [rAt(yc) + 0.02, yc + 0.1]], 36, STONE_TILE), 'stone', SAIL.stone);
-  kit.add(lathe([[Rt + 0.02, H - 0.15], [Rt + 0.14, H - 0.05], [Rt + 0.14, H + 0.12]], 36, WOOD_TILE), 'wood', SAIL.timberDark);
-  // door and windows
+  // stone string courses, and the cap curb
+  for (const yc of [H * 0.25, H * 0.62, H * 0.86]) kit.add(lathe([[rAt(yc) + 0.02, yc - 0.08], [rAt(yc) + 0.08, yc - 0.03], [rAt(yc) + 0.08, yc + 0.04], [rAt(yc) + 0.02, yc + 0.08]], 36, STONE_TILE), 'stone', SAIL.stone);
+  kit.add(lathe([[Rt + 0.02, H - 0.2], [Rt + 0.16, H - 0.08], [Rt + 0.16, H + 0.14]], 36, WOOD_TILE), 'wood', SAIL.timberDark);
+  // door, its slate hood on brackets, and windows climbing the tower
   addDoor(kit, T(0, 0.35, rAt(1.3) - 0.04, -lean, 0, 0), r, { w: 0.95, h: 1.95, color: pick(r, SAIL.door) });
+  kit.with(T(0, 2.62, rAt(2.6), 0, 0, 0), () => {
+    for (const s of [-1, 1]) kit.add(boxM(0.07, 0.07, 0.62, WOOD_TILE), 'wood', SAIL.timber, T(s * 0.62, -0.16, 0.24, 0.55, 0, 0));
+    kit.add(boxM(1.55, 0.06, 0.8, WOOD_TILE), 'wood', SAIL.timber, T(0, 0, 0.36, 0.42, 0, 0));
+    for (let k = 0; k < 4; k++) for (let j = 0; j < 7; j++) {
+      const c = new THREE.Color(pick(r, SAIL.slate)).multiplyScalar(0.9 + r() * 0.2);
+      kit.add(new THREE.BoxGeometry(0.2, 0.025, 0.26), 'plain', c, T(-0.66 + j * 0.22 + (k % 2) * 0.1, 0.05 + k * 0.07, 0.68 - k * 0.17, 0.42 + (r() - 0.5) * 0.06, 0, (r() - 0.5) * 0.05));
+    }
+  });
   const sh = opts.shutter ?? pick(r, SAIL.shutters);
-  const wins: [number, number][] = [[0.0, H * 0.5], [-1.9, H * 0.3], [1.7, H * 0.72], [2.8, H * 0.45]];
+  const wins: [number, number][] = [[0.0, H * 0.5], [-1.9, H * 0.3], [1.7, H * 0.72], [2.8, H * 0.45], [0.35, H * 0.7], [-0.55, H * 0.8], [1.1, H * 0.3]];
   for (const [a, y] of wins) {
     const m = T(Math.sin(a) * (rAt(y + 0.3) - 0.03), y, Math.cos(a) * (rAt(y + 0.3) - 0.03), 0, a, 0).multiply(T(0, 0, 0, -lean, 0, 0));
     addWindow(kit, m, r, { w: 0.5, h: 0.62, shutter: sh, box: y < H * 0.4 ? SAIL.box : null, arched: true });
   }
   // the gallery: a ring deck on brackets with a post-and-rail fence
+  let gr1 = R + 1;
   if (gallery) {
-    const gr0 = rAt(gy), gr1 = gr0 + 0.75;
+    const gr0 = rAt(gy); gr1 = gr0 + 0.75;
     kit.add(lathe([[gr1, gy], [gr0, gy]], 36, WOOD_TILE, true), 'wood', SAIL.plank);
     kit.add(lathe([[gr1, gy - 0.12], [gr1, gy]], 36, WOOD_TILE, true), 'wood', SAIL.timber);
     kit.add(lathe([[gr0, gy - 0.12], [gr1, gy - 0.12]], 36, WOOD_TILE, false), 'wood', SAIL.timberDark);
@@ -794,60 +959,84 @@ export function windmill(opts: WindmillOpts = {}): THREE.Group {
     for (let i = 0; i < nP; i++) {
       const a = (i / nP) * Math.PI * 2;
       kit.add(boxM(0.07, 0.95, 0.07, WOOD_TILE, true), 'wood', SAIL.timber, T(Math.sin(a) * (gr1 - 0.06), gy + 0.47, Math.cos(a) * (gr1 - 0.06)));
-      // bracket strut under the deck
       kit.add(boxM(0.06, 0.06, 0.95, WOOD_TILE), 'wood', SAIL.timberDark, T(Math.sin(a) * (gr0 + 0.3), gy - 0.45, Math.cos(a) * (gr0 + 0.3), 0, a, 0).multiply(T(0, 0, 0, 0.85, 0, 0)));
     }
     for (const y of [0.5, 0.92]) kit.add(new THREE.TorusGeometry(gr1 - 0.06, 0.03, 4, 40).rotateX(Math.PI / 2), 'wood', SAIL.timber, T(0, gy + y, 0));
-    // the door onto the gallery
     addDoor(kit, T(Math.sin(-0.9) * (rAt(gy + 0.8) - 0.04), gy, Math.cos(-0.9) * (rAt(gy + 0.8) - 0.04), 0, -0.9, 0).multiply(T(0, 0, 0, -lean, 0, 0)), r, { w: 0.7, h: 1.5, color: pick(r, SAIL.door) });
   }
-  // the cap
-  const cap = slateCone(kit, { eaveR: Rt + 0.45, y0: H + 0.1, height: 2.4, seed: seed * 13 + 1, courseH: 0.25, tileW: 0.26, flare: 1.1 });
-  kit.add(postGeo(0.03, 0.05, 0.5), 'wood', SAIL.timberDark, T(0, cap.apex + 0.2, 0));
-  kit.add(new THREE.SphereGeometry(0.09, 10, 8), 'brass', SAIL.brass, T(0, cap.apex + 0.48, 0));
+  // ivy round the foot of the tower
+  if (opts.ivy !== false) {
+    const at = (a: number, y: number): WallPoint => ({ p: new THREE.Vector3(Math.sin(a) * (rAt(y) + 0.01), y, Math.cos(a) * (rAt(y) + 0.01)), n: new THREE.Vector3(Math.sin(a), 0, Math.cos(a)), s: 1.2 - y / H });
+    for (const a0 of [-0.75, 1.4, 2.6, -2.2]) addIvy(kit, [...climbPath(r, a0, 0.4, H * (0.2 + r() * 0.22), 0.22, 0.12, at), ...climbPath(r, a0 + 0.3, 0.35, H * 0.14, 0.22, 0.14, at)], r, { perPoint: 6 });
+    for (const a of [-0.6, 0.7, 2.0, -1.8]) addLeafMass(kit, T(Math.sin(a) * (R + 0.25), 0.3, Math.cos(a) * (R + 0.25), 0, a, 0), r, { radius: 0.4 + r() * 0.12, squash: 0.75, color: pick(r, SAIL.green), ao: 0.45 });
+  }
+  // the onion cap
+  const capR = Rt + 0.32, capY = H + 0.12;
+  const cap = slateCone(kit, { eaveR: capR, y0: capY, height: 2.6, seed: seed * 13 + 1, courseH: 0.2, tileW: 0.22, shape: 'onion', soffit: '#9a7352' });
+  kit.add(postGeo(0.03, 0.05, 0.6), 'wood', SAIL.timberDark, T(0, cap.apex + 0.2, 0));
+  kit.add(new THREE.SphereGeometry(0.1, 10, 8), 'brass', SAIL.brass, T(0, cap.apex + 0.52, 0));
+  kit.add(new THREE.ConeGeometry(0.05, 0.25, 8), 'brass', SAIL.brass, T(0, cap.apex + 0.72, 0));
   // windshaft housing at the front of the cap
-  const hubY = H + 0.75, hubZ = Rt + 0.62, tilt = 0.14;
-  kit.add(new THREE.CylinderGeometry(0.2, 0.26, 1.0, 10).rotateX(Math.PI / 2), 'wood', SAIL.timberDark, T(0, hubY - 0.05, hubZ - 0.45, -tilt, 0, 0));
+  const hubY = H + 0.78, hubZ = Rt + 0.66, tilt = 0.14;
+  kit.add(new THREE.CylinderGeometry(0.22, 0.28, 1.0, 10).rotateX(Math.PI / 2), 'wood', SAIL.timberDark, T(0, hubY - 0.05, hubZ - 0.45, -tilt, 0, 0));
+  // the tail pole: from the back of the cap down to the gallery rail, braced, with a little winding wheel
+  {
+    const top = new THREE.Vector3(0, H + 0.25, -capR - 0.05);
+    const end = gallery ? new THREE.Vector3(0, gy + 1.05, -(gr1 + 0.35)) : new THREE.Vector3(0, 1.2, -(R + 2.4));
+    const d = end.clone().sub(top), len = d.length();
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.clone().normalize());
+    kit.add(postGeo(0.09, 0.1, len, 7).translate(0, len / 2, 0), 'wood', SAIL.timber, new THREE.Matrix4().compose(top, q, new THREE.Vector3(1, 1, 1)));
+    for (const s of [-1, 1]) {
+      const a = new THREE.Vector3(s * capR * 0.8, H + 0.2, -capR * 0.55), b = top.clone().lerp(end, 0.32);
+      const dd = b.clone().sub(a), l2 = dd.length();
+      kit.add(postGeo(0.05, 0.05, l2, 5).translate(0, l2 / 2, 0), 'wood', SAIL.timberDark, new THREE.Matrix4().compose(a, new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dd.normalize()), new THREE.Vector3(1, 1, 1)));
+    }
+    kit.add(new THREE.TorusGeometry(0.36, 0.035, 5, 16), 'wood', SAIL.timberDark, T(end.x, end.y + 0.05, end.z + 0.05, 0, Math.PI / 2, 0));
+    for (let k = 0; k < 4; k++) kit.add(boxM(0.03, 0.7, 0.03, WOOD_TILE), 'wood', SAIL.timberDark, T(end.x, end.y + 0.05, end.z + 0.05, k * Math.PI / 4, 0, 0));
+  }
   kit.build(g, { inkWidth: 0.025 });
 
-  // the rotor: four stocks with lattice and canvas, merged into one turning group
-  const L = opts.sail ?? H * 0.62;
+  // the rotor: four stocks with open lattice; canvas spread on some, furled and tied on others
+  const L = opts.sail ?? H * 0.64;
   const rotor = new THREE.Group(); rotor.name = 'rotor';
   rotor.position.set(0, hubY, hubZ); rotor.rotation.x = -tilt;
   const spin = new THREE.Group(); rotor.add(spin);
   const rk = new Kit();
-  rk.add(new THREE.CylinderGeometry(0.24, 0.24, 0.32, 10).rotateX(Math.PI / 2), 'wood', SAIL.timber, T(0, 0, 0.05));
-  rk.add(new THREE.SphereGeometry(0.14, 10, 6), 'brass', SAIL.brass, T(0, 0, 0.24));
-  const wood = new THREE.Color('#8a6748'), latt = new THREE.Color('#a68464');
+  rk.add(new THREE.CylinderGeometry(0.26, 0.26, 0.34, 10).rotateX(Math.PI / 2), 'wood', SAIL.timber, T(0, 0, 0.05));
+  rk.add(new THREE.SphereGeometry(0.15, 10, 6), 'brass', SAIL.brass, T(0, 0, 0.25));
+  const wood = new THREE.Color('#8a6748'), latt = new THREE.Color('#9c7a58');
+  // how much of each sail is spread: two spread part-way, one furled, one barely spread and the rest furled
+  const spread = [0.72, 0, 0.55, 0.3];
   for (let i = 0; i < 4; i++) {
     rk.with(T(0, 0, 0.1, 0, 0, i * Math.PI / 2 + 0.3), () => {
-      // stock (the main spar), tapering to the tip
-      rk.add(boxM(0.14, L + 0.3, 0.12, WOOD_TILE, true), 'wood', wood, T(0, (L + 0.3) / 2 - 0.3, 0));
-      const x0 = -0.22, x1 = 1.0, y0 = 0.85, y1 = L - 0.05;
-      // the lattice: whips along the edges, sail bars across, set just behind the cloth
-      for (const x of [x0, x1, 0.4]) rk.add(boxM(0.05, y1 - y0, 0.05, WOOD_TILE, true), 'wood', latt, T(x, (y0 + y1) / 2, -0.02));
-      const nb = Math.round((y1 - y0) / 0.36);
+      rk.add(boxM(0.16, L + 0.3, 0.14, WOOD_TILE, true), 'wood', wood, T(0, (L + 0.3) / 2 - 0.3, 0));
+      const x0 = -0.3, x1 = 1.08, y0 = 0.9, y1 = L - 0.05;
+      // whips along the length (a narrow leading board, a middle lath, the hemlath at the trailing edge)
+      for (const [x, w] of [[x0, 0.06], [0.42, 0.05], [x1, 0.08]] as const) rk.add(boxM(w, y1 - y0, w, WOOD_TILE, true), 'wood', latt, T(x, (y0 + y1) / 2, -0.03));
+      // sail bars across, every 0.38 m
+      const nb = Math.round((y1 - y0) / 0.38), bars: number[] = [];
       for (let b = 0; b <= nb; b++) {
-        const y = y0 + (b / nb) * (y1 - y0);
-        rk.add(boxM(x1 - x0 + 0.06, 0.04, 0.04, WOOD_TILE), 'wood', latt, T((x0 + x1) / 2, y, -0.04));
+        const y = y0 + (b / nb) * (y1 - y0); bars.push(y);
+        rk.add(boxM(x1 - x0 + 0.08, 0.06, 0.06, WOOD_TILE), 'wood', latt, T((x0 + x1) / 2, y, -0.05));
       }
-      // diagonal braces near the hub
-      rk.add(boxM(0.04, 1.1, 0.04, WOOD_TILE, true), 'wood', latt, T(0.45, y0 - 0.25, -0.03, 0, 0, -0.75));
-      // canvas: billowing a little, tied to the bars, leaving the outer bars bare on one stock (reefed)
-      const reef = i === 2 ? 0.7 : 1;
-      const cy0 = y0 + 0.08, cy1 = y0 + (y1 - y0) * reef - 0.04;
-      const nx = 3, ny = 8;
-      const cg = new THREE.PlaneGeometry(x1 - 0.06, cy1 - cy0, nx, ny);
-      const p = cg.attributes.position as THREE.BufferAttribute;
-      for (let k = 0; k < p.count; k++) {
-        const u = (p.getX(k) / (x1 - 0.06)) + 0.5, v = p.getY(k) / (cy1 - cy0) + 0.5;
-        p.setZ(k, 0.09 * Math.sin(u * Math.PI) * (0.6 + 0.4 * Math.sin(v * Math.PI)));
+      // braces near the hub
+      rk.add(boxM(0.05, 1.2, 0.05, WOOD_TILE, true), 'wood', latt, T(0.48, y0 - 0.28, -0.04, 0, 0, -0.78));
+      rk.add(boxM(0.05, 0.6, 0.05, WOOD_TILE, true), 'wood', latt, T(-0.2, y0 - 0.2, -0.04, 0, 0, 0.6));
+      const sp = spread[i];
+      const cy1 = y0 + (y1 - y0) * sp;
+      if (sp > 0.05) {
+        rk.add(sailCanvas(r, 0.1, x1 - 0.04, y0 + 0.04, cy1, bars, 1 + (i % 2)), 'canvas', null, T(0, 0, 0.04));
+        // the reefing line, gathered at the end of the spread cloth
+        rk.add(ropeGeo([new THREE.Vector3(0.1, cy1, 0.08), new THREE.Vector3(0.55, cy1 + 0.03, 0.12), new THREE.Vector3(x1 - 0.04, cy1, 0.08)], 0.016, 4), 'plain', '#8a6a48');
       }
-      cg.computeVertexNormals();
-      uvMetres(cg, 1, 1, 1);
-      rk.add(cg, 'canvas', new THREE.Color('#f3ead6').multiplyScalar(0.96 + r() * 0.06), T((x1 + 0.06) / 2, (cy0 + cy1) / 2, 0.035));
-      // ties
-      for (let b = 0; b <= nb * reef; b += 2) rk.add(new THREE.BoxGeometry(0.02, 0.02, 0.12), 'plain', '#6a5038', T(x1 - 0.02, y0 + (b / nb) * (y1 - y0), 0.02));
+      // the rest of the cloth, furled into a twisted roll along the inner whip and tied every 0.7 m
+      if (sp < 0.98) {
+        const fy0 = sp > 0.05 ? cy1 + 0.1 : y0 + 0.05, fy1 = y1 - 0.1;
+        const pts: THREE.Vector3[] = [];
+        for (let k = 0; k <= 8; k++) { const t = k / 8; pts.push(new THREE.Vector3(0.18 + Math.sin(t * 9) * 0.015, fy0 + (fy1 - fy0) * t, 0.08 + Math.cos(t * 7) * 0.015)); }
+        rk.add(wobble(ropeGeo(pts, 0.085 - 0.02 * (sp > 0 ? 1 : 0), 6), 0.012, 14, i), 'canvas', '#efe4cc');
+        for (let y = fy0 + 0.25; y < fy1 - 0.1; y += 0.7) rk.add(new THREE.TorusGeometry(0.09, 0.02, 4, 10).rotateX(Math.PI / 2), 'plain', '#7a5a3c', T(0.18, y, 0.08));
+      }
     });
   }
   rk.build(spin, { inkWidth: 0.018 });
@@ -862,67 +1051,121 @@ export function windmill(opts: WindmillOpts = {}): THREE.Group {
 
 // ---------------------------------------------------------------- laundry
 
+/** The sag offset of a catenary of span L and mid-span sag `sag` at x (0..L): y relative to the ends (negative). */
+function catenary(L: number, sag: number) {
+  // solve a·cosh(L/2a) − a = sag for a by bisection
+  let lo = 0.01, hi = 1000;
+  for (let i = 0; i < 60; i++) { const a = (lo + hi) / 2; if (a * Math.cosh(L / (2 * a)) - a > sag) lo = a; else hi = a; }
+  const a = (lo + hi) / 2, top = a * Math.cosh(L / (2 * a));
+  return (x: number) => a * Math.cosh((x - L / 2) / a) - top;
+}
+
+type Garment = 'sheet' | 'towel' | 'shirt' | 'trousers' | 'scarf' | 'pillow';
+
 /**
- * A washing line of `length` metres along +X between two forked poles: sheets, striped towels, shirts and small
- * things pegged on, all billowing in the shader. Origin at the first pole's foot.
+ * A washing line of `length` metres along +X between two forked poles, sagging in a real catenary: sheets pegged at
+ * three points with soft folds and a belly, striped towels, shirts, trousers, a scarf folded over the line and a
+ * pillowcase, all billowing and fluttering in the shader. Origin at the first pole's foot.
  */
 export function laundryLine(length = 5, seed = 1): THREE.Group {
   const r = rng(seed);
   const g = new THREE.Group(); g.name = 'laundryLine';
   const kit = new Kit();
-  const H = 2.15, sag = 0.12 + length * 0.025;
+  const H = 2.3, sag = 0.16 + length * 0.055;
   for (const x of [0, length]) {
     const lean = (r() - 0.5) * 0.05;
-    kit.add(postGeo(0.05, 0.065, H + 0.15, 6), 'wood', SAIL.weathered, T(x, (H + 0.15) / 2 - 0.05, 0, lean, 0, (x ? 1 : -1) * 0.04));
-    // the fork at the top
-    for (const s of [-1, 1]) kit.add(postGeo(0.025, 0.03, 0.3, 5), 'wood', SAIL.weathered, T(x + s * 0.06, H + 0.18, 0, 0, 0, -s * 0.35));
-    kit.add(new THREE.IcosahedronGeometry(0.14, 0), 'stone', SAIL.stoneDark, T(x + 0.1, 0.02, 0.08, 0, 0, 0, 1, 0.5, 1));
+    kit.add(postGeo(0.055, 0.075, H + 0.15, 7), 'wood', SAIL.weathered, T(x, (H + 0.15) / 2 - 0.05, 0, lean, 0, (x ? 1 : -1) * 0.04));
+    for (const s of [-1, 1]) kit.add(postGeo(0.028, 0.034, 0.34, 5), 'wood', SAIL.weathered, T(x + s * 0.07, H + 0.2, 0, 0, 0, -s * 0.38));
+    kit.add(new THREE.IcosahedronGeometry(0.16, 0), 'stone', SAIL.stoneDark, T(x + 0.12, 0.02, 0.08, 0, 0, 0, 1, 0.5, 1));
+    // a guy rope pegged into the ground behind each pole
+    kit.add(ropeGeo([new THREE.Vector3(x, H + 0.05, 0), new THREE.Vector3(x + (x ? 0.55 : -0.55), H * 0.5, 0.05), new THREE.Vector3(x + (x ? 1.1 : -1.1), 0.02, 0.1)], 0.007, 3), 'plain', '#d8ccb0');
   }
-  const a = new THREE.Vector3(0, H, 0), b = new THREE.Vector3(length, H, 0);
-  const ropeY = (x: number) => H - 4 * sag * (x / length) * (1 - x / length);
-  kit.add(ropeGeo(sagLine(a, b, sag, 16), 0.008, 4), 'plain', '#e6dcc4');
-  // items along the line
-  let x = 0.3;
-  const whites = ['#fbf8f0', '#f6f1e6', '#fffdf8'];
-  while (x < length - 0.4) {
-    const kind = pick(r, ['sheet', 'sheet', 'towel', 'shirt', 'shirt', 'small'] as const);
-    let w = 0, h = 0;
+  const drop = catenary(length, sag);
+  const ropeY = (x: number) => H + drop(Math.max(0, Math.min(length, x)));
+  const line: THREE.Vector3[] = [];
+  for (let i = 0; i <= 24; i++) { const x = (i / 24) * length; line.push(new THREE.Vector3(x, ropeY(x), 0)); }
+  kit.add(ropeGeo(line, 0.009, 4), 'plain', '#e6dcc4');
+  let x = 0.25;
+  const whites = ['#fbf8f0', '#f6f1e6', '#fffdf8', '#f3eee2'];
+  const order: Garment[] = ['sheet', 'shirt', 'towel', 'trousers', 'sheet', 'scarf', 'towel', 'shirt', 'pillow', 'sheet'];
+  let gi = Math.floor(r() * 3);
+  while (x < length - 0.35) {
+    const kind = order[gi++ % order.length];
+    let w = 0, h = 0, belly = 0.1, amp = 0.36, stiff = 0.45, pegs = 2, folds = 3;
     let colFn: (u: number, v: number) => THREE.Color;
     let mask: ((u: number, v: number) => boolean) | undefined;
     if (kind === 'sheet') {
-      w = 0.75 + r() * 0.35; h = 0.95 + r() * 0.3;
+      w = 0.95 + r() * 0.35; h = 1.15 + r() * 0.3; belly = 0.16; amp = 0.5; stiff = 0.35; pegs = 3; folds = 4;
       const c = new THREE.Color(pick(r, whites));
-      const hem = r() > 0.5 ? new THREE.Color(pick(r, ['#9ec0e8', '#f0b8c8', '#f2d27a'])) : null;
-      colFn = (_u, v) => hem && v > 0.9 ? hem : c;
+      const hem = r() > 0.4 ? new THREE.Color(pick(r, ['#9ec0e8', '#f0b8c8', '#f2d27a', '#b8d8a8'])) : null;
+      const check = r() > 0.75;
+      colFn = (u, v) => check && (Math.floor(u * 8) + Math.floor(v * 9)) % 2 ? new THREE.Color('#cfe0f4') : hem && v > 0.9 ? hem : c;
     } else if (kind === 'towel') {
-      w = 0.5 + r() * 0.15; h = 0.75 + r() * 0.2;
+      w = 0.5 + r() * 0.15; h = 0.78 + r() * 0.15; belly = 0.08; amp = 0.34;
       const st = new THREE.Color(pick(r, ['#4f7fc4', '#e0473b', '#6aae5a', '#f08a32'])), wc = new THREE.Color(pick(r, whites));
-      colFn = (u, v) => (Math.floor(u * 7) % 2 === 0 || v > 0.86 || v < 0.06) ? st : wc;
-      if (r() > 0.5) colFn = (_u, v) => (v > 0.12 && v < 0.22) || (v > 0.78 && v < 0.88) ? st : wc;
+      colFn = r() > 0.5 ? (u, v) => (Math.floor(u * 7) % 2 === 0 || v > 0.88 || v < 0.06) ? st : wc : (_u, v) => (v > 0.1 && v < 0.2) || (v > 0.8 && v < 0.9) ? st : wc;
     } else if (kind === 'shirt') {
-      w = 0.78; h = 0.72;
+      w = 0.9; h = 0.78; belly = 0.12; amp = 0.3; stiff = 0.5;
       const c = new THREE.Color(pick(r, ['#fbf8f0', '#cfe0f4', '#f6e7b8', '#e8c8b0', '#a8c8e8']));
-      colFn = () => c;
-      // a T: sleeves along the top third, a body in the middle, a little collar notch
-      mask = (u, v) => (v < 0.36 && (u > 0.02 && u < 0.98) && !(v < 0.06 && u > 0.43 && u < 0.57)) || (u > 0.24 && u < 0.76);
+      colFn = (u, v) => (v > 0.94 ? c.clone().multiplyScalar(0.9) : c);
+      // body, sloped shoulders, sleeves hanging down and out, a collar notch
+      mask = (u, v) => {
+        const body = u > 0.25 && u < 0.75 && !(v < 0.06 && u > 0.42 && u < 0.58);
+        const sl = Math.abs(u - 0.5);
+        const sleeve = sl > 0.25 && sl < 0.5 && v < 0.12 + (0.5 - sl) * 1.4 && v > (sl - 0.25) * 0.5;
+        return body || sleeve;
+      };
+    } else if (kind === 'trousers') {
+      w = 0.52; h = 1.0; belly = 0.06; amp = 0.3; stiff = 0.55;
+      const c = new THREE.Color(pick(r, ['#6f86a8', '#8a7458', '#a8b48a', '#5e6f8c']));
+      colFn = (_u, v) => (v < 0.06 ? c.clone().multiplyScalar(0.85) : c);
+      mask = (u, v) => v < 0.3 || Math.abs(u - 0.5) > 0.06 + v * 0.02;
+    } else if (kind === 'scarf') {
+      w = 0.24; h = 0.95; belly = 0.03; amp = 0.55; stiff = 0.1; pegs = 1; folds = 0;
+      const a = new THREE.Color(pick(r, ['#e0473b', '#f2c53d', '#3f78c8'])), b = new THREE.Color('#f6efe2');
+      colFn = (_u, v) => (Math.floor(v * 10) % 3 === 0 ? b : a);
+      mask = (u, v) => v < 0.92 || Math.floor(u * 5) % 2 === 0;   // a fringe at the end
     } else {
-      w = 0.32; h = 0.42;
-      const c = new THREE.Color(pick(r, ['#e0473b', '#f2c53d', '#9ec0e8', '#fbf8f0']));
+      w = 0.48; h = 0.34; belly = 0.05; amp = 0.25; stiff = 0.6;
+      const c = new THREE.Color(pick(r, ['#f0b8c8', '#f2d27a', '#9ec0e8', '#fbf8f0']));
       colFn = () => c;
     }
     if (x + w > length - 0.25) break;
-    const nx = Math.max(3, Math.round(w / 0.15)), ny = Math.max(4, Math.round(h / 0.14));
-    const cg = clothGrid(w, h, nx, ny, colFn, { mask, phase: r() * 6, stiff: kind === 'small' ? 0.8 : r() * 0.3, weight: (u, v) => 0.12 * Math.pow(v, 1.2) * (kind === 'sheet' ? 1.6 : 1) + 0.03 * Math.sin(u * Math.PI) * v });
-    // hang the top edge on the sagging rope
+    const nx = Math.max(4, Math.round(w / 0.09)), ny = Math.max(5, Math.round(h / 0.09));
+    const ph = r() * 6;
+    const cg = clothGrid(w, h, nx, ny, colFn, {
+      mask, phase: ph, stiff,
+      // free to swing far at the hem and the free corners, a little belly in the middle
+      weight: (u, v) => amp * Math.pow(v, 1.05) * (0.85 + 0.3 * Math.abs(u - 0.5) * 2) + 0.06 * Math.sin(u * Math.PI) * v,
+    });
+    // the rest shape: hang the top edge on the sagging line, droop between pegs, belly out and fold
     const p = cg.attributes.position as THREE.BufferAttribute;
     const cx = x + w / 2;
-    for (let i = 0; i < p.count; i++) p.setY(i, p.getY(i) + ropeY(cx + p.getX(i)) - 0.01);
-    kit.add(cg, 'cloth', null, T(cx, 0, 0.0, 0, (r() - 0.5) * 0.12, 0));
-    // pegs
-    for (const px of [x + 0.04, x + w - 0.04, ...(w > 0.7 ? [cx] : [])]) {
-      kit.add(new THREE.BoxGeometry(0.025, 0.09, 0.03), 'bloom', '#d8b88a', T(px, ropeY(px) - 0.01, 0));
+    const pegU = pegs === 1 ? [0.5] : pegs === 2 ? [0.04, 0.96] : [0.04, 0.5, 0.96];
+    for (let i = 0; i < p.count; i++) {
+      const u = p.getX(i) / w + 0.5, v = -p.getY(i) / h;
+      let dPeg = 1; for (const q of pegU) dPeg = Math.min(dPeg, Math.abs(u - q));
+      const droop = (pegs === 1 ? 0 : 0.07 * Math.sin(Math.min(1, dPeg / (0.5 / (pegs - 1))) * Math.PI * 0.5)) * Math.max(0, 1 - v * 1.4);
+      const z = belly * Math.sin(u * Math.PI) * Math.pow(v, 0.7) + (folds ? 0.035 * Math.sin(u * Math.PI * folds * 2 + ph) * Math.min(1, v * 2) : 0);
+      p.setXYZ(i, p.getX(i), p.getY(i) + ropeY(cx + p.getX(i)) - 0.01 - droop, z);
     }
-    x += w + 0.08 + r() * 0.2;
+    cg.computeVertexNormals();
+    kit.add(cg, 'cloth', null, T(cx, 0, 0, 0, (r() - 0.5) * 0.1, 0));
+    // the scarf folds over the line: a second half hanging behind
+    if (kind === 'scarf') {
+      const back = clothGrid(w, h * 0.8, nx, Math.round(ny * 0.8), colFn, { mask, phase: ph + 0.8, stiff, weight: (_u, v) => 0.5 * v });
+      const bp = back.attributes.position as THREE.BufferAttribute;
+      for (let i = 0; i < bp.count; i++) bp.setXYZ(i, bp.getX(i), bp.getY(i) + ropeY(cx + bp.getX(i)), -0.03);
+      kit.add(back, 'cloth', null, T(cx, 0, 0));
+    }
+    for (const q of pegU) {
+      const px = x + q * w;
+      kit.with(T(px, ropeY(px) - 0.015, 0.01), () => {
+        for (const s of [-1, 1]) kit.add(new THREE.BoxGeometry(0.014, 0.1, 0.022), 'bloom', '#d8b88a', T(s * 0.009, -0.01, 0));
+        kit.add(new THREE.BoxGeometry(0.035, 0.012, 0.026), 'plain', '#8a8478', T(0, 0.015, 0));
+      });
+    }
+    x += w + 0.1 + r() * 0.16;
   }
   kit.build(g, { inkWidth: 0.015 });
   return g;
@@ -933,40 +1176,41 @@ export function laundryLine(length = 5, seed = 1): THREE.Group {
 export interface BuntingOpts { sag?: number; spacing?: number; colors?: readonly string[]; size?: number }
 
 /**
- * Bunting strung through `points` (the hang points, e.g. poles and eaves) with a sag between each pair: triangle
- * flags in festival colours that flutter in the shader. Coordinates are in the group's space.
+ * Bunting strung through `points` (the hang points, e.g. poles and eaves) in deep swags: many small triangle
+ * pennants in festival colours that flutter in the shader. Coordinates are in the group's space.
  */
 export function bunting(points: THREE.Vector3[], seed = 1, opts: BuntingOpts = {}): THREE.Group {
   const r = rng(seed);
   const g = new THREE.Group(); g.name = 'bunting';
   const kit = new Kit();
   const cols = (opts.colors ?? SAIL.festival.slice(0, 4).concat(['#6aae5a', '#f6efe2'])).map(c => new THREE.Color(c));
-  const spacing = opts.spacing ?? 0.42, S = opts.size ?? 1;
-  const fw = 0.3 * S, fh = 0.38 * S;
+  const S = opts.size ?? 0.5, spacing = opts.spacing ?? 0.38 * S;
+  const fw = 0.3 * S, fh = 0.42 * S;
   let ci = Math.floor(r() * cols.length);
   for (let s = 0; s < points.length - 1; s++) {
     const a = points[s], b = points[s + 1];
     const span = a.distanceTo(b);
-    const sag = opts.sag ?? 0.05 * span + 0.08;
-    const line = sagLine(a, b, sag, Math.max(8, Math.round(span * 2)));
+    const sag = opts.sag ?? 0.11 * span + 0.12;
+    const line = sagLine(a, b, sag, Math.max(10, Math.round(span * 3)));
     kit.add(ropeGeo(line, 0.007, 3), 'plain', '#e8dcc0');
     const curve = new THREE.CatmullRomCurve3(line);
     const L = curve.getLength(), n = Math.floor(L / spacing);
     for (let i = 0; i < n; i++) {
       const t = (i + 0.5) / n;
       const p = curve.getPointAt(t), tg = curve.getTangentAt(t);
+      const along = tg.clone().normalize();
       tg.y = 0; tg.normalize();
       const nrm = new THREE.Vector3(-tg.z, 0, tg.x);
       const c = cols[ci++ % cols.length].clone().multiplyScalar(0.93 + r() * 0.12);
-      // a triangle grid hanging from the rope: 3 rows, narrowing to the tip
       const pos: number[] = [], nor: number[] = [], cl: number[] = [], wv: number[] = [], dr: number[] = [], idx: number[] = [];
-      const rows = 3, ph = r() * 6 + i * 0.7;
+      const rows = 3, ph = r() * 6 + i * 0.5;
       for (let j = 0; j <= rows; j++) {
         const v = j / rows, half = (1 - v) * fw / 2;
         for (const u of [-1, 0, 1]) {
-          const q = p.clone().addScaledVector(tg, u * half).add(new THREE.Vector3(0, -v * fh, 0));
+          // the top edge follows the rope's slope; the flag hangs straight down from it
+          const q = p.clone().addScaledVector(along, u * half * (j === 0 ? 1 : 0)).addScaledVector(tg, j === 0 ? 0 : u * half).add(new THREE.Vector3(0, -v * fh, 0));
           pos.push(q.x, q.y, q.z); nor.push(nrm.x, nrm.y, nrm.z); cl.push(c.r, c.g, c.b);
-          wv.push(0.13 * Math.pow(v, 1.1) * S, ph, 0.6); dr.push(nrm.x, 0.15, nrm.z);
+          wv.push(0.16 * Math.pow(v, 1.1) * S, ph, 0.7); dr.push(nrm.x, 0.15, nrm.z);
         }
       }
       for (let j = 0; j < rows; j++) for (let k = 0; k < 2; k++) {
@@ -989,10 +1233,34 @@ export function bunting(points: THREE.Vector3[], seed = 1, opts: BuntingOpts = {
 
 // ---------------------------------------------------------------- market stall
 
+/** A burlap sack: a bulging body, a tied neck with a cord, and a flared, folded top. */
+export function addSack(kit: Kit, m: THREE.Matrix4, r: Rnd, h = 0.5, open = false) {
+  const rad = h * 0.4;
+  const prof: [number, number][] = [[0.01, 0], [rad * 0.85, 0.02], [rad, h * 0.18], [rad * 1.02, h * 0.45], [rad * 0.88, h * 0.66], [rad * 0.42, h * 0.8], [rad * 0.3, h * 0.84]];
+  if (open) prof.push([rad * 0.55, h * 0.9], [rad * 0.62, h * 0.88]);
+  else prof.push([rad * 0.46, h * 0.93], [rad * 0.5, h], [rad * 0.3, h * 1.02]);
+  const c = new THREE.Color('#c8a872').multiplyScalar(0.9 + r() * 0.16);
+  kit.with(m, () => {
+    kit.add(wobble(lathe(prof, 14, 0.4), 0.018, 11, Math.floor(r() * 99)), 'canvas', c);
+    kit.add(new THREE.TorusGeometry(rad * 0.33, 0.015, 4, 12).rotateX(Math.PI / 2), 'plain', '#7a5a3c', T(0, h * 0.84, 0));
+    if (open) kit.add(new THREE.CircleGeometry(rad * 0.55, 12).rotateX(-Math.PI / 2), 'bloom', pick(r, ['#e8d08a', '#d8b86a', '#c88a5a']), T(0, h * 0.89, 0));
+  });
+}
+
+/** A terracotta pot (with a rim) planted with a leafy mound and flowers in one colour. */
+export function addPot(kit: Kit, m: THREE.Matrix4, r: Rnd, rad = 0.16, flowers?: readonly string[]) {
+  const tc = new THREE.Color(SAIL.terracotta).multiplyScalar(0.9 + r() * 0.15);
+  kit.with(m, () => {
+    kit.add(lathe([[rad * 0.68, 0], [rad * 0.9, rad * 1.3], [rad, rad * 1.34], [rad * 1.05, rad * 1.4], [rad * 1.05, rad * 1.62], [rad * 0.94, rad * 1.64]], 14, 0.5), 'plain', tc);
+    kit.add(new THREE.CircleGeometry(rad * 0.92, 12).rotateX(-Math.PI / 2), 'plain', '#5a4232', T(0, rad * 1.56, 0));
+    if (flowers) addBloomMound(kit, T(0, rad * 1.5, 0), r, rad * 1.7, rad * 1.7, rad * 0.9, flowers, 8, 0);
+  });
+}
+
 /**
- * A market stall: a plank counter on four posts under a red-and-white striped awning with a scalloped, fluttering
- * valance; crates of apples, oranges and lemons, baskets of bread, honey jars, flowers in buckets, barrels and
- * sacks beside it, and a chalk sign. Faces +Z (the customer side). About 2.6 m wide.
+ * A market stall: a plank counter under a red-and-white striped awning that sags between its rails, with a deep
+ * scalloped valance; crates of apples, oranges and lemons, baskets of bread and greens, honey jars, burlap sacks with
+ * tied necks, barrels, terracotta pots of flowers, and a chalk A-board. Faces +Z (the customer side). ~2.6 m wide.
  */
 export function awningStall(opts: { seed?: number; width?: number; stripe?: string } = {}): THREE.Group {
   const seed = opts.seed ?? 1, r = rng(seed);
@@ -1000,82 +1268,97 @@ export function awningStall(opts: { seed?: number; width?: number; stripe?: stri
   const g = new THREE.Group(); g.name = 'awningStall';
   const kit = new Kit();
   const wood = new THREE.Color(SAIL.plank), dark = new THREE.Color(SAIL.timber);
-  // posts: back ones taller
-  const backH = 2.55, frontH = 2.2;
+  const backH = 2.6, frontH = 2.25;
   for (const sx of [-1, 1]) {
     kit.add(boxM(0.1, backH, 0.1, WOOD_TILE, true), 'wood', dark, T(sx * W / 2, backH / 2, -D / 2));
     kit.add(boxM(0.1, frontH, 0.1, WOOD_TILE, true), 'wood', dark, T(sx * W / 2, frontH / 2, D / 2));
     kit.add(boxM(0.07, 0.07, D, WOOD_TILE), 'wood', dark, T(sx * W / 2, 0.92, 0));
+    // little turned finials on the front posts
+    kit.add(new THREE.SphereGeometry(0.07, 8, 6), 'wood', dark, T(sx * W / 2, frontH + 0.05, D / 2));
   }
-  // counter: top planks, a front of vertical boards, a shelf below
+  // counter: top planks with a lip, a front of panelled boards with a cross-braced frame, a shelf below
   for (let i = 0; i < 4; i++) kit.add(boxM(W + 0.15, 0.05, D / 4 - 0.01, WOOD_TILE), 'wood', wood.clone().multiplyScalar(0.9 + r() * 0.2), T(0, 0.95, -D / 2 + (i + 0.5) * D / 4));
-  const nb = Math.round(W / 0.16);
-  for (let i = 0; i < nb; i++) kit.add(boxM(W / nb - 0.012, 0.9, 0.04, WOOD_TILE, true), 'wood', wood.clone().multiplyScalar(0.8 + r() * 0.2), T(-W / 2 + (i + 0.5) * W / nb, 0.47, D / 2 + 0.02));
+  kit.add(boxM(W + 0.2, 0.06, 0.06, WOOD_TILE), 'wood', dark, T(0, 0.99, D / 2 + 0.04));
+  const nb = Math.round(W / 0.2);
+  const paint = new THREE.Color(pick(r, ['#6f9fa8', '#8fae7a', '#d8a85a']));
+  for (let i = 0; i < nb; i++) kit.add(boxM(W / nb - 0.014, 0.86, 0.035, WOOD_TILE, true), 'wood', paint.clone().multiplyScalar(0.86 + r() * 0.18), T(-W / 2 + (i + 0.5) * W / nb, 0.47, D / 2 + 0.02));
+  for (const y of [0.1, 0.86]) kit.add(boxM(W, 0.08, 0.05, WOOD_TILE), 'wood', dark, T(0, y, D / 2 + 0.05));
+  for (const s of [-1, 1]) for (const hx of [-1, 1]) {
+    const cx = hx * W / 4, len = Math.hypot(W / 2 - 0.1, 0.7);
+    kit.add(boxM(len, 0.07, 0.04, WOOD_TILE), 'wood', dark, T(cx, 0.48, D / 2 + 0.06, 0, 0, s * Math.atan2(0.7, W / 2 - 0.1)));
+  }
   kit.add(boxM(W, 0.04, D * 0.8, WOOD_TILE), 'wood', wood.clone().multiplyScalar(0.75), T(0, 0.3, -0.05));
-  // the awning: stripes run down the slope; it overhangs the front and sags a little between posts
+  // the awning: stripes run down the slope; it sags between the side rails and bellies a little in the wind
   const stripe = new THREE.Color(opts.stripe ?? '#d8443a'), cream = new THREE.Color('#f7f0e2');
-  const aW = W + 0.4, back = new THREE.Vector3(0, backH + 0.05, -D / 2 - 0.1), front = new THREE.Vector3(0, frontH - 0.1, D / 2 + 0.5);
+  const aW = W + 0.4, back = new THREE.Vector3(0, backH + 0.05, -D / 2 - 0.1), front = new THREE.Vector3(0, frontH - 0.02, D / 2 + 0.55);
   const aLen = back.distanceTo(front), slope = Math.atan2(back.y - front.y, front.z - back.z);
   const nS = 12;
-  const aw = clothGrid(aW, aLen, nS, 6, (u) => (Math.floor(u * nS) % 2 ? cream : stripe), {
+  const aw = clothGrid(aW, aLen, nS * 2, 8, (u) => (Math.floor(u * nS) % 2 ? cream : stripe), {
     phase: r() * 6, stiff: 0.2,
-    weight: (u, v) => 0.03 * v * (0.4 + Math.sin(u * Math.PI)), dir: new THREE.Vector3(0, 0, 1),
+    weight: (u, v) => 0.05 * v * (0.3 + Math.sin(u * Math.PI)), dir: new THREE.Vector3(0, 0, 1),
   });
   {
-    // gentle sag between the side poles
     const p = aw.attributes.position as THREE.BufferAttribute;
-    for (let i = 0; i < p.count; i++) { const u = p.getX(i) / aW + 0.5; p.setZ(i, p.getZ(i) - 0.07 * Math.sin(u * Math.PI)); }
+    for (let i = 0; i < p.count; i++) {
+      const u = p.getX(i) / aW + 0.5, v = -p.getY(i) / aLen;
+      // sag between the side rails (deepest mid-slope), lifting back to the front rail
+      p.setZ(i, p.getZ(i) - 0.16 * Math.sin(u * Math.PI) * Math.sin(Math.min(1, v * 1.05) * Math.PI) - 0.04 * Math.sin(u * Math.PI));
+    }
+    aw.computeVertexNormals();
   }
-  // clothGrid hangs along -Y; tip it to run from the back pole forward and down the slope
   kit.add(aw, 'cloth', null, T(back.x, back.y, back.z, -Math.PI / 2 + slope, 0, 0));
-  // valance: a scalloped hem hanging from the front edge, free to flutter
-  const nv = 14, vh = 0.2;
-  for (let i = 0; i < nv; i++) {
-    const u0 = i / nv;
-    const vg = clothGrid(aW / nv + 0.005, vh, 2, 3, () => (i % 2 ? cream : stripe), {
-      phase: i * 0.6, stiff: 0.8,
-      mask: (u, v) => v < 0.62 || Math.abs(u - 0.5) < 0.5 * Math.sqrt(Math.max(0, 1 - ((v - 0.62) / 0.38) ** 2)) + 0.12,
-      weight: (_u, v) => 0.08 * v,
+  // valance: deep scallops along the front and down the sides, alternating colours, free to flutter
+  const scallop = (w: number, h: number, c: THREE.Color, ph: number, m: THREE.Matrix4) => {
+    const vg = clothGrid(w + 0.005, h, 3, 5, () => c, {
+      phase: ph, stiff: 0.8,
+      mask: (u, v) => v < 0.55 || Math.abs(u - 0.5) < 0.5 * Math.sqrt(Math.max(0, 1 - ((v - 0.55) / 0.45) ** 2)) + 0.06,
+      weight: (_u, v) => 0.1 * v,
     });
-    kit.add(vg, 'cloth', null, T(-aW / 2 + (u0 + 0.5 / nv) * aW, front.y - 0.07 + 0.02, front.z - 0.02));
+    kit.add(vg, 'cloth', null, m);
+  };
+  const nv = 12, vh = 0.34;
+  for (let i = 0; i < nv; i++) scallop(aW / nv, vh, i % 2 ? cream : stripe, i * 0.6, T(-aW / 2 + (i + 0.5) / nv * aW, front.y + 0.02, front.z - 0.01));
+  for (const sx of [-1, 1]) for (let i = 0; i < 4; i++) {
+    const t = (i + 0.5) / 4, z = back.z + (front.z - back.z) * t, y = back.y + (front.y - back.y) * t;
+    scallop(aLen / 4, vh * 0.8, i % 2 ? stripe : cream, i * 0.7 + sx, T(sx * (aW / 2 - 0.01), y - 0.03, z, 0, Math.PI / 2, 0).multiply(T(0, 0, 0, 0, 0, slope)));
   }
-  // a top rail at the back, and a front rail the awning ties to
   kit.add(boxM(W + 0.2, 0.08, 0.08, WOOD_TILE), 'wood', dark, T(0, backH, -D / 2));
   kit.add(boxM(W + 0.2, 0.06, 0.06, WOOD_TILE), 'wood', dark, T(0, frontH - 0.05, D / 2));
   // goods on the counter
-  addCrate(kit, T(-W * 0.32, 0.975, 0.0, 0.12, 0.05, 0), r, 0.6, 0.42, 0.22, '#d8443a');
-  addCrate(kit, T(-W * 0.06, 0.975, 0.05, 0.12, -0.04, 0), r, 0.5, 0.4, 0.22, '#f08a32', 0.05);
-  addCrate(kit, T(W * 0.16, 0.975, 0.02, 0.12, 0.08, 0), r, 0.45, 0.38, 0.22, '#f2d23d', 0.045);
+  addCrate(kit, T(-W * 0.32, 0.975, 0.0, 0.14, 0.05, 0), r, 0.6, 0.42, 0.22, '#d8443a');
+  addCrate(kit, T(-W * 0.06, 0.975, 0.05, 0.14, -0.04, 0), r, 0.5, 0.4, 0.22, '#f08a32', 0.05);
+  addCrate(kit, T(W * 0.16, 0.975, 0.02, 0.14, 0.08, 0), r, 0.45, 0.38, 0.22, '#f2d23d', 0.045);
   addBasket(kit, T(W * 0.38, 0.975, 0.1), r, 0.2, '#d8a058');
-  for (let i = 0; i < 3; i++) {  // honey jars
-    const jx = W * 0.32 + i * 0.12, jz = -0.32;
+  addBasket(kit, T(W * 0.05, 0.975, -0.33), r, 0.17, '#7fb04a');
+  for (let i = 0; i < 4; i++) {  // honey jars
+    const jx = W * 0.3 + i * 0.11, jz = -0.32;
     kit.add(new THREE.CylinderGeometry(0.045, 0.05, 0.13, 10), 'glass', '#e8a83a', T(jx, 1.04, jz));
-    kit.add(new THREE.CylinderGeometry(0.05, 0.05, 0.03, 10), 'plain', '#f6efe2', T(jx, 1.12, jz));
+    kit.add(new THREE.CylinderGeometry(0.05, 0.05, 0.03, 10), 'plain', i % 2 ? '#e0473b' : '#f6efe2', T(jx, 1.12, jz));
   }
   // under and beside the stall
   addCrate(kit, T(-W * 0.3, 0.32, -0.05), r, 0.55, 0.4, 0.3, '#6aae5a', 0.07);
   addBarrel(kit, T(W / 2 + 0.45, 0, 0.25), r);
   addBarrel(kit, T(W / 2 + 0.4, 0, -0.45, 0, 0, 0), r, 0.7, 0.26);
+  addBasket(kit, T(W / 2 + 0.45, 0.85, 0.25), r, 0.2, '#e0473b');
   addCrate(kit, T(-W / 2 - 0.5, 0, 0.35, 0, 0.3, 0), r, 0.6, 0.42, 0.34, '#d8443a');
   addCrate(kit, T(-W / 2 - 0.5, 0.34, 0.35, 0, 0.1, 0), r, 0.55, 0.4, 0.3, '#f2d23d', 0.05);
-  // flower buckets in front
-  for (let i = 0; i < 3; i++) {
-    const bx = -0.4 + i * 0.45, bz = D / 2 + 0.35;
-    kit.add(lathe([[0.12, 0], [0.15, 0.28]], 12, 0.5), 'silver', '#b8c4cc', T(bx, 0, bz));
-    const fc = new THREE.Color(pick(r, ['#f07aa0', '#f2d23d', '#ffffff', '#b48ae0', '#e0473b']));
-    for (let k = 0; k < 8; k++) {
-      const a = r() * 6.28, d = r() * 0.08;
-      kit.add(new THREE.CylinderGeometry(0.006, 0.006, 0.4, 4), 'bloom', '#4f7f3a', T(bx + Math.cos(a) * d, 0.35, bz + Math.sin(a) * d, (r() - 0.5) * 0.3, 0, (r() - 0.5) * 0.3));
-      kit.add(blossomGeo(fc, undefined, 1.4), 'bloom', null, T(bx + Math.cos(a) * d * 1.6, 0.52 + r() * 0.1, bz + Math.sin(a) * d * 1.6, -0.3 + r() * 0.6, r() * 6, (r() - 0.5) * 0.6));
-    }
-  }
-  // sacks
-  for (let i = 0; i < 2; i++) kit.add(wobble(new THREE.SphereGeometry(0.22, 10, 8), 0.02, 9, i), 'canvas', '#c9ad7e', T(W / 2 + 0.1 + i * 0.3, 0.2, D / 2 + 0.55, 0, r(), 0, 0.9, 1.15, 0.8));
-  // chalk sign hanging from the front rail
-  kit.add(boxM(0.6, 0.32, 0.03, WOOD_TILE), 'plain', '#3e4a44', T(0, frontH - 0.4, D / 2 + 0.06));
-  kit.add(boxM(0.66, 0.38, 0.02, WOOD_TILE), 'wood', SAIL.timber, T(0, frontH - 0.4, D / 2 + 0.04));
-  for (let i = 0; i < 3; i++) kit.add(new THREE.BoxGeometry(0.36 - i * 0.08, 0.025, 0.005), 'plain', '#f2efe6', T(-0.06 + i * 0.03, frontH - 0.33 - i * 0.07, D / 2 + 0.078));
+  addSack(kit, T(W / 2 + 0.05, 0, D / 2 + 0.6, 0, r(), 0.05), r, 0.55, true);
+  addSack(kit, T(W / 2 + 0.42, 0, D / 2 + 0.72, 0, r(), -0.08), r, 0.48);
+  addSack(kit, T(-W / 2 - 0.15, 0, -0.4, 0, r(), 0.04), r, 0.5, true);
+  // terracotta pots of flowers in front
+  for (let i = 0; i < 3; i++) addPot(kit, T(-0.55 + i * 0.5, 0, D / 2 + 0.38, 0, r() * 6, 0), r, 0.13 + r() * 0.04, [pick(r, ['#f07aa0', '#f2d23d', '#ffffff', '#b48ae0', '#e0473b'])]);
+  // a chalk A-board on the lane
+  kit.with(T(-W / 2 - 0.1, 0, D / 2 + 0.9, 0, 0.5, 0), () => {
+    for (const s of [-1, 1]) kit.with(T(0, 0, s * 0.16, -s * 0.2, 0, 0), () => {
+      kit.add(boxM(0.6, 0.85, 0.03, WOOD_TILE), 'wood', SAIL.timber, T(0, 0.45, 0));
+      kit.add(new THREE.PlaneGeometry(0.5, 0.62), 'plain', '#33403a', T(0, 0.5, s * 0.017, 0, s < 0 ? Math.PI : 0, 0));
+      for (let k = 0; k < 4; k++) kit.add(new THREE.PlaneGeometry(0.3 - (k % 2) * 0.1, 0.022), 'bloom', '#f2efe6', T(-0.04 + (k % 2) * 0.03, 0.7 - k * 0.1, s * 0.019, 0, s < 0 ? Math.PI : 0, (r() - 0.5) * 0.08));
+      kit.add(new THREE.RingGeometry(0.035, 0.05, 10), 'bloom', '#e0473b', T(0.14, 0.34, s * 0.019, 0, s < 0 ? Math.PI : 0, 0));
+    });
+  });
+  // a little string of pennants along the counter's front
   kit.build(g, { inkWidth: 0.018 });
+  g.add(bunting([new THREE.Vector3(-W / 2, frontH - 0.12, D / 2 + 0.06), new THREE.Vector3(W / 2, frontH - 0.12, D / 2 + 0.06)], seed + 3, { size: 0.4, sag: 0.12 }));
   return g;
 }
 
@@ -1173,9 +1456,10 @@ export function fence(length = 6, opts: { seed?: number; height?: number; height
 export type PlanterKind = 'hydrangea' | 'lavender' | 'roses' | 'mixed';
 
 /**
- * A wooden crate planter (about 1 m by 0.55 m) filled with hydrangeas, lavender, roses or a mixed bed.
+ * A wooden crate planter (about 1 m by 0.55 m) heaped with hydrangeas, lavender, roses or a mixed bed of daisies and
+ * coreopsis, spilling over its edges.
  */
-export function flowerPlanter(kind: PlanterKind = 'hydrangea', seed = 1, opts: { width?: number } = {}): THREE.Group {
+export function flowerPlanter(kind: PlanterKind = 'hydrangea', seed = 1, opts: { width?: number; palette?: readonly string[] } = {}): THREE.Group {
   const r = rng(seed * 3 + kind.length);
   const W = opts.width ?? 1.0, D = 0.56, H = 0.5;
   const g = new THREE.Group(); g.name = 'flowerPlanter';
@@ -1193,40 +1477,36 @@ export function flowerPlanter(kind: PlanterKind = 'hydrangea', seed = 1, opts: {
   kit.add(new THREE.BoxGeometry(W - 0.08, 0.04, D - 0.08), 'plain', '#5a4232', T(0, H - 0.04, 0));
   const top = H - 0.02;
   if (kind === 'hydrangea') {
-    for (let i = 0; i < 4; i++) {
-      const cl = leafClump({ radius: 0.3, color: '#ffffff', cards: 12, squash: 0.7, seed: Math.floor(r() * 9999), core: false });
-      kit.addClump(cl, pick(r, SAIL.green), T(-W * 0.32 + i * W * 0.21, top + 0.12, (r() - 0.5) * 0.15));
-    }
-    const fam = pick(r, [['#7f9be8', '#9aa8f0', '#8a8fe0', '#a7b8f4'], ['#b39ae6', '#c6a8ee', '#9f8cdc'], ['#f2a8c8', '#e898bc', '#f6c0d6']]);
-    const nH = Math.round(W * 6);
-    for (let i = 0; i < nH; i++) {
-      const x = -W / 2 + 0.12 + (i / (nH - 1)) * (W - 0.24) + (r() - 0.5) * 0.05;
-      kit.add(hydrangeaGeo(new THREE.Color(pick(r, fam)), Math.floor(r() * 9999), 0.13 + r() * 0.05), 'bloom', null, T(x, top + 0.2 + r() * 0.16, (r() - 0.5) * D * 0.55, r() * 0.4, r() * 6, 0));
-    }
+    const pal = opts.palette ?? pick(r, [HYDRANGEA.blue, HYDRANGEA.violet, HYDRANGEA.pink]);
+    const n = Math.max(1, Math.round(W / 0.45));
+    for (let i = 0; i < n; i++) addHydrangeaBush(kit, T(-W / 2 + (i + 0.5) * (W / n), top - 0.12, (r() - 0.5) * 0.08, 0, r() * 6, 0), r, { radius: 0.34 + r() * 0.06, heads: 5, palette: pal });
   } else if (kind === 'lavender') {
-    const geo = flowerGeo('lavender');
-    const n = Math.round(W * 14);
-    const lc = new THREE.Color(pick(r, ['#a990e2', '#b39ae8']));
+    const lc = new THREE.Color(pick(r, PETALS.lavender));
+    addLeafMass(kit, T(0, top + 0.05, 0), r, { radius: W * 0.42, squash: 0.35, color: '#8a9c7a', cell: CELL.narrow, size: 0.22, ao: 0.5 });
+    const n = Math.round(W * 9);
     for (let i = 0; i < n; i++) {
-      const pg = geo.clone(); pg.deleteAttribute('aTint');
-      // tint the buds (light vertices) purple, keep stems
-      const c = pg.attributes.color as THREE.BufferAttribute, t = (geo.attributes.aTint as THREE.BufferAttribute);
-      const k = lc.clone().multiplyScalar(0.9 + r() * 0.2);
-      for (let v = 0; v < c.count; v++) if (t.getX(v) > 0.5) c.setXYZ(v, c.getX(v) * k.r, c.getY(v) * k.g, c.getZ(v) * k.b);
-      const s = 1.1 + r() * 0.4;
-      kit.add(pg, 'bloom', null, T(-W / 2 + 0.08 + r() * (W - 0.16), top, (r() - 0.5) * (D - 0.16), (r() - 0.5) * 0.3, r() * 6, (r() - 0.5) * 0.3, s, s, s));
+      const s = 0.8 + r() * 0.35;
+      kit.add(bakedPlant('lavender', lc.clone().multiplyScalar(0.9 + r() * 0.2)), 'flora', null, T(-W / 2 + 0.1 + r() * (W - 0.2), top, (r() - 0.5) * (D - 0.18), (r() - 0.5) * 0.25, r() * 6, (r() - 0.5) * 0.25, s, s, s));
     }
+  } else if (kind === 'roses') {
+    const pts: WallPoint[] = [];
+    for (let i = 0; i < Math.round(W * 4); i++) pts.push({ p: new THREE.Vector3(-W / 2 + 0.12 + r() * (W - 0.24), top + 0.18 + r() * 0.15, (r() - 0.5) * 0.2), n: new THREE.Vector3((r() - 0.5) * 0.6, 1, 0.4 + r() * 0.4).normalize(), s: 1.1 });
+    addRoses(kit, pts, r, { palette: opts.palette, blooms: 10 });
   } else {
-    addBloomMound(kit, T(0, top, 0), r, W - 0.1, D - 0.1, 0.25, kind === 'roses' ? SAIL.roses : SAIL.box, Math.round(W * 26), 4);
-    if (kind === 'roses') for (let i = 0; i < 12; i++) kit.add(roseGeo(new THREE.Color(pick(r, SAIL.roses)), 1.4), 'bloom', null, T(-W / 2 + 0.1 + r() * (W - 0.2), top + 0.3 + r() * 0.12, (r() - 0.5) * D * 0.6, r() - 0.5, 0, r() - 0.5));
+    const kinds: FlowerKind[] = ['daisy', 'coreopsis', 'cosmos', 'buttercup'];
+    addBloomMound(kit, T(0, top, 0), r, W - 0.1, D - 0.1, 0.22, opts.palette ?? SAIL.box, Math.round(W * 16), 4);
+    for (let i = 0; i < Math.round(W * 7); i++) {
+      const k = pick(r, kinds), s = 0.7 + r() * 0.3;
+      kit.add(bakedPlant(k, new THREE.Color(pick(r, PETALS[k]))), 'flora', null, T(-W / 2 + 0.1 + r() * (W - 0.2), top, (r() - 0.5) * (D - 0.2), 0, r() * 6, 0, s, s, s));
+    }
   }
   kit.build(g, { inkWidth: 0.016 });
   return g;
 }
 
-// ---------------------------------------------------------------- steps and paving
+// ---------------------------------------------------------------- steps, walls and paving
 
-/** Rough cream stone steps rising along +Z: `count` slabs of `rise` each, `width` wide. */
+/** Rough warm stone steps rising along +Z: `count` slabs of `rise` each, `width` wide, with tufts at their ends. */
 export function stoneSteps(count = 3, width = 1.6, seed = 9, rise = 0.18, tread = 0.42): THREE.Group {
   const r = rng(seed);
   const g = new THREE.Group(); g.name = 'stoneSteps';
@@ -1235,39 +1515,246 @@ export function stoneSteps(count = 3, width = 1.6, seed = 9, rise = 0.18, tread 
     const y = (i + 1) * rise;
     const nSlab = Math.max(1, Math.round(width / 0.8));
     for (let k = 0; k < nSlab; k++) {
-      const sw = width / nSlab - 0.02;
+      const sw = width / nSlab - 0.03;
       const geo = wobble(boxM(sw, rise + 0.15, tread + 0.08, STONE_TILE), 0.015, 5, i * 7 + k);
-      kit.add(geo, 'stone', new THREE.Color(SAIL.stone).multiplyScalar(0.92 + r() * 0.12), T(-width / 2 + (k + 0.5) * (width / nSlab), y - (rise + 0.15) / 2, i * tread + tread / 2, 0, (r() - 0.5) * 0.06, 0));
+      kit.add(geo, 'plain', new THREE.Color(pick(r, SAIL.flag)).multiplyScalar(0.95 + r() * 0.1), T(-width / 2 + (k + 0.5) * (width / nSlab), y - (rise + 0.15) / 2, i * tread + tread / 2, 0, (r() - 0.5) * 0.06, 0));
     }
   }
-  for (const s of [-1, 1]) for (let i = 0; i < count; i++) kit.add(new THREE.IcosahedronGeometry(0.22, 0), 'stone', SAIL.stoneDark, T(s * (width / 2 + 0.15), i * rise + 0.1, i * tread + 0.2, r(), r(), r(), 1, 0.8, 1.2));
+  for (const s of [-1, 1]) for (let i = 0; i < count; i++) {
+    kit.add(wobble(new THREE.IcosahedronGeometry(0.2, 1), 0.03, 6, i + s * 3), 'plain', pick(r, SAIL.flag), T(s * (width / 2 + 0.15), i * rise + 0.08, i * tread + 0.2, r(), r(), r(), 1, 0.75, 1.2));
+    if (r() < 0.7) addLeafMass(kit, T(s * (width / 2 + 0.22), i * rise + 0.22, i * tread + 0.15), r, { radius: 0.2 + r() * 0.08, squash: 0.7, color: pick(r, SAIL.green), ao: 0.45 });
+  }
   kit.build(g, { inkWidth: 0.016 });
   return g;
 }
 
-/** Irregular flagstones laid along a path through `points` (local, on the ground), `width` wide. */
-export function pavedPath(points: THREE.Vector3[], width = 1.4, seed = 4, heightAt?: (x: number, z: number) => number): THREE.Group {
+/**
+ * A low dry-stone wall `length` metres along +X: courses of rough warm stones, set a little irregular, under flat
+ * coping stones with moss on top, ivy here and there, and plants at the foot. heightAt(x) lets it follow the ground.
+ */
+export function stoneWall(length = 4, opts: { seed?: number; height?: number; depth?: number; heightAt?: (x: number) => number; ivy?: boolean } = {}): THREE.Group {
+  const r = rng((opts.seed ?? 4) * 11 + 5);
+  const Hh = opts.height ?? 0.75, Dd = opts.depth ?? 0.45, hAt = opts.heightAt ?? (() => 0);
+  const g = new THREE.Group(); g.name = 'stoneWall';
+  const kit = new Kit();
+  const moss = new THREE.Color('#8a9a58');
+  let y = 0, row = 0;
+  while (y < Hh - 0.14) {
+    const ch = 0.15 + r() * 0.08;
+    let x = row % 2 ? -0.15 : 0;
+    while (x < length) {
+      const len = Math.min(length - x, 0.3 + r() * 0.32);
+      if (len > 0.08) {
+        const c = new THREE.Color(pick(r, SAIL.flag)).lerp(new THREE.Color('#ece0c4'), r() * 0.4).multiplyScalar(0.9 + r() * 0.14);
+        const geo = wobble(new THREE.BoxGeometry(len - 0.035, ch - 0.03, Dd * (0.88 + r() * 0.12), 2, 2, 2), 0.018, 7, row * 31 + Math.floor(x * 10));
+        kit.add(geo, 'plain', c, T(Math.max(0, x) + len / 2, hAt(x + len / 2) + y + ch / 2, (r() - 0.5) * 0.04, (r() - 0.5) * 0.06, (r() - 0.5) * 0.08, (r() - 0.5) * 0.08));
+      }
+      x += len;
+    }
+    y += ch; row++;
+  }
+  // coping: flat stones laid across, mossy on top
+  for (let x = 0; x < length;) {
+    const len = Math.min(length - x, 0.35 + r() * 0.25);
+    const geo = wobble(new THREE.BoxGeometry(len - 0.03, 0.12, Dd + 0.1, 2, 1, 2), 0.015, 6, Math.floor(x * 13));
+    const cg = new THREE.Color(pick(r, SAIL.flag)).multiplyScalar(0.84 + r() * 0.1);
+    const pa = geo.attributes.position as THREE.BufferAttribute, cols = new Float32Array(pa.count * 3);
+    for (let i = 0; i < pa.count; i++) { const c = pa.getY(i) > 0.04 && r() < 0.75 ? cg.clone().lerp(moss, 0.4 + r() * 0.25) : cg; cols.set([c.r, c.g, c.b], i * 3); }
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+    kit.add(geo, 'plain', null, T(x + len / 2, hAt(x + len / 2) + y + 0.06, 0, 0, 0, (r() - 0.5) * 0.06));
+    x += len;
+  }
+  // ivy spilling down the face and tufts at the foot
+  if (opts.ivy !== false) {
+    for (let k = 0; k < Math.ceil(length / 2.5); k++) {
+      const x0 = r() * length, pts: WallPoint[] = [];
+      for (let i = 0; i < 4; i++) pts.push({ p: new THREE.Vector3(x0 + (r() - 0.5) * 0.4, hAt(x0) + y - 0.05 - i * 0.16, Dd / 2 + 0.02), n: new THREE.Vector3(0, 0.1, 1).normalize(), s: 1 - i * 0.15 });
+      addIvy(kit, pts, r, { perPoint: 5 });
+    }
+    for (let x = 0.3; x < length; x += 0.6 + r() * 0.9) addLeafMass(kit, T(x, hAt(x) + 0.14, Dd / 2 + 0.12), r, { radius: 0.2 + r() * 0.1, squash: 0.7, color: pick(r, SAIL.green), ao: 0.45 });
+  }
+  kit.build(g, { inkWidth: 0.014 });
+  g.userData.top = y + 0.12;
+  return g;
+}
+
+/** Sutherland-Hodgman: keep the part of polygon `poly` where (p - o)·n <= 0. */
+function clipHalf(poly: [number, number][], ox: number, oy: number, nx: number, ny: number): [number, number][] {
+  const out: [number, number][] = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const da = (a[0] - ox) * nx + (a[1] - oy) * ny, db = (b[0] - ox) * nx + (b[1] - oy) * ny;
+    if (da <= 0) out.push(a);
+    if ((da <= 0) !== (db <= 0)) { const t = da / (da - db); out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]); }
+  }
+  return out;
+}
+
+export interface PathOpts {
+  /** Mean flagstone size (m). */
+  stone?: number;
+  /** Share of stones missing (moss shows) and cracked in two. */
+  missing?: number;
+  cracked?: number;
+}
+
+/**
+ * A flagstone lane along `points` (local, on the ground), `width` wide: irregular warm sand and ochre stones that fit
+ * together (a Voronoi tiling of the band), each with its own gradient, worn darker edges and a slight height and tilt
+ * jitter; dark mossy joints between them; a few cracked or missing stones; a ragged border.
+ * userData: edges (points along both borders with their outward normal, for grass to spill over), holes (missing
+ * stones), dist(x, z) (signed distance to the border, negative inside), tris.
+ */
+export function pavedPath(points: THREE.Vector3[], width = 1.4, seed = 4, heightAt?: (x: number, z: number) => number, opts: PathOpts = {}): THREE.Group {
   const r = rng(seed);
   const g = new THREE.Group(); g.name = 'pavedPath';
   const kit = new Kit();
-  const curve = new THREE.CatmullRomCurve3(points);
-  const L = curve.getLength();
-  const step = 0.42;
-  for (let d = 0; d < L; d += step) {
-    const t = d / L, p = curve.getPointAt(t), tg = curve.getTangentAt(t);
-    const side = new THREE.Vector3(-tg.z, 0, tg.x).normalize();
-    const across = Math.max(1, Math.round(width / 0.5));
-    for (let k = 0; k < across; k++) {
-      const off = -width / 2 + (k + 0.5) * (width / across) + (r() - 0.5) * 0.1;
-      const q = p.clone().addScaledVector(side, off).addScaledVector(tg, (r() - 0.5) * 0.1);
-      const sh = new THREE.Shape(), n = 5 + Math.floor(r() * 3), rad = 0.2 + r() * 0.06;
-      for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2 + r() * 0.3, rr = rad * (0.8 + r() * 0.3); if (i) sh.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); else sh.moveTo(Math.cos(a) * rr, Math.sin(a) * rr); }
-      const sg = new THREE.ExtrudeGeometry(sh, { depth: 0.08, bevelEnabled: true, bevelSize: 0.025, bevelThickness: 0.02, bevelSegments: 1 });
-      const y = heightAt ? heightAt(q.x, q.z) : q.y;
-      kit.add(sg, 'plain', new THREE.Color('#efe4cc').multiplyScalar(0.9 + r() * 0.12), T(q.x, y + 0.01, q.z, -Math.PI / 2, 0, r() * 6));
+  const hAt = heightAt ?? ((_x: number, _z: number) => 0);
+  const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.4);
+  const L = curve.getLength(), W = width, sz = opts.stone ?? 0.5;
+  // frames along the lane, for mapping (s, t) to the ground
+  const M = Math.max(8, Math.ceil(L / 0.1));
+  const FP: THREE.Vector3[] = [], FN: THREE.Vector3[] = [];
+  for (let i = 0; i <= M; i++) {
+    const u = i / M, p = curve.getPointAt(u), tg = curve.getTangentAt(u); tg.y = 0; tg.normalize();
+    FP.push(p); FN.push(new THREE.Vector3(-tg.z, 0, tg.x));
+  }
+  const world = (s: number, t: number, out = new THREE.Vector3()) => {
+    const f = Math.max(0, Math.min(M - 1e-6, (s / L) * M)), i = Math.floor(f), k = f - i;
+    const px = FP[i].x + (FP[i + 1].x - FP[i].x) * k, pz = FP[i].z + (FP[i + 1].z - FP[i].z) * k;
+    const nx = FN[i].x + (FN[i + 1].x - FN[i].x) * k, nz = FN[i].z + (FN[i + 1].z - FN[i].z) * k;
+    return out.set(px + nx * t, 0, pz + nz * t);
+  };
+  const ragged = (s: number, side: number) => 0.07 * (Math.sin(s * 2.1 + seed + side * 3) + 0.6 * Math.sin(s * 5.3 + side * 1.7 + seed * 2));
+  // seeds: a jittered grid in (s, t), with a few left out so some stones are bigger
+  const nA = Math.max(2, Math.round(W / (sz * 0.92)));
+  const seeds: [number, number][] = [];
+  for (let s = sz * 0.3; s < L; s += sz * (0.8 + r() * 0.35)) for (let j = 0; j < nA; j++) {
+    if (r() < 0.1) continue;
+    seeds.push([s + (r() - 0.5) * sz * 0.5, -W / 2 + (j + 0.5) * (W / nA) + (r() - 0.5) * (W / nA) * 0.55]);
+  }
+  const holes: THREE.Vector3[] = [];
+  const pos: number[] = [], nor: number[] = [], cl: number[] = [], idx: number[] = [];
+  const mossC = new THREE.Color('#8a9656'), tmp = new THREE.Vector3();
+  const addStone = (poly: [number, number][], base: THREE.Color) => {
+    // centroid, gap inset and one round of corner cutting
+    let cx = 0, cy = 0; for (const [a, b] of poly) { cx += a; cy += b; } cx /= poly.length; cy /= poly.length;
+    const inset = (pts: [number, number][], d: number) => pts.map(([a, b]) => { const dx = a - cx, dy = b - cy, l = Math.hypot(dx, dy) || 1; const k = Math.max(0.2, 1 - d / l); return [cx + dx * k, cy + dy * k] as [number, number]; });
+    let pg = inset(poly, 0.02);
+    const ch: [number, number][] = [];
+    for (let i = 0; i < pg.length; i++) { const a = pg[i], b = pg[(i + 1) % pg.length]; ch.push([a[0] * 0.86 + b[0] * 0.14, a[1] * 0.86 + b[1] * 0.14], [a[0] * 0.14 + b[0] * 0.86, a[1] * 0.14 + b[1] * 0.86]); }
+    pg = ch;
+    const top = inset(pg, 0.03);
+    const c0 = world(cx, cy);
+    const y0 = hAt(c0.x, c0.z) + 0.045 + (r() - 0.5) * 0.02;
+    const tiltX = (r() - 0.5) * 0.05, tiltZ = (r() - 0.5) * 0.05;
+    const gdir = r() * Math.PI * 2, gx = Math.cos(gdir), gy = Math.sin(gdir);
+    const mossy = r() < 0.35;
+    const P = (st: [number, number], dy: number) => { const w = world(st[0], st[1], tmp); return [w.x, y0 + dy + (w.x - c0.x) * tiltX + (w.z - c0.z) * tiltZ, w.z]; };
+    const colAt = (st: [number, number], k: number) => {
+      const g2 = ((st[0] - cx) * gx + (st[1] - cy) * gy) / sz;
+      const c = base.clone().multiplyScalar(k * (1 + g2 * 0.22));
+      return c;
+    };
+    const vi = pos.length / 3;
+    // centre
+    const pc = P([cx, cy], 0.004); pos.push(...pc); nor.push(0, 1, 0); const cc = colAt([cx, cy], 1.03); cl.push(cc.r, cc.g, cc.b);
+    const n = pg.length;
+    for (let i = 0; i < n; i++) { const p = P(top[i], 0); pos.push(...p); nor.push(0, 1, 0); const c = colAt(top[i], 1); cl.push(c.r, c.g, c.b); }
+    for (let i = 0; i < n; i++) {
+      const p = P(pg[i], -0.022); pos.push(...p);
+      const w = world(pg[i][0], pg[i][1]); const ox = w.x - c0.x, oz = w.z - c0.z, ol = Math.hypot(ox, oz) || 1;
+      const nn = new THREE.Vector3(ox / ol * 0.7, 1, oz / ol * 0.7).normalize(); nor.push(nn.x, nn.y, nn.z);
+      const c = colAt(pg[i], 0.84); if (mossy && r() < 0.6) c.lerp(mossC, 0.45); cl.push(c.r, c.g, c.b);
     }
+    for (let i = 0; i < n; i++) {
+      const p = P(pg[i], -0.075); pos.push(...p);
+      const w = world(pg[i][0], pg[i][1]); const ox = w.x - c0.x, oz = w.z - c0.z, ol = Math.hypot(ox, oz) || 1;
+      nor.push(ox / ol, 0.2, oz / ol);
+      const c = colAt(pg[i], 0.62); cl.push(c.r, c.g, c.b);
+    }
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n, t0 = vi + 1 + i, t1 = vi + 1 + j, o0 = vi + 1 + n + i, o1 = vi + 1 + n + j, b0 = vi + 1 + 2 * n + i, b1 = vi + 1 + 2 * n + j;
+      idx.push(vi, t1, t0, t0, t1, o1, t0, o1, o0, o0, o1, b1, o0, b1, b0);
+    }
+  };
+  for (let i = 0; i < seeds.length; i++) {
+    const [s, t] = seeds[i];
+    let poly: [number, number][] = [[s - sz * 1.4, -W / 2 - 0.3], [s + sz * 1.4, -W / 2 - 0.3], [s + sz * 1.4, W / 2 + 0.3], [s - sz * 1.4, W / 2 + 0.3]];
+    for (let j = 0; j < seeds.length; j++) {
+      if (j === i) continue;
+      const [s2, t2] = seeds[j];
+      if (Math.abs(s2 - s) > sz * 2.2) continue;
+      poly = clipHalf(poly, (s + s2) / 2, (t + t2) / 2, s2 - s, t2 - t);
+      if (poly.length < 3) break;
+    }
+    if (poly.length < 3) continue;
+    // the ragged border and the ends
+    poly = clipHalf(poly, 0, -W / 2 - ragged(s, -1), 0, -1);
+    poly = clipHalf(poly, 0, W / 2 + ragged(s, 1), 0, 1);
+    poly = clipHalf(poly, 0, 0, -1, 0);
+    poly = clipHalf(poly, L, 0, 1, 0);
+    if (poly.length < 3) continue;
+    let area = 0; for (let k = 0; k < poly.length; k++) { const a = poly[k], b = poly[(k + 1) % poly.length]; area += a[0] * b[1] - b[0] * a[1]; }
+    area = Math.abs(area) / 2;
+    if (area < 0.03) continue;
+    if (r() < (opts.missing ?? 0.035)) { holes.push(world(s, t).setY(0)); continue; }
+    const base = new THREE.Color(pick(r, SAIL.flag)).multiplyScalar(0.93 + r() * 0.12);
+    if (r() < (opts.cracked ?? 0.07)) {
+      const a = r() * Math.PI, nx = Math.cos(a), ny = Math.sin(a);
+      const A = clipHalf(poly, s + nx * 0.012, t + ny * 0.012, -nx, -ny), B = clipHalf(poly, s - nx * 0.012, t - ny * 0.012, nx, ny);
+      if (A.length >= 3) addStone(A, base);
+      if (B.length >= 3) addStone(B, base.clone().multiplyScalar(0.96));
+    } else addStone(poly, base);
+  }
+  const sg = new THREE.BufferGeometry();
+  sg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  sg.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  sg.setAttribute('color', new THREE.Float32BufferAttribute(cl, 3));
+  sg.setIndex(idx);
+  kit.add(orient(sg), 'plain', null);
+  // the joint bed under the stones: moss and earth
+  {
+    const jp: number[] = [], jc: number[] = [], ji: number[] = [];
+    const moss = new THREE.Color('#47522c'), earth = new THREE.Color('#5e4e34');
+    for (let i = 0; i <= M; i++) {
+      const s = (i / M) * L;
+      for (const side of [-1, 1]) {
+        const w = world(s, side * (W / 2 + 0.06 + Math.max(0, ragged(s, side))));
+        jp.push(w.x, hAt(w.x, w.z) + 0.012, w.z);
+        const c = moss.clone().lerp(earth, 0.5 + 0.5 * Math.sin(s * 1.3 + side));
+        jc.push(c.r, c.g, c.b);
+      }
+      if (i) { const a = (i - 1) * 2; ji.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
+    }
+    const jg = new THREE.BufferGeometry();
+    jg.setAttribute('position', new THREE.Float32BufferAttribute(jp, 3));
+    jg.setAttribute('color', new THREE.Float32BufferAttribute(jc, 3));
+    jg.setIndex(ji); jg.computeVertexNormals();
+    const nn = jg.attributes.normal as THREE.BufferAttribute; for (let i = 0; i < nn.count; i++) nn.setXYZ(i, 0, 1, 0);
+    kit.add(jg, 'plain', null);
   }
   kit.build(g, { outline: false });
+  // borders for grass to spill over, and a distance function for masks
+  const edges: { p: THREE.Vector3; n: THREE.Vector3 }[] = [];
+  for (let s = 0; s < L; s += 0.18) for (const side of [-1, 1]) {
+    const f = Math.min(M, Math.round((s / L) * M));
+    edges.push({ p: world(s, side * (W / 2 + ragged(s, side))), n: FN[f].clone().multiplyScalar(side) });
+  }
+  const grid = new Map<string, number[]>();
+  FP.forEach((p, i) => { const k = `${Math.floor(p.x / 2)},${Math.floor(p.z / 2)}`; (grid.get(k) ?? grid.set(k, []).get(k)!).push(i); });
+  g.userData.dist = (x: number, z: number) => {
+    let best = 1e9, bi = -1;
+    const gx = Math.floor(x / 2), gz = Math.floor(z / 2);
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) for (const i of grid.get(`${gx + dx},${gz + dz}`) ?? []) { const d = (FP[i].x - x) ** 2 + (FP[i].z - z) ** 2; if (d < best) { best = d; bi = i; } }
+    if (bi < 0) return 99;
+    const t = (x - FP[bi].x) * FN[bi].x + (z - FP[bi].z) * FN[bi].z;
+    const along = Math.abs((x - FP[bi].x) * FN[bi].z - (z - FP[bi].z) * FN[bi].x);
+    return Math.max(Math.abs(t) - W / 2, (bi === 0 || bi === M) ? along : -99);
+  };
+  g.userData.edges = edges;
+  g.userData.holes = holes;
+  g.userData.tris = kit.tris;
   return g;
 }
 
@@ -1275,66 +1762,123 @@ export function pavedPath(points: THREE.Vector3[], width = 1.4, seed = 4, height
 
 export interface GateOpts { seed?: number; height?: number; radius?: number; tubes?: number; pennants?: readonly string[] }
 
+/** A closed tube swept round a circle of radius R in the XY plane from a polygon profile [radial, z], flat-shaded per profile edge. */
+function ringSweep(R: number, profile: [number, number][], segs: number, color: THREE.Color) {
+  const pos: number[] = [], nor: number[] = [], idx: number[] = [];
+  const n = profile.length;
+  for (let e = 0; e < n; e++) {
+    const a = profile[e], b = profile[(e + 1) % n];
+    // the edge's outward normal in (radial, z)
+    let nr = b[1] - a[1], nz = -(b[0] - a[0]); const l = Math.hypot(nr, nz) || 1; nr /= l; nz /= l;
+    const base = pos.length / 3;
+    for (let i = 0; i <= segs; i++) {
+      const phi = (i / segs) * Math.PI * 2, c = Math.cos(phi), s = Math.sin(phi);
+      for (const p of [a, b]) { pos.push((R + p[0]) * c, (R + p[0]) * s, p[1]); nor.push(nr * c, nr * s, nz); }
+    }
+    for (let i = 0; i < segs; i++) { const v = base + i * 2; idx.push(v, v + 2, v + 3, v, v + 3, v + 1); }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setIndex(idx);
+  return tint(orient(g), color);
+}
+
 /**
- * The golden race gate of the kite-wing race (picture 3): a tall turned wooden pole on a stone plinth carrying a
- * big brass ring, with long chime tubes hanging inside the ring from a crossbar (racers ring them flying through),
- * pennants streaming from its sides, and a flag on the finial. The ring faces ±Z (fly along Z through it).
- * userData.chime rings the tubes; userData.center is the ring centre (local); userData.radius its inner radius.
+ * The golden race gate of the kite-wing race (picture 3): a big, thick ring of bevelled brass with a riveted band,
+ * held off the side of a tall carved wooden pole wrapped in cloth. From a short yoke inside the ring's crown hangs a
+ * cluster of fat chime tubes, glass, pewter and brass by turns, as long as the ring is wide (racers ring them flying
+ * through); long multi-colour streamers trail from the pole top and the ring in a travelling wave.
+ * The ring faces ±Z (fly along Z through it). userData.chime rings the tubes; userData.center is the ring centre
+ * (local); userData.radius its inner radius.
  */
 export function raceGate(opts: GateOpts = {}): THREE.Group {
   const seed = opts.seed ?? 1, r = rng(seed);
-  const H = opts.height ?? 7.5, R = opts.radius ?? 2.4;
+  const R = opts.radius ?? 2.4, cy = opts.height ?? 8.6;
   const g = new THREE.Group(); g.name = 'raceGate';
   const kit = new Kit();
-  const cy = H + R + 0.05;
-  // stone plinth: two stepped drums
-  kit.add(wobble(lathe([[0.95, 0], [0.95, 0.3], [0.7, 0.32], [0.7, 0.6], [0.45, 0.62]], 16, STONE_TILE), 0.02, 3, seed), 'stone', SAIL.stone);
-  // the pole: octagonal, tapering, with brass bands and a spiral ribbon wrap
-  kit.add(postGeo(0.14, 0.2, H, 8), 'wood', SAIL.timber, T(0, H / 2 + 0.5, 0));
-  for (const y of [0.9, H * 0.45, H * 0.8, H + 0.35]) kit.add(new THREE.CylinderGeometry(0.2, 0.2, 0.1, 10), 'brass', SAIL.brass, T(0, y, 0));
-  const spiral: THREE.Vector3[] = [];
-  for (let i = 0; i <= 40; i++) { const t = i / 40, y = 1.2 + t * (H * 0.7 - 1.2), a = t * Math.PI * 2 * 4; spiral.push(new THREE.Vector3(Math.cos(a) * 0.19, y, Math.sin(a) * 0.19)); }
-  kit.add(ropeGeo(spiral, 0.03, 4), 'plain', '#3f78c8');
-  const spiral2 = spiral.map(p => new THREE.Vector3(-p.x, p.y + 0.18, -p.z));
-  kit.add(ropeGeo(spiral2, 0.03, 4), 'plain', '#e0473b');
-  // a collar at the pole top that cradles the ring
-  kit.add(new THREE.CylinderGeometry(0.28, 0.2, 0.3, 10), 'brass', SAIL.brass, T(0, H + 0.5, 0));
-  for (const s of [-1, 1]) {
-    // curved brass struts from the pole up to the ring's lower sides
-    const a = -Math.PI / 2 + s * 0.75;
-    const end = new THREE.Vector3(Math.cos(a) * R, cy + Math.sin(a) * R, 0);
-    const pts = [new THREE.Vector3(0, H - 0.4, 0), new THREE.Vector3(s * 0.5, H + 0.25, 0), end];
-    kit.add(ropeGeo(pts, 0.045, 6), 'brass', SAIL.brass);
+  const wR = 0.42, wZ = 0.34;   // the ring's tube: half-width across (radial) and half-depth (along Z)
+  const brass = new THREE.Color(SAIL.brass), deep = new THREE.Color('#c48f34'), bright = new THREE.Color('#f6d27a');
+  // the ring: a bevelled octagonal section, then a raised band round its outer face, studded with rivets
+  const prof: [number, number][] = [[wR, -wZ * 0.55], [wR, wZ * 0.55], [wR * 0.7, wZ], [-wR * 0.7, wZ], [-wR, wZ * 0.55], [-wR, -wZ * 0.55], [-wR * 0.7, -wZ], [wR * 0.7, -wZ]];
+  kit.add(ringSweep(R, prof, 96, brass), 'brass', null, T(0, cy, 0));
+  kit.add(ringSweep(R, [[wR + 0.03, -0.12], [wR + 0.03, 0.12], [wR - 0.01, 0.14], [wR - 0.01, -0.14]], 96, deep), 'brass', null, T(0, cy, 0));
+  kit.add(ringSweep(R, [[-wR - 0.015, -0.05], [-wR - 0.015, 0.05], [-wR + 0.02, 0.07], [-wR + 0.02, -0.07]], 96, bright), 'brass', null, T(0, cy, 0));
+  const nRiv = Math.round((Math.PI * 2 * (R + wR)) / 0.32);
+  for (let i = 0; i < nRiv; i++) {
+    const a = (i / nRiv) * Math.PI * 2, c = Math.cos(a), s = Math.sin(a);
+    kit.add(new THREE.SphereGeometry(0.035, 6, 4), 'brass', bright, T((R + wR + 0.04) * c, cy + (R + wR + 0.04) * s, 0.07));
+    kit.add(new THREE.SphereGeometry(0.035, 6, 4), 'brass', bright, T((R + wR + 0.04) * c, cy + (R + wR + 0.04) * s, -0.07));
+    if (i % 2 === 0) for (const z of [wZ + 0.005, -wZ - 0.005]) kit.add(new THREE.SphereGeometry(0.04, 6, 4), 'brass', bright, T(R * c, cy + R * s, z));
   }
-  // the ring: a thick brass torus, an inner bead, studs, and a crossbar along the top for the chimes
-  kit.add(new THREE.TorusGeometry(R, 0.2, 10, 72).scale(1, 1, 0.6), 'brass', SAIL.brass, T(0, cy, 0));
-  kit.add(new THREE.TorusGeometry(R - 0.22, 0.04, 6, 72), 'brass', '#f0c868', T(0, cy, 0));
-  kit.add(new THREE.TorusGeometry(R + 0.22, 0.035, 6, 72), 'brass', '#c8963a', T(0, cy, 0));
-  for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2; kit.add(new THREE.SphereGeometry(0.075, 8, 6), 'brass', '#f6d27a', T(Math.cos(a) * R, cy + Math.sin(a) * R, 0.12)); kit.add(new THREE.SphereGeometry(0.075, 8, 6), 'brass', '#f6d27a', T(Math.cos(a) * R, cy + Math.sin(a) * R, -0.12)); }
-  const barY = cy + R * 0.62, barW = Math.sqrt(R * R - (R * 0.62) ** 2) * 2;
-  kit.add(new THREE.CylinderGeometry(0.05, 0.05, barW, 8).rotateZ(Math.PI / 2), 'brass', SAIL.brass, T(0, barY, 0));
-  // finial with a flag on top
-  kit.add(postGeo(0.03, 0.05, 1.3), 'wood', SAIL.timberDark, T(0, cy + R + 0.75, 0));
-  kit.add(new THREE.SphereGeometry(0.13, 10, 8), 'brass', SAIL.brass, T(0, cy + R + 0.12, 0));
-  kit.add(new THREE.ConeGeometry(0.07, 0.3, 8), 'brass', SAIL.brass, T(0, cy + R + 1.5, 0));
-  const pens = opts.pennants ?? ['#e0473b', '#f2c53d', '#3f78c8'];
-  // pennants: long tapered ribbons with forked tails, streaming down-wind from the ring's sides and the finial
-  const ribbon = (at: THREE.Vector3, len: number, wid: number, c: THREE.Color, ph: number, dirX: number) => {
-    const pos: number[] = [], nor: number[] = [], cl: number[] = [], wv: number[] = [], dr: number[] = [], idx: number[] = [];
-    const n = 12;
+  // the pole, off the ring's side: a stone plinth, a carved and turned shaft, wrapped in two spiralling cloths
+  const px = R + wR + 0.36, poleTop = cy + R + 1.4;
+  kit.add(wobble(lathe([[1.0, 0], [1.0, 0.3], [0.78, 0.32], [0.78, 0.62], [0.5, 0.64], [0.5, 0.8], [0.34, 0.82]], 18, STONE_TILE), 0.02, 3, seed), 'stone', SAIL.stone, T(px, 0, 0));
+  const pp: [number, number][] = [];
+  for (let i = 0; i <= 60; i++) {
+    const y = 0.8 + (poleTop - 0.8) * (i / 60), t = (y - 0.8) / (poleTop - 0.8);
+    const base = 0.3 - 0.09 * t;
+    const bead = Math.max(0, Math.cos(((y - 0.8) % 1.35) / 1.35 * Math.PI * 2)) ** 12 * 0.045;   // carved rings every 1.35 m
+    pp.push([base + bead, y]);
+  }
+  kit.add(lathe(pp, 12, WOOD_TILE), 'wood', '#7a5434', T(px, 0, 0));
+  const wrap = (c: THREE.Color, y0: number, y1: number, turns: number, off: number) => {
+    const pos: number[] = [], nor: number[] = [], idx: number[] = [];
+    const n = Math.round(turns * 24), bw = 0.13;
     for (let i = 0; i <= n; i++) {
-      const t = i / n, w = wid * (1 - t * 0.55);
-      const along = new THREE.Vector3(dirX * t * len * 0.85, -t * len * 0.5 - t * t * len * 0.15, 0);
+      const t = i / n, y = y0 + (y1 - y0) * t, a = off + t * turns * Math.PI * 2;
+      const pr = 0.3 - 0.09 * ((y - 0.8) / (poleTop - 0.8)) + 0.014;
+      const ca = Math.cos(a), sa = Math.sin(a);
+      pos.push(pr * ca, y - bw / 2, pr * sa, pr * ca, y + bw / 2, pr * sa); nor.push(ca, 0, sa, ca, 0, sa);
+      if (i) { const v = (i - 1) * 2; idx.push(v, v + 2, v + 3, v, v + 3, v + 1); }
+    }
+    const gg = new THREE.BufferGeometry();
+    gg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); gg.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); gg.setIndex(idx);
+    kit.add(orient(gg), 'plain', c, T(px, 0, 0));
+  };
+  const pens = opts.pennants ?? ['#e0473b', '#f2c53d', '#3f78c8', '#f08a32'];
+  wrap(new THREE.Color(pens[0]), 1.4, cy - 1.2, 5, 0);
+  wrap(new THREE.Color(pens[2]), 1.4, cy - 1.2, 5, Math.PI);
+  for (const y of [1.3, cy - 1.3, poleTop - 0.2]) kit.add(new THREE.CylinderGeometry(0.31, 0.31, 0.14, 12), 'brass', brass, T(px, y, 0));
+  kit.add(new THREE.SphereGeometry(0.2, 12, 8), 'brass', brass, T(px, poleTop + 0.12, 0));
+  kit.add(new THREE.ConeGeometry(0.09, 0.5, 8), 'brass', brass, T(px, poleTop + 0.5, 0));
+  // brackets: two brass arms with collars, from the pole to the ring's flank
+  for (const a of [0.42, -0.42]) {
+    const rx = (R + wR) * Math.cos(a), ry = cy + (R + wR) * Math.sin(a);
+    const len = px - rx;
+    kit.add(new THREE.CylinderGeometry(0.07, 0.07, len + 0.1, 8).rotateZ(Math.PI / 2), 'brass', deep, T((px + rx) / 2, ry, 0));
+    kit.add(new THREE.TorusGeometry(0.33, 0.06, 6, 14).rotateX(Math.PI / 2), 'brass', brass, T(px, ry, 0));
+    kit.add(new THREE.BoxGeometry(0.22, 0.5, wZ * 2 + 0.1), 'brass', deep, T(rx + 0.05, ry, 0, 0, 0, a));
+  }
+  // the yoke: a brass hanger from the crown, a turned wooden disc with a little brass roof
+  const yokeY = cy + R - wR - 0.42;
+  kit.add(new THREE.CylinderGeometry(0.035, 0.035, 0.42, 6), 'brass', deep, T(0, yokeY + 0.21, 0));
+  kit.add(new THREE.CylinderGeometry(0.5, 0.52, 0.1, 18), 'wood', SAIL.timber, T(0, yokeY, 0));
+  kit.add(new THREE.ConeGeometry(0.56, 0.2, 18), 'brass', brass, T(0, yokeY + 0.15, 0));
+  kit.add(new THREE.TorusGeometry(0.51, 0.025, 4, 18).rotateX(Math.PI / 2), 'brass', bright, T(0, yokeY - 0.05, 0));
+  // the clapper and its wind-sail, hanging through the middle of the tubes
+  kit.add(new THREE.CylinderGeometry(0.008, 0.008, 2.4, 3), 'plain', SAIL.iron, T(0, yokeY - 1.2, 0));
+  kit.add(new THREE.CylinderGeometry(0.2, 0.2, 0.08, 14), 'wood', SAIL.plank, T(0, yokeY - 1.7, 0));
+  kit.build(g, { inkWidth: 0.03 });
+
+  // streamers: long ribbons of wind-cloth from the pole top and the ring, waving along their length
+  const ck = new Kit();
+  const streamer = (at: THREE.Vector3, len: number, wid: number, cols: THREE.Color[], ph: number, dir: THREE.Vector3, droop: number) => {
+    const pos: number[] = [], nor: number[] = [], cl: number[] = [], wv: number[] = [], dr: number[] = [], idx: number[] = [];
+    const n = 16, side = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize();
+    for (let i = 0; i <= n; i++) {
+      const t = i / n, w = wid * (1 - t * 0.5);
+      const c = at.clone().addScaledVector(dir, t * len).add(new THREE.Vector3(0, -droop * t * t * len, 0));
       for (const s of [-1, 1]) {
-        const fork = t > 0.82 ? (s * (t - 0.82) * 0.6) : 0;
-        const p = at.clone().add(along).add(new THREE.Vector3(0, s * w / 2 * 0.6 + fork, s * w / 2 * 0.3));
-        pos.push(p.x, p.y, p.z); nor.push(0, 0, 1);
-        const cc = (Math.floor(t * 4) % 2 === 0) ? c : c.clone().lerp(new THREE.Color('#ffffff'), 0.15);
+        const fork = t > 0.86 ? s * (t - 0.86) * 0.7 : 0;
+        const p = c.clone().add(new THREE.Vector3(0, s * w / 2 + fork, 0));
+        pos.push(p.x, p.y, p.z); nor.push(side.x, side.y, side.z);
+        const cc = cols[Math.floor(t * n / 3) % cols.length];
         cl.push(cc.r, cc.g, cc.b);
-        wv.push(t * 0.35, ph + t * 0.5, 0.3); dr.push(0, 0.25, 1);
+        // the wave grows toward the tail and travels along it
+        wv.push(0.08 + t * 0.62, ph - t * 5.5, 0.25); dr.push(side.x, 0.35, side.z);
       }
-      if (i < n && !(i === n - 1)) { const a = i * 2; idx.push(a, a + 1, a + 3, a, a + 3, a + 2); }
-      if (i === n - 1) { const a = i * 2; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
+      if (i < n) { const a = i * 2; idx.push(a, a + 1, a + 3, a, a + 3, a + 2); }
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -1343,33 +1887,44 @@ export function raceGate(opts: GateOpts = {}): THREE.Group {
     geo.setAttribute('aWave', new THREE.Float32BufferAttribute(wv, 3));
     geo.setAttribute('aDir', new THREE.Float32BufferAttribute(dr, 3));
     geo.setIndex(idx);
-    kit.add(geo, 'cloth', null);
+    ck.add(geo, 'cloth', null);
   };
-  ribbon(new THREE.Vector3(R + 0.1, cy, 0), 3.2, 0.32, new THREE.Color(pens[0]), 0, 1);
-  ribbon(new THREE.Vector3(R + 0.05, cy - 0.35, 0), 2.6, 0.26, new THREE.Color(pens[1]), 1.3, 1);
-  ribbon(new THREE.Vector3(-R - 0.1, cy, 0), 3.0, 0.32, new THREE.Color(pens[2]), 2.1, 1.0);
-  ribbon(new THREE.Vector3(0, cy + R + 1.3, 0), 2.2, 0.3, new THREE.Color(pens[0]), 3.3, 1);
-  kit.build(g, { inkWidth: 0.025 });
-  // the gate's chimes: big brass tubes on the crossbar
-  const n = opts.tubes ?? 4;
-  const tubes = new THREE.InstancedMesh(chimeTubeGeo(8.5), townMat('brass'), n);
-  tubes.castShadow = true; tubes.frustumCulled = false;
-  const attach: THREE.Vector3[] = [], len: number[] = [];
+  const PC = pens.map(c => new THREE.Color(c)), cream = new THREE.Color('#f6efe2');
+  const out = new THREE.Vector3(1, 0, 0.25).normalize();
+  streamer(new THREE.Vector3(px + 0.2, poleTop - 0.15, 0), 5.6, 0.34, [PC[0], cream, PC[1]], 0, out, 0.12);
+  streamer(new THREE.Vector3(px + 0.2, poleTop - 0.5, 0.05), 4.8, 0.3, [PC[2], PC[1]], 1.7, out.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), 0.3), 0.18);
+  streamer(new THREE.Vector3(px + 0.2, poleTop - 0.85, -0.05), 4.2, 0.28, [PC[3], cream], 3.1, out.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -0.25), 0.22);
+  streamer(new THREE.Vector3(-R - wR, cy + 0.2, 0), 3.6, 0.22, [PC[1], PC[0], PC[2]], 4.4, new THREE.Vector3(-1, -0.15, 0.25).normalize(), 0.2);
+  // and a swallowtail flag on the finial
+  streamer(new THREE.Vector3(px, poleTop + 0.6, 0), 1.3, 0.5, [PC[0]], 2.2, out, 0.05);
+  ck.build(g, { outline: false });
+
+  // the chimes: fat tubes of mixed length round the yoke, glass and pewter by turns with brass
+  const n = Math.max(5, Math.min(7, opts.tubes ?? 6));
+  const metal = new THREE.InstancedMesh(chimeTubeGeo(10.5), townMat('brass'), n);
+  const glass = new THREE.InstancedMesh(chimeTubeGeo(10.5), townMat('silver'), n);
+  for (const m of [metal, glass]) { m.castShadow = true; m.frustumCulled = false; m.count = 0; }
+  const attach: THREE.Vector3[] = [], len: number[] = [], slots: [THREE.InstancedMesh, number][] = [];
+  const D = 2 * (R + wR);
   for (let i = 0; i < n; i++) {
-    const x = (i - (n - 1) / 2) * (barW * 0.62 / Math.max(1, n - 1));
-    attach.push(new THREE.Vector3(x, -0.04, 0));
-    len.push(1.5 + (1 - Math.abs(i - (n - 1) / 2) / ((n + 1) / 2)) * 1.1 + r() * 0.15);
-    tubes.setColorAt(i, new THREE.Color(i % 2 ? '#f0d48a' : '#dfe6ee'));
+    const a = (i / n) * Math.PI * 2 + 0.3;
+    attach.push(new THREE.Vector3(Math.cos(a) * 0.38, -0.06, Math.sin(a) * 0.38));
+    len.push(D * (0.6 + 0.2 * (0.5 + 0.5 * Math.sin(i * 2.4 + 0.5))) + r() * 0.1);
+    const isBrass = i % 2 === 0;
+    const m = isBrass ? metal : glass;
+    m.setColorAt(m.count, new THREE.Color(isBrass ? '#f0c45a' : pick(r, ['#d4dee8', '#cfe6ee', '#bfc9d4'])));
+    slots.push([m, m.count++]);
   }
-  const body = new THREE.Group(); body.add(tubes); g.add(body);
-  body.position.set(0, barY, 0);   // the set swings about the crossbar
-  const chime = new Chime(g, body, tubes, attach, len, seed + 9, 0.35, 0.5);
+  for (const m of [metal, glass]) if (m.instanceColor) m.instanceColor.needsUpdate = true;
+  const body = new THREE.Group(); body.add(metal, glass); g.add(body);
+  body.position.set(0, yokeY - 0.05, 0);
+  const chime = new Chime(g, body, slots, attach, len, seed + 9, 0.35, 0.5);
   g.userData.chime = chime;
   g.userData.update = (dt: number, t: number) => chime.update(dt, t);
   chime.update(0, 0);
   g.userData.center = new THREE.Vector3(0, cy, 0);
-  g.userData.radius = R - 0.15;
-  g.userData.tris = kit.tris;
+  g.userData.radius = R - wR;
+  g.userData.tris = kit.tris + ck.tris;
   return g;
 }
 
@@ -1389,6 +1944,6 @@ export function propStats(o: THREE.Object3D) {
 
 // ---------------------------------------------------------------- re-exports for convenience
 
-export { flowerDrifts, type DriftOpts, type FlowerKind as SailFlowerKind } from './sailtownFlora';
+export { FloraField, meadow, flowerBed, plantGeo, PETALS, GRASS, type MeadowOpts, type BedOpts, type PlantKind, type FlowerKind } from './sailtownFlora';
+export { townTree, hedge, addLeafMass, addHydrangeaBush, addRoses, addIvy, HYDRANGEA, ROSES, type TreeOpts } from './sailtownGreen';
 export { CLOTH } from './sailtownKit';
-export type { FlowerKind };
