@@ -49,7 +49,7 @@ export class FinishPass extends Pass {
       fragmentShader: /* glsl */ `
         #include <packing>
         uniform sampler2D tDiffuse, tDepth;
-        uniform vec2 uRes; uniform float uNear, uFar, uTime, uInkK, uLineW, uBrush, uHaze, uGrain, uVignette, uSat, uNight, uSunVis, uMist, uDream;
+        uniform vec2 uRes; uniform float uNear, uFar, uTime, uInkK, uLineW, uHatch, uBrush, uHaze, uGrain, uVignette, uSat, uNight, uSunVis, uMist, uDream;
         uniform vec2 uSun; uniform vec3 uSunCol, uMistCol, uHazeCol;
         uniform vec3 uInk, uShadowTint, uHighTint;
         varying vec2 vUv;
