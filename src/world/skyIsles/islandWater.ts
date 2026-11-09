@@ -101,8 +101,10 @@ export function fallGeometry(sh: IslandShape, st: Stream): FallOut {
       if (N.dot(dir) < 0) N.negate();
       const s = ds[i] / L;
       const half = W * 0.5 * (1 + 0.9 * s * s + 0.25 * s) * (layer ? 0.82 : 1);
-      const bulge = W * (layer ? 0.06 : 0.16) * (1 - 0.5 * s);
-      const back = layer ? W * 0.18 + 0.1 : 0;
+      // the front sheet arcs out in the middle; the back one sits close behind it, so edge-on it still reads as
+      // one body of water rather than two panes
+      const bulge = W * (layer ? 0.1 : 0.16) * (1 - 0.5 * s);
+      const back = layer ? W * 0.05 + 0.05 : 0;
       for (let j = 0; j <= across; j++) {
         const u = (j / across) * 2 - 1;
         const p = C[i].clone().addScaledVector(side, u * half).addScaledVector(N, (1 - u * u) * bulge - back);

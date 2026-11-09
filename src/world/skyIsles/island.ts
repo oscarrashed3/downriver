@@ -158,7 +158,7 @@ export function buildFloatingIsland(opts: FloatingIslandOpts): FloatingIsland {
   // ---- trees and bushes (merged per material)
   if (!opts.bare) {
     const flora = new THREE.Group();
-    const nTrees = opts.trees ?? Math.round(R / 3.5);
+    const nTrees = opts.trees ?? Math.round(R / 3);
     const placed: THREE.Vector2[] = [];
     for (let i = 0, tries = 0; i < nTrees && tries < nTrees * 30; tries++) {
       // the last one or two lean out over the edge
@@ -182,6 +182,18 @@ export function buildFloatingIsland(opts: FloatingIslandOpts): FloatingIsland {
       if (nearWater(q.x, q.z, 1.2) || fallAvoid.some(v => Math.abs(Math.atan2(Math.sin(q.a - v.a), Math.cos(q.a - v.a))) < v.half * 1.4)) continue;
       const b = bush(rng, Math.min(1.1, 0.6 + R / 25) * (0.8 + rng() * 0.5));
       b.position.set(q.x, q.y - 0.1, q.z);
+      flora.add(b);
+    }
+    // and some spilling right over the lip, as in the pictures
+    const nOver = Math.round((TAU * R) / 9);
+    for (let i = 0; i < nOver; i++) {
+      const a = rng() * TAU;
+      if (nearWater(Math.cos(a) * sh.outline(a), Math.sin(a) * sh.outline(a), 1.5) || fallAvoid.some(v => Math.abs(Math.atan2(Math.sin(a - v.a), Math.cos(a - v.a))) < v.half * 1.6)) continue;
+      const Rt = sh.outline(a) + 0.15 * sc;
+      const b = bush(rng, Math.min(1.0, 0.55 + R / 28) * (0.8 + rng() * 0.4));
+      b.position.set(Math.cos(a) * Rt, sh.edgeY(a) - 0.45 * sc, Math.sin(a) * Rt);
+      b.rotation.set(0, rng() * TAU, 0);
+      b.scale.y = 0.85;
       flora.add(b);
     }
     // a few pale boulders half sunk in the grass

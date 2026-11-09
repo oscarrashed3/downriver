@@ -30,7 +30,7 @@ export default function (ctx: LabCtx): LabPiece {
   };
   const hero = add(buildFloatingIsland({
     seed: 3, radius: 16, wobble: 0.75, cliffDepth: 17, underDepth: 24,
-    waterfalls: [{ angle: 1.75, width: 3.2, length: 72 }], trees: 6, flowers: 30,
+    waterfalls: [{ angle: 1.75, width: 3.2, length: 72 }], trees: 7, flowers: 34,
   }), 0, 0, 0, 0);
   add(buildFloatingIsland({ seed: 11, radius: 8.5, wobble: 0.8, cliffDepth: 9, underDepth: 15, waterfalls: [{ angle: 2.5, width: 1.7, length: 42 }], trees: 2, flowers: 10 }), 54, 7, -42, 0.3);
   add(buildFloatingIsland({ seed: 23, radius: 6.5, wobble: 0.9, cliffDepth: 6.5, underDepth: 11, trees: 1, flowers: 6 }), -44, -9, -34, 1.1);
