@@ -245,7 +245,7 @@ export const TITLE_LAYOUT: Spot[] = [
   { world: 1, el: 20, az: 25, size: 9, dist: 2600, haze: 0.2 },
   { world: 2, el: 12, az: 37, size: 7, dist: 3000, haze: 0.26 },
   { world: 3, el: 7, az: 31, size: 5.8, dist: 3400, haze: 0.26 },
-  { world: 4, el: 4, az: 41, size: 4.8, dist: 3800, haze: 0.2 },
+  { world: 4, el: 3.5, az: 38.5, size: 4.8, dist: 3800, haze: 0.2 },
   { world: 5, el: 1.5, az: 31, size: 4.4, dist: 4200, haze: 0.22 },
 ];
 
@@ -500,6 +500,8 @@ export class SkyIslands {
     const used = new Set(this.layout.map(L => L.world));
     this.moons.forEach((m, i) => { if (!used.has(i)) { m.disc.visible = false; m.halo.visible = false; } });
     (this.beacon.material as THREE.SpriteMaterial).opacity = 0; (this.beaconGlow.material as THREE.SpriteMaterial).opacity = 0;
+    // the worlds appear one after another, nearest first; the last one is fully there when reveal reaches 1
+    const stagger = Math.min(0.22, 0.5 / Math.max(1, this.layout.length - 1));
     this.layout.forEach((L, k) => {
       const m = this.moons[L.world];
       m.disc.visible = m.halo.visible = true;
@@ -509,7 +511,7 @@ export class SkyIslands {
       const w = 2 * L.dist * Math.tan(THREE.MathUtils.degToRad(L.size / 2)) / m.frac;
       m.disc.position.copy(pos); m.disc.quaternion.copy(camQ); m.disc.scale.set(w, w, 1);
       m.halo.position.copy(pos).addScaledVector(dir, 5); m.halo.scale.setScalar(w * m.frac * 1.42);
-      const rk = smoothstep(k * 0.22, k * 0.22 + 0.5, reveal) * (1 - veil * 0.85);
+      const rk = smoothstep(k * stagger, k * stagger + 0.5, reveal) * (1 - veil * 0.85);
       const u = (m.disc.material as THREE.ShaderMaterial).uniforms;
       u.uOpacity.value = show * rk;
       u.uHazeK.value = Math.min(0.85, L.haze + (1 - rk) * 0.4);
@@ -539,7 +541,7 @@ export class SkyIslands {
         const d = L.dist * c.dist;
         c.s.position.copy(this.origin).addScaledVector(dir, d);
         w = 2 * d * Math.tan(THREE.MathUtils.degToRad(L.size / 2)) * c.w * 1.6;
-        const rk = smoothstep(c.spot * 0.22, c.spot * 0.22 + 0.5, reveal);
+        const rk = smoothstep(c.spot * stagger, c.spot * stagger + 0.5, reveal);
         (c.s.material as THREE.SpriteMaterial).opacity = c.o * show * Math.max(0.35 + 0.65 * rk, veil);
       } else {
         this.skyDir(c.el + veil * 4, (c.az + t * c.drift * 0.6) * this.flip, dir);
