@@ -35,6 +35,8 @@ export interface Hollo {
   ears: THREE.Object3D[];
   paws: THREE.Object3D[];
   breath: THREE.Points;
+  /** The soft lumps of his coat (back, shoulders, face ruff, tail): when he wakes, each one goes back to being a bit of cloud. */
+  puffs: THREE.Mesh[];
   /** 0 closed, 1 open. */
   eyeOpen: number;
   /** 0 asleep and curled, 1 standing. */
@@ -62,6 +64,7 @@ export function makeHollo(shells = 0): Hollo {
   const lumpGeo = new THREE.IcosahedronGeometry(1, 2);
   const shades = ['#eef1fb', '#e6eaf6', '#dde3f2', '#f6f8ff'];
   const fur = new THREE.Group(); body.add(fur);
+  const puffs: THREE.Mesh[] = [];
   // a second, smaller layer of puffs over the first, so the coat reads as deep, soft and cloud-like
   for (let i = 0; i < 150; i++) {
     const th = rr() * Math.PI * 2, ph = Math.acos(1 - rr() * 1.35);
@@ -72,7 +75,7 @@ export function makeHollo(shells = 0): Hollo {
     lump.position.set(nx * 2.95, 1.5 + ny * 1.95, nz * 3.45);
     lump.scale.set(rad * 1.15, rad * 0.8, rad * 1.15);
     lump.castShadow = true;
-    fur.add(lump);
+    fur.add(lump); puffs.push(lump);
   }
   // tufts: little pointed flicks of fur standing up along the spine and shoulders
   const tuftMat = toon('#f4f6ff');
@@ -110,7 +113,7 @@ export function makeHollo(shells = 0): Hollo {
     lump.position.set(nx * 2.45, 1.5 + ny * 1.55, nz * 2.95);
     lump.scale.set(rad * 1.2, rad * 0.85, rad * 1.2);
     lump.castShadow = true;
-    fur.add(lump);
+    fur.add(lump); puffs.push(lump);
   }
   // paws
   const paws: THREE.Object3D[] = [];
@@ -137,7 +140,7 @@ export function makeHollo(shells = 0): Hollo {
     const puff = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 2), toon(i % 2 ? '#eef1fb' : '#e4e9f6'));
     const r = 1.35 + (i % 3) * 0.08;
     puff.position.set(Math.cos(a) * r * 1.1, Math.sin(a) * r * 0.95, 0.15 - (i % 2) * 0.25);
-    puff.scale.setScalar(0.38 + (i % 4) * 0.06); puff.castShadow = true; head.add(puff);
+    puff.scale.setScalar(0.38 + (i % 4) * 0.06); puff.castShadow = true; head.add(puff); puffs.push(puff);
   }
   for (let i = 0; i < 7; i++) { // a fluffy fringe on the brow
     const f = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.55, 6), toon('#f6f8ff'));
@@ -165,7 +168,7 @@ export function makeHollo(shells = 0): Hollo {
   }
   // a short round tail
   const tail = new THREE.Group(); tail.position.set(0, 1.6, -3.4); body.add(tail);
-  for (let k = 0; k < 9; k++) { const a = k / 9 * Math.PI * 2; const p = new THREE.Mesh(new THREE.IcosahedronGeometry(0.42, 1), toon(k % 2 ? white : '#f6f8ff')); p.position.set(Math.cos(a) * 0.4, Math.sin(a) * 0.4, -0.2); tail.add(p); }
+  for (let k = 0; k < 9; k++) { const a = k / 9 * Math.PI * 2; const p = new THREE.Mesh(new THREE.IcosahedronGeometry(0.42, 1), toon(k % 2 ? white : '#f6f8ff')); p.position.set(Math.cos(a) * 0.4, Math.sin(a) * 0.4, -0.2); tail.add(p); puffs.push(p); }
   tail.add(new THREE.Mesh(new THREE.SphereGeometry(0.6, 12, 10), toon(white)));
   // whiskers of frost on the muzzle
   for (const s of [-1, 1]) for (let k = 0; k < 3; k++) {
@@ -182,7 +185,7 @@ export function makeHollo(shells = 0): Hollo {
   for (let i = 0; i < N; i++) life[i] = Math.random();
 
   const h: Hollo = {
-    root, head, body, eyes, lids, ears, paws, breath, eyeOpen: 0, rise: 0, walk: 0,
+    root, head, body, eyes, lids, ears, paws, breath, puffs, eyeOpen: 0, rise: 0, walk: 0,
     update(dt, t) {
       const asleep = 1 - h.rise;
       // breathing: slow, deep, a little slower when asleep

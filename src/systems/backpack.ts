@@ -31,7 +31,7 @@ export const TRADES: Trade[] = [
 
 /** What you keep from each world: one object, one skill, one friend. */
 export const KEPT: { world: string; flag: string; object: string; skill: string; friend: string }[] = [
-  { world: 'The Spring Peaks', flag: 'peaks-healed', object: "Hollo's frost", skill: 'Skyreading', friend: 'Hollo, who walks the snow' },
+  { world: 'The Spring Peaks', flag: 'peaks-healed', object: "Hollo's frost", skill: 'Skyreading', friend: 'Hollo, the cloud over the peaks' },
 ];
 
 export interface SkillDef { flag: string; name: string; key: string; text: string }

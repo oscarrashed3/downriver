@@ -89,7 +89,7 @@ await ev(`__game.ch1.lanterns.deliver()`); await wait(4000); await advance(); aw
 // 6. the long night: everyone gathers at Hollo's fire
 await ev(`(() => { const g = __game; for (const n of ['ysolde', 'bram', 'nima', 'tor', 'odo']) g.give('invited:' + n); g.give('quest:night'); g.give('gathered'); })()`);
 await walkTo(`__game.contents[0].refs.holloFire.position.clone()`, 5, 1500);
-await ev(`(() => { const g = __game; g.cut(g.ch1.campfireNight()); })()`); await wait(800); await advance(120, 1500);
+await ev(`(() => { const g = __game; g.give('quest:night'); g.ch1.night.phase = 'wake'; g.cut(g.ch1.night.wakeBeats()); })()`); await wait(800); await advance(120, 1500);
 await ev(`__game.give('peaks-healed')`); await mark('night');
 // 7. Odo readies the boat, and the goodbye at the bridge
 await talk('odo'); await ev(`__game.give('boat-ready')`);
