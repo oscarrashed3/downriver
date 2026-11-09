@@ -1426,7 +1426,7 @@ export class Game {
     if (this.mode !== 'play' && this.mode !== 'overlay') inp.lockLost = false;
     this.day.apply(WORLDS[this.cur].palette, this.sunLight, this.moonLight, this.scene.fog as THREE.FogExp2, p.center);
     const aw = this.mode === 'title' ? [] : this.areaWeights();
-    for (const { a, w } of aw) this.sunLight.color.lerp(new THREE.Color(a.light), w * 0.6);
+    for (const { a, w } of aw) this.sunLight.color.lerp(new THREE.Color(a.light), w * 0.3);
     if (aw.length) PAINT.uSunCol.value.copy(this.sunLight.color).multiplyScalar(this.sunLight.intensity / 2.6);
     this.sunLight.position.copy(this.player.pos).addScaledVector(this.day.sun, 120);
     this.sunLight.target.position.copy(this.player.pos);

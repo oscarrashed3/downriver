@@ -145,9 +145,6 @@ export function makeGrassMaterial(flower: boolean) {
         vec3 baseD = vec3(0.30, 0.28, 0.14), tipD = vec3(0.80, 0.70, 0.42);
         vec3 base = mix(baseD, baseL, uLush), tip = mix(tipD, tipL, uLush);
         tip = mix(tip, tip * vec3(0.78, 0.95, 1.05), smoothstep(0.55, 0.9, vVar) * 0.6);
-        // blades grow out of the ground they stand on: its colour at the root, a lighter warmer tip
-        vec3 gBase = vGround * 0.62, gTip = mix(vGround * 1.22, vec3(0.86, 0.88, 0.55), 0.18);
-        base = mix(base, gBase, 0.7 * uLush); tip = mix(tip, gTip, 0.7 * uLush);
         vec3 col = mix(base, tip, smoothstep(0.0, 1.0, vH));
         #ifdef FLOWER
           col = mix(vec3(0.25, 0.45, 0.2), vFlower, vHead);

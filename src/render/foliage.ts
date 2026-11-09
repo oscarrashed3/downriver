@@ -59,7 +59,7 @@ function cardMat(color: string, kind: 'leaf' | 'needle'): THREE.MeshToonMaterial
     m = paint(new THREE.MeshToonMaterial({
       color, gradientMap: softRamp(), alphaMap: kind === 'leaf' ? leafSheet() : needleSheet(), alphaTest: 0.5,
       side: THREE.DoubleSide, vertexColors: true,
-    }), { variation: 0.6, rim: 1.4, crown: 1 });
+    }), { variation: 0.6, rim: 1.4 });
     mats.set(key, m);
   }
   return m;

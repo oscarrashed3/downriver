@@ -152,28 +152,14 @@ export function outlineMaterial(color = '#3b2a30', width = 0.022): THREE.ShaderM
   return m;
 }
 
-/**
- * Give every mesh under `root` a thin edge (inverted hull). The edge takes the darker, cooler shade of
- * the mesh's own colour rather than black ink, and is half as wide as the width asked for. Little
- * things under a metre (flowers, mushrooms, tufts) get none: at that size a line only reads as noise.
- */
-export function addOutlines(root: THREE.Object3D, _color = '#3b2a30', width = 0.022) {
+/** Give every mesh under `root` a thin inked edge (inverted hull). */
+export function addOutlines(root: THREE.Object3D, color = '#3b2a30', width = 0.022) {
   const meshes: THREE.Mesh[] = [];
   root.traverse(o => { if ((o as THREE.Mesh).isMesh && !o.userData.noOutline && !o.userData.isOutline) meshes.push(o as THREE.Mesh); });
-  root.updateWorldMatrix(true, true);
-  const ws = new THREE.Vector3();
   for (const m of meshes) {
-    const mat = m.material as THREE.MeshToonMaterial;
-    if (Array.isArray(m.material) || mat.transparent) continue;
-    const g = m.geometry;
-    if (!g.boundingSphere) g.computeBoundingSphere();
-    m.getWorldScale(ws);
-    // only skip on the small loose props: characters are many small parts and keep their edge
-    if (!root.userData.person && g.boundingSphere!.radius * Math.max(ws.x, ws.y, ws.z) < 0.5) continue;
-    const base = mat.color ? mat.color.clone() : new THREE.Color('#6a6a7a');
-    const hsl = { h: 0, s: 0, l: 0 }; base.getHSL(hsl);
-    const edge = new THREE.Color().setHSL((hsl.h * 0.7 + 0.62 * 0.3), Math.min(1, hsl.s * 0.8 + 0.1), Math.max(0.06, hsl.l * 0.42));
-    const o = new THREE.Mesh(g, outlineMaterial('#' + edge.getHexString(), width * 0.5));
+    const mat = m.material as THREE.Material;
+    if ((mat as THREE.MeshBasicMaterial).transparent) continue;
+    const o = new THREE.Mesh(m.geometry, outlineMaterial(color, width));
     o.userData.isOutline = true;
     o.userData.noOutline = true;
     m.add(o);
