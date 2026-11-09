@@ -23,6 +23,16 @@ export class CameraRig {
   block: ((look: THREE.Vector3, pos: THREE.Vector3) => number) | null = null;
   /** Also push in the current override shot (talks); hand-placed cutscene shots are left alone. */
   blockOverride = false;
+  /**
+   * Sky Isles: the ground under a camera at distance r from the centre (a camera under an island sees the cloud
+   * floor, not the top above it). Null elsewhere: the terrain's surface.
+   */
+  floor: ((dir: THREE.Vector3, r: number) => number) | null = null;
+  /** Sky Isles: while gliding, a heading the camera swings in behind once the mouse has been still a moment. */
+  follow: THREE.Vector3 | null = null;
+  /** How strongly to follow (0..1). */
+  followK = 0;
+  private stillT = 0;
   /** Blend from an earlier shot into whatever the camera is doing now. */
   private ease: { pos: THREE.Vector3; look: THREE.Vector3; up: THREE.Vector3; t: number; dur: number } | null = null;
   private shown = { pos: new THREE.Vector3(), look: new THREE.Vector3(), up: new THREE.Vector3(0, 1, 0) };
@@ -67,6 +77,16 @@ export class CameraRig {
     if (this.ref.lengthSq() < 1e-4) anyTangent(up, this.ref);
     this.ref.normalize();
     this.yaw -= mdx * 0.0032 * this.sens + keyYaw * dt * 2.2;
+    if (this.follow) {
+      this.stillT = mdx !== 0 || keyYaw !== 0 ? 0 : this.stillT + dt;
+      const h = this.follow.clone().projectOnPlane(up);
+      if (h.lengthSq() > 1e-6 && this.stillT > 0.6) {
+        h.normalize();
+        const want = Math.atan2(new THREE.Vector3().crossVectors(this.ref, h).dot(up), this.ref.dot(h));
+        let d = want - this.yaw; d = Math.atan2(Math.sin(d), Math.cos(d));
+        this.yaw += d * (1 - Math.exp(-1.6 * this.followK * Math.min(1, (this.stillT - 0.6) * 2) * dt));
+      }
+    }
     this.pitch = clamp(this.pitch + mdy * 0.0026 * this.sens, -0.25, 1.25);
     this.dist += (this.distGoal - this.dist) * (1 - Math.exp(-8 * dt));
     this.smoothUp.lerp(up, 1 - Math.exp(-6 * dt)).normalize();
@@ -76,8 +96,8 @@ export class CameraRig {
       .addScaledVector(f, -Math.cos(this.pitch) * this.dist);
     // Keep the camera above the ground.
     const cdir = goal.clone().sub(planet.center).normalize();
-    const minR = planet.surfaceRadius(cdir) + 1.1;
     const gr = goal.distanceTo(planet.center);
+    const minR = (this.floor ? this.floor(cdir, gr) : planet.surfaceRadius(cdir)) + 1.1;
     if (gr < minR) goal.copy(cdir.multiplyScalar(minR).add(planet.center));
     const lookGoal = target.clone().addScaledVector(this.smoothUp, 1.3);
     if (!this.init) { this.pos.copy(goal); this.look.copy(lookGoal); this.init = true; }
@@ -103,7 +123,7 @@ export class CameraRig {
     // every shot, scripted or not, stays above the ground and the water: a camera under them shows a dark frame
     {
       const cd = pos.clone().sub(planet.center); const r = cd.length(); cd.divideScalar(r);
-      const floor = Math.max(planet.surfaceRadius(cd), planet.waterLevelRadius()) + 0.45;
+      const floor = Math.max(this.floor ? this.floor(cd, r) : planet.surfaceRadius(cd), planet.waterLevelRadius()) + 0.45;
       if (r < floor && r > floor - 40) pos.copy(cd.multiplyScalar(floor).add(planet.center));
     }
     this.camera.position.copy(pos);

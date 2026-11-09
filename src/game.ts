@@ -53,7 +53,9 @@ import { BackpackView, ITEMS, bagAdd, doTrade } from './systems/backpack';
 import { foldMood } from './player/fold';
 import { Fox } from './world/fox';
 import type { SkyWorld } from './world/skyIsles/world';
-import { skyFlowers, onIsle, skyWalkable } from './world/skyIsles/terrain';
+import { skyFlowers, onIsle, rockClear } from './world/skyIsles/terrain';
+import { SkyMove } from './world/skyIsles/skyMove';
+import { SKY_MOVE } from './data/skyWords';
 import { CHAPTERS, MAIN_QUEST, NOT_YET, OPENING, WORLD_TASKS } from './data/story';
 import { ChapterOne } from './story/chapterOne';
 import * as Opening from './story/opening';
@@ -107,6 +109,8 @@ export class Game {
   /** The Sky Isles' own meadow (drawn and updated only in World 2). */
   skyGrass: Grass | null = null;
   skyWorld: SkyWorld | null = null;
+  /** World 2's movement rules: the glider, updrafts, cloud pads, the soft fall, the sail ride. */
+  skyMove: SkyMove | null = null;
   life: Life;
   quality = new QualityAuto();
   motes: Motes;
@@ -286,7 +290,11 @@ export class Game {
     fireView.cam = this.camera;
     // keep the camera out of houses, trunks and rocks: it pushes in toward Nilo instead
     // (the bridge only counts when choosing a talk shot: Nilo walks on it, so it must not shove the follow camera)
-    this.rig.block = (look, pos) => !this.planet.solids.length ? 1 : this.talkCam || this.meet ? segmentClear(this.planet.solids, look, pos, this.planet.center) : segmentClear(this.planet.solids.filter(s => !s.camOnly), look, pos, this.planet.center);
+    this.rig.block = (look, pos) => {
+      const k = !this.planet.solids.length ? 1 : this.talkCam || this.meet ? segmentClear(this.planet.solids, look, pos, this.planet.center) : segmentClear(this.planet.solids.filter(s => !s.camOnly), look, pos, this.planet.center);
+      // the Sky Isles: never inside an island's rock while gliding beside or under it
+      return this.skyMove?.active ? Math.min(k, rockClear(this.planet, look, pos)) : k;
+    };
     this.input = new Input(canvas);
     this.map = new MapView(this.contents.flatMap(c => c.landmarks));
     // the map is drawn from the world itself: its houses, trees and rocks, but not the people and animals who move
@@ -366,6 +374,7 @@ export class Game {
         game.save();
       },
     } as any);
+    if (this.skyWorld) this.skyMove = new SkyMove(this, this.skyWorld, FOX_WORLD);
     this.registerTravel();
     this.applyRiver();
     this.enterWorld(0, false);
@@ -463,7 +472,7 @@ export class Game {
       if (i === 0 || i >= this.planets.length - 1 || !c.refs.edge) return;
       c.interactables.push({
         id: 'edge' + i, world: i, pos: at(c.refs.edge), radius: 10,
-        label: () => `Ride the falling stream down to ${WORLDS[i + 1].name}`,
+        label: () => this.mayLeave(i) ? `Ride the falling stream down to ${WORLDS[i + 1].name}` : null,
         act: () => this.startRide(i, i + 1),
       });
     });
@@ -471,7 +480,7 @@ export class Game {
       const c = this.contents[i], p = this.planets[i];
       c.interactables.push({
         id: 'dock' + i, world: i, pos: at(c.refs.dock), radius: 4,
-        label: () => 'Unfold Fold into a raft',
+        label: () => this.mayLeave(i) ? 'Unfold Fold into a raft' : null,
         act: () => this.boardRaft(),
       });
       c.interactables.push({
@@ -679,6 +688,12 @@ export class Game {
 
   get planet() { return this.planets[this.cur]; }
 
+  /**
+   * Whether the river may carry you on out of world i (the raft, the edge, the river's end). The Sky Isles are
+   * only ever left on the whale's back after the goodbye, so there every other way on stays shut.
+   */
+  mayLeave(i: number) { return WORLDS[i].id !== 'sky'; }
+
   /** Worlds whose story is written. The rest are a quiet bank to rest on, with the way home. */
   worldReady(i: number) { return i === 0; }
 
@@ -696,22 +711,6 @@ export class Game {
     const s = new Set<number>();
     this.planets.forEach((_, i) => { if (this.flags.has('visited:' + i)) s.add(i); });
     return s;
-  }
-
-  /** In the Sky Isles a fall to the cloud sea is soft: after a moment there, the wind lifts you back to the last island. */
-  private skySafe: THREE.Vector3 | null = null;
-  private skyLowT = 0;
-  private skyRescue(dt: number) {
-    const p = this.planet, pl = this.player;
-    if (pl.grounded && (pl.onDeck || skyWalkable(p, pl.up))) { (this.skySafe ??= new THREE.Vector3()).copy(pl.up); this.skyLowT = 0; return; }
-    const low = pl.pos.distanceTo(p.center) < p.R + 3;
-    this.skyLowT = low && pl.grounded ? this.skyLowT + dt : 0;
-    if (this.skyLowT > 1.4) {
-      this.skyLowT = 0;
-      pl.placeAt(p, this.skySafe ? this.skySafe.clone() : this.arrivalDir(this.cur));
-      this.hud.notify('A warm gust lifts you out of the cloud and sets you down on the island again.');
-      this.sound.sfxPlay('soft');
-    }
   }
 
   surfaceSound(): 'step' | 'stepSnow' | 'stepGrass' | 'stepWood' | 'stepStone' {
@@ -881,6 +880,9 @@ export class Game {
       if (this.cur === 0 && !this.flags.has('chapter1-complete')) {
         pl.raftT = 0.97;
         if (!this.edgeWarned) { this.edgeWarned = true; this.hud.notify(NOT_YET.edgeEarly); }
+      } else if (!this.mayLeave(this.cur)) {
+        pl.raftT = 0.97;
+        if (!this.edgeWarned) { this.edgeWarned = true; this.hud.notify(SKY_MOVE.noExit); }
       } else if (this.cur < this.planets.length - 1) {
         pl.raftT = 0.99;
         this.hud.setPrompt(`<b>R</b> ride the falling stream down to ${WORLDS[this.cur + 1].name} &nbsp; <b>E</b> step ashore`);
@@ -1823,7 +1825,8 @@ export class Game {
       const inSky = this.cur === FOX_WORLD && this.mode !== 'title';
       if (inSky !== this.skyWorld.isActive) this.skyWorld.setActive(inSky);
       this.skyWorld.frame(dt, this.time, this.camera);
-      if (inSky && this.mode === 'play') this.skyRescue(dt);
+      this.skyMove?.setActive(inSky);
+      if (inSky && this.skyMove) this.skyMove.frame(dt, this.time);
     }
     const npcWind = east.clone();
     for (const n of this.contents[this.cur].npcs) n.update(dt, this.mode === 'cut' ? null : this.player.pos, npcWind.clone().applyQuaternion(n.root.quaternion.clone().invert()));
@@ -1942,9 +1945,12 @@ export class Game {
     }
     if (this.ch1.kiteGame.active) { this.ch1.kiteGame.update(dt); return; }
     if (this.kneelT > 0) { this.kneelT -= dt; if (this.kneelT <= 0 || mv.lengthSq() > 0.01) { this.kneelT = 0; pl.pose = {}; } }
-    pl.update(dt, p, mv, inp.hit('Space'), inp.key('KeyX') || inp.key('ShiftLeft') || inp.key('ShiftRight'), inp.key('Space'), inp.hit('KeyC'));
+    const sky = this.skyMove?.active ? this.skyMove : null;
+    if (sky?.takeOver(dt)) { this.hud.setPrompt(null); return; }
+    pl.update(dt, p, mv, inp.hit('Space'), inp.key('KeyX') || inp.key('ShiftLeft') || inp.key('ShiftRight'), inp.key('Space'), inp.hit('KeyC') && !pl.glider?.open);
+    sky?.afterMove();
     this.softPush(dt);
-    this.fold.kiteMode = pl.gliding;
+    this.fold.kiteMode = pl.glider ? false : pl.gliding;
     if (inp.hit('KeyQ') && this.flags.has('power:skyreading')) { this.skyread.active = !this.skyread.active; this.sound.sfxPlay('soft'); }
     if (inp.hit('KeyF')) { this.sound.sfxPlay('whistle'); this.fold.hop(); pl.pose = {}; }
     // the wheel only brings the camera nearer or further; the whole journey is seen on the title screen
@@ -1967,7 +1973,7 @@ export class Game {
     }
     // Walking off the end of the world: carried on by the falling stream anyway, once the river is ready.
     const near = p.riverNearest(pl.up);
-    if (near.t > 0.99 && !n && this.cur < this.planets.length - 1 && (this.cur > 0 || this.flags.has('chapter1-complete'))) {
+    if (near.t > 0.99 && !n && this.cur < this.planets.length - 1 && (this.cur > 0 || this.flags.has('chapter1-complete')) && this.mayLeave(this.cur)) {
       this.hud.setPrompt(`<b>E</b>Ride the falling stream down to ${WORLDS[this.cur + 1].name}`);
       if (inp.hit('KeyE')) this.startRide(this.cur, this.cur + 1);
     }

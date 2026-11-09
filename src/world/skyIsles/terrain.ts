@@ -295,3 +295,64 @@ export function skyFlowers(p: Planet, d: THREE.Vector3): number {
   const n = p.noise.n3(d.x * 11 + 5, d.y * 11, d.z * 11);
   return smoothstep(0.1, 0.5, n) * 0.9 + 0.12;
 }
+
+/**
+ * Inside an island's rock (below its meadow, above its underside), for a planet-local point: the island and the
+ * point in its frame, or null. The underside is taken as a bowl from the lip's cliff down to the tip.
+ */
+export function inIsleRock(p: Planet, pl: THREE.Vector3, pad = 0.3): { isle: Isle; x: number; y: number; z: number; rim: number; bottom: number } | null {
+  const r = pl.length();
+  if (r < p.R + 1) return null;
+  _v.copy(pl).divideScalar(r);
+  for (const isle of sky(p).isles) {
+    if (_v.dot(isle.up) < isle.cosOuter) continue;
+    const q = isle.toLocal(_v);
+    const a = Math.atan2(q.z, q.x), rim = isle.shape.outline(a), rho = Math.hypot(q.x, q.z);
+    if (rho > rim + pad) continue;
+    const y = r - isle.Rt;
+    const k = Math.min(1, rho / Math.max(1, rim));
+    const bottom = -(isle.def.cliff * 0.8 + isle.def.under * (1 - k * k));
+    if (y < bottom - pad) continue;
+    const top = rho <= rim ? isle.shape.height(q.x, q.z) : isle.shape.edgeY(a);
+    if (y > top - 0.9) continue;
+    return { isle, x: q.x, y, z: q.z, rim, bottom };
+  }
+  return null;
+}
+
+/**
+ * Keep a body (planet-local position `pl`, velocity `vel`) out of the islands' rock: beside a cliff it is pushed
+ * out past the lip, under the underside's middle it is pushed down. Returns true when it moved anything.
+ */
+export function pushOutOfIsles(p: Planet, pl: THREE.Vector3, vel: THREE.Vector3 | null, radius = 0.4): boolean {
+  const hit = inIsleRock(p, pl, radius);
+  if (!hit) return false;
+  const { isle, x, z, y, rim, bottom } = hit;
+  const rho = Math.max(1e-3, Math.hypot(x, z));
+  const r = pl.length();
+  const side = rim + radius - rho, under = y - (bottom - radius);
+  if (under < side && under < 3) {
+    // under the island: down and out of the rock
+    _h.copy(pl).normalize();
+    pl.addScaledVector(_h, -under);
+    if (vel) { const vu = vel.dot(_h); if (vu > 0) vel.addScaledVector(_h, -vu); }
+    return true;
+  }
+  const k = (rim + radius) / rho;
+  isle.dirAt(x * k, z * k, _h).multiplyScalar(r);
+  const out = _h.clone().sub(pl);
+  pl.copy(_h);
+  if (vel && out.lengthSq() > 1e-8) { out.normalize(); const vo = vel.dot(out); if (vo < 0) vel.addScaledVector(out, -vo); }
+  return true;
+}
+
+/** For the camera: the clear fraction of the segment from look to pos before it enters an island's rock. */
+export function rockClear(p: Planet, look: THREE.Vector3, pos: THREE.Vector3): number {
+  const a = new THREE.Vector3(), N = 12;
+  for (let i = 1; i <= N; i++) {
+    const k = i / N;
+    a.lerpVectors(look, pos, k).sub(p.center);
+    if (inIsleRock(p, a, 0.5)) return (i - 1) / N;
+  }
+  return 1;
+}

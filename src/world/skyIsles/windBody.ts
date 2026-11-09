@@ -299,24 +299,14 @@ export function windFace(p: Person, r: Rig, f: FaceSpec) {
     const d0 = faceDir(cx, ey), at = headPt(d0, 0);
     eye.position.copy(at);
     const o = at;
-    // the white, slightly flat at the top where the lid sits
-    k.add(eye, decal(cx, ey, (u) => { const a = u * Math.PI * 2; return [Math.cos(a) * ew, Math.sin(a) * eh * (Math.sin(a) > 0 ? 0.92 : 1)]; }, 0.0008, 0, 2, 22, o), '#fbf7f0', 0, 0, 0, { skin: true, ink: 0 });
-    // the iris, big and tall, darker at the top; a pupil; a lighter crescent below
-    k.add(eye, decal(cx + ew * 0.06 * s, ey - eh * 0.04, ellipse(ew * 0.78, eh * 0.84), 0.0016, 0, 2, 22, o), iris, 0, 0, 0, { skin: true, ink: 0 });
-    k.add(eye, decal(cx + ew * 0.06 * s, ey - eh * 0.32, ellipse(ew * 0.56, eh * 0.38), 0.0022, 0, 2, 18, o), new THREE.Color(iris).lerp(new THREE.Color('#e0a860'), 0.42), 0, 0, 0, { skin: true, ink: 0 });
-    k.add(eye, decal(cx + ew * 0.06 * s, ey + eh * 0.12, ellipse(ew * 0.72, eh * 0.4), 0.0024, 0, 2, 18, o), new THREE.Color(iris).multiplyScalar(0.55), 0, 0, 0, { skin: true, ink: 0 });
-    k.add(eye, decal(cx + ew * 0.06 * s, ey - eh * 0.02, ellipse(ew * 0.34, eh * 0.46), 0.003, 0, 2, 16, o), '#1a1216', 0, 0, 0, { skin: true, ink: 0 });
-    // two glints: a big one up and out, a small one low and in
-    k.add(eye, decal(cx + ew * 0.32 * s, ey + eh * 0.34, ellipse(ew * 0.26, eh * 0.2), 0.0036, 0, 2, 12, o), '#ffffff', 0, 0, 0, { skin: true, ink: 0 });
-    k.add(eye, decal(cx - ew * 0.22 * s, ey - eh * 0.38, ellipse(ew * 0.12, eh * 0.09), 0.0036, 0, 1, 10, o), '#ffffff', 0, 0, 0, { skin: true, ink: 0 });
-    // the upper lash line, heavier at the outer corner with a little flick; a lid if calm
-    const lt = (f.lash ?? 1) * R * 0.045, lid = f.lids ?? 0;
-    const top = (u: number): [number, number] => { const a = Math.PI * (0.06 + u * 0.88); return [cx - Math.cos(a) * ew * 1.12 * s * -1, ey + Math.sin(a) * eh * (0.96 - lid * 0.25) + eh * 0.02]; };
-    k.add(eye, band((u) => { const [x, y] = top(1 - u); return [x, y]; }, (u) => lt * (0.45 + 0.75 * Math.pow(u, 1.5) * (s > 0 ? 1 : 1)), 0.004, 14, o), lashC, 0, 0, 0, { skin: true, ink: 0 });
-    k.add(eye, band((u) => [cx + s * (ew * 1.02 + u * ew * 0.36), ey + eh * 0.42 + u * eh * 0.16], (u) => lt * (1.1 - u * 0.9), 0.004, 4, o), lashC, 0, 0, 0, { skin: true, ink: 0 });
-    if (lid > 0) k.add(eye, decal(cx, ey + eh * 0.72, ellipse(ew * 1.08, eh * 0.34 * lid), 0.0042, 0, 2, 16, o), f.skin, 0, 0, 0, { skin: true, ink: 0 });
-    // a light lower lash at the outer corner
-    k.add(eye, band((u) => [cx + s * (ew * 0.3 + u * ew * 0.6), ey - eh * 0.88 + u * eh * 0.3], () => lt * 0.35, 0.0026, 4, o), new THREE.Color(lashC).lerp(new THREE.Color(f.skin), 0.35), 0, 0, 0, { skin: true, ink: 0 });
+    // eyes in the World 1 villagers' style (player/villagers.ts face()): a small dark oval with one glint, no
+    // whites or lashes; a calm or old face gets a lid of skin over the top
+    const dw = ew * 0.56, dh = eh * 0.7, lid = f.lids ?? 0;
+    const dark = new THREE.Color('#2a2230').lerp(new THREE.Color(iris), 0.18);
+    k.add(eye, decal(cx, ey - eh * 0.08, ellipse(dw, dh), 0.0016, 0, 2, 18, o), dark, 0, 0, 0, { skin: true, ink: 0 });
+    k.add(eye, decal(cx + dw * 0.32 * s, ey + dh * 0.3, ellipse(dw * 0.3, dh * 0.22), 0.003, 0, 2, 10, o), '#ffffff', 0, 0, 0, { skin: true, ink: 0 });
+    if (lid > 0) k.add(eye, decal(cx, ey + dh * 0.62, ellipse(dw * 1.25, dh * 0.5 * lid), 0.0042, 0, 2, 14, o), f.skin, 0, 0, 0, { skin: true, ink: 0 });
+    void lashC;
     p.eyes.push(eye);
     // the brow: its own joint (the Person lifts and tilts it), a slim arch
     const by = ey + eh * 1.55 + R * (f.browY ?? 0), cocked = f.cocky && s > 0;

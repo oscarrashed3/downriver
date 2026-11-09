@@ -68,7 +68,7 @@ export type Updater = (dt: number, t: number) => void;
  * (windmill rotors, chimes, weather vanes) and every chime (userData.chime) so ringNear() can ring them.
  */
 export class TownAnimator {
-  private items: { obj: THREE.Object3D; f: Updater }[] = [];
+  private items: { obj: THREE.Object3D; f: Updater; k?: number }[] = [];
   readonly chimes: Chime[] = [];
   /** Skip parts further than this from `focus` (set focus each frame from the camera); 0 = never skip. */
   cullDistance = 0;
@@ -87,11 +87,13 @@ export class TownAnimator {
     this.items = this.items.filter(i => !set.has(i.obj));
     for (let i = this.chimes.length - 1; i >= 0; i--) if (set.has(this.chimes[i].root)) this.chimes.splice(i, 1);
   }
+  /** Run one part's updates faster (or slower) for a while: k = 1 is normal. */
+  speedUp(obj: THREE.Object3D, k: number) { for (const it of this.items) if (it.obj === obj) it.k = k; }
   update(dt: number, t: number) {
     const cull = this.cullDistance * this.cullDistance;
     for (const it of this.items) {
       if (cull > 0 && it.obj.getWorldPosition(this.tmp).distanceToSquared(this.focus) > cull) continue;
-      it.f(dt, t);
+      it.f(dt * (it.k ?? 1), t);
     }
   }
   /** Ring every chime within `radius` of a world point (Nilo brushing past a door, a racer through a gate). */

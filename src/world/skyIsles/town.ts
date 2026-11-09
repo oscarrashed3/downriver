@@ -430,6 +430,7 @@ export function dressIsles(w: SkyWorld): Dressing {
     d.claim(0, 0, 3);
     d.solid(m, 2.3, 14);
     refs.windmill = m;
+    m.userData.sailLen = 6.5;
     const f: V2[] = [];
     for (let a = 0; a <= Math.PI * 2 + 0.01; a += 0.2) f.push({ x: Math.cos(a) * 4.6, z: Math.sin(a) * 4.6 });
     fenceRun(d, f.filter(q => d.isle.inset(q.x, q.z) > 1), 71);
@@ -661,7 +662,8 @@ export function dressIsles(w: SkyWorld): Dressing {
   return {
     town, kites, refs,
     update(dt, t, camera) {
-      camLocal.setFromMatrixPosition(camera.matrixWorld).sub(w.p.center);
+      // the animator compares world positions: the focus is the camera in world space
+      camLocal.setFromMatrixPosition(camera.matrixWorld);
       town.focus.copy(camLocal);
       town.update(dt, t);
       for (const k of kites) k.update(dt, t);

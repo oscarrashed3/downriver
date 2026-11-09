@@ -7,6 +7,7 @@ import { clamp, lerp } from '../world/noise';
 import { resolveSolids, deckUnder } from '../world/collide';
 import { Motion } from './motion';
 import { glidePose } from '../world/skyIsles/kiteRider';
+import { stepGlide, type GliderState } from '../world/skyIsles/flight';
 
 export type MoveMode = 'walk' | 'climb' | 'raft' | 'ride' | 'still';
 
@@ -43,6 +44,18 @@ export class Player {
   /** With glidePose: the wing's bank (radians, + = right wing down) and how steep a dive (0..1). */
   glideBank = 0;
   glideDive = 0;
+  /** Sky Isles: Fold the paper glider's flight (null elsewhere, where the World 1 kite glide applies). */
+  glider: GliderState | null = null;
+  /** Sky Isles: the dive key is held. */
+  diveHeld = false;
+  /** Sky Isles: open the wing without a jump (stepping into an updraft). */
+  forceOpen = false;
+  /** Sky Isles: updraft strength (0..1) at a position. */
+  liftAt: ((pos: THREE.Vector3) => number) | null = null;
+  /** Sky Isles: more collision after the ground and decks (cloud pads, island walls). */
+  collide: ((pl: Player, dt: number) => void) | null = null;
+  /** Seconds left running out a glide's landing (looser footing, so a few steps carry the speed). */
+  runOutT = 0;
   /** Pose requests from the story and small joys. */
   pose: Partial<PoseInput> = {};
   lookAt: THREE.Vector3 | null = null;
@@ -120,7 +133,7 @@ export class Player {
     const surfR = planet.surfaceRadius(this.up);
     const r = toC.length();
     const slope = planet.slope(this.up);
-    const steep = slope > 0.72 && !this.onDeck;
+    const steep = slope > 0.72 && !this.onDeck && planet.cfg.shape !== 'sky'; // the Sky Isles' lips are edges to jump off, not slopes to climb
 
     // Velocity split into vertical (along up) and tangential.
     const vUp = this.vel.dot(this.up);
@@ -147,7 +160,8 @@ export class Player {
       if (this.skidT <= 0) { this.facing.copy(moveDir.lengthSq() > 0.01 ? moveDir : this.skidDir.clone().negate()).projectOnPlane(this.up).normalize(); this.motion.inertialize(); }
     }
     const target = moveDir.clone().multiplyScalar(this.skidT > 0 ? 0 : speed);
-    const accel = this.grounded ? 14 : 3.5;
+    if (this.runOutT > 0) this.runOutT = Math.max(0, this.runOutT - dt);
+    const accel = this.grounded ? (this.runOutT > 0 ? 3.2 : 14) : 3.5;
     vTan.lerp(target, 1 - Math.exp(-accel * dt));
 
     // A forward roll: a quick tumble along the ground, a burst of speed that eases off.
@@ -180,11 +194,22 @@ export class Player {
       if (vTan.length() > 8 || this.rollT > 0) { this.flipT = 0.001; this.rollT = 0; }
     }
 
-    // Gliding under the kite: hold Space while falling from a height.
-    this.gliding = this.canGlide && !this.grounded && wantGlide && vU < 0;
-    if (this.gliding) {
-      vU = Math.max(vU, -2.2);
-      if (moveDir.lengthSq() > 0.01) vTan.lerp(moveDir.clone().normalize().multiplyScalar(7.5), 1 - Math.exp(-2 * dt));
+    const wasOpen = !!this.glider?.open;
+    if (this.glider) {
+      // the Sky Isles: Fold the paper glider (world/skyIsles/flight.ts)
+      const lift = this.liftAt ? this.liftAt(this.pos) : 0;
+      if (lift > 0 && !this.glider.open && !this.grounded) vU = Math.min(vU + lift * 27 * dt, Math.max(vU, 7)); // a column of warm air lifts you even without a wing
+      const clearance = r - planet.groundBelow(this.up, r);
+      vU = stepGlide(this.glider, vU, vTan, { dt, up: this.up, moveDir, hold: wantGlide, dive: this.diveHeld, grounded: this.grounded, clearance, lift, forceOpen: this.forceOpen, facing: this.facing });
+      this.gliding = this.glider.open;
+      if (this.gliding) this.facing.copy(this.glider.heading);
+    } else {
+      // Gliding under the kite: hold Space while falling from a height.
+      this.gliding = this.canGlide && !this.grounded && wantGlide && vU < 0;
+      if (this.gliding) {
+        vU = Math.max(vU, -2.2);
+        if (moveDir.lengthSq() > 0.01) vTan.lerp(moveDir.clone().normalize().multiplyScalar(7.5), 1 - Math.exp(-2 * dt));
+      }
     }
     this.lastVUp = vU;
     this.vel.copy(vTan).addScaledVector(this.up, vU);
@@ -209,7 +234,7 @@ export class Player {
     } else if (nr > ground + 0.35) {
       this.grounded = false;
     }
-    void surfR; void r;
+    void surfR;
 
     // Walkable decks (the bridge): step up onto the arch, and the railings keep you on it.
     this.onDeck = false;
@@ -234,6 +259,15 @@ export class Player {
 
     // Solid things: houses, trees, rocks, Hollo. Slide along them.
     resolveSolids(planet.solids, this.pos, planet.center, 0.38);
+    this.collide?.(this, dt);
+    if (wasOpen && this.grounded && this.glider) {
+      // a glide's touchdown: no thud, the feet run out the speed for a few steps while the wing folds away
+      this.glider.open = false; this.gliding = false;
+      const h = this.vel.clone().projectOnPlane(nUp), hs = h.length();
+      if (hs > 7.5) this.vel.addScaledVector(h, 7.5 / hs - 1);
+      this.runOutT = hs > 2.5 ? 0.65 : 0;
+      this.landT = 0.16; this.landAmt = 0.25;
+    }
 
     // Warmth: climbing costs warmth, standing still or walking returns it slowly.
     if (this.hasDrop) {
@@ -241,7 +275,7 @@ export class Player {
       else this.warmth = Math.min(1, this.warmth + dt * (moveDir.lengthSq() < 0.01 ? 0.35 : 0.12));
     } else this.warmth = 1;
 
-    if (moveDir.lengthSq() > 0.01 && this.skidT <= 0) this.facing.lerp(moveDir.clone().normalize(), 1 - Math.exp(-10 * dt));
+    if (moveDir.lengthSq() > 0.01 && this.skidT <= 0 && !this.glider?.open) this.facing.lerp(moveDir.clone().normalize(), 1 - Math.exp(-10 * dt));
     this.facing.projectOnPlane(this.up).normalize();
     const sp = vTan.length();
     void this.stepTimer;
