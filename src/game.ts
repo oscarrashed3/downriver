@@ -258,6 +258,8 @@ export class Game {
     this.rig.block = (look, pos) => !this.planet.solids.length ? 1 : this.talkCam || this.meet ? segmentClear(this.planet.solids, look, pos, this.planet.center) : segmentClear(this.planet.solids.filter(s => !s.camOnly), look, pos, this.planet.center);
     this.input = new Input(canvas);
     this.map = new MapView(this.contents.flatMap(c => c.landmarks));
+    // the map is drawn from the world itself: its houses, trees and rocks, but not the people and animals who move
+    this.map.source = { scene: this.scene, skip: () => [this.player.root, this.fold.root, this.fold.string, ...(this.fox ? [this.fox.f.root] : []), ...this.contents.flatMap(c => c.npcs.map(n => n.root))] };
     this.skyread = new Skyreading(this.scene);
     this.motes = new Motes(this.scene, 500);
     this.rain = new Motes(this.scene, 900, '#bfe3ff', 0.22);
@@ -1547,7 +1549,8 @@ export class Game {
     }
     if (this.ch1.night.rawPrompt && this.mode === 'play') this.hud.setPrompt(this.ch1.night.rawPrompt);
     // Playtests can skip drawing some frames so the world runs at full speed in a slow test browser.
-    if (++this.frameN % this.renderEvery === 0) this.composer.render();
+    // The map covers the whole screen with its own painted sky, so the world is not drawn behind it.
+    if (++this.frameN % this.renderEvery === 0 && !this.map.open) this.composer.render();
     inp.endFrame();
   }
 
