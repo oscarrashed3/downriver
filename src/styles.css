@@ -107,7 +107,7 @@ canvas#game { display: block; width: 100vw; height: 100vh; }
 .journal .side li { margin: 4px 0; }
 .journal .side b { font-weight: 600; }
 /* Chapter One title: hand-lettered, over the cloud sea */
-.title { background: radial-gradient(ellipse at 50% 40%, rgba(255,236,210,.05), rgba(40,30,80,.28)); transition: opacity .9s; }
+.title { background: radial-gradient(ellipse 48% 34% at 50% 44%, rgba(70,60,120,.16), rgba(70,60,120,0)); transition: opacity .9s; }
 .title.out { opacity: 0; pointer-events: none; }
 .title h1.hand { text-align: center; line-height: 1.02; max-width: 92vw; font-family: 'Segoe Script', 'Snell Roundhand', 'Brush Script MT', 'Apple Chancery', cursive; font-size: clamp(52px, 7.2vw, 104px); font-style: normal; letter-spacing: .01em; font-weight: 400; transform: rotate(-3deg); text-shadow: 0 4px 34px rgba(60,30,80,.55), 0 0 2px rgba(255,255,255,.4); }
 .title .notice { max-width: 560px; text-align: center; font-size: 17px; margin: -20px 0 26px; padding: 10px 18px; border-radius: 14px; background: rgba(40,30,70,.32); font-style: italic; }

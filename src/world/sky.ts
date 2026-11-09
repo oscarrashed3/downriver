@@ -19,12 +19,14 @@ export class Sky {
         uTime: { value: 0 },
         // far views (the title, the sky view): the depths below the worlds glow warm instead of going deep blue
         uAbyss: { value: 0 },
+        // the dream sky of the far shots: a pale clear blue between the cornflower overhead and the warm horizon
+        uDreamSky: { value: 0 },
         uAbyssCol: { value: new THREE.Color('#ffc890') },
         uAbyssMid: { value: new THREE.Color('#86a9ea') },
       },
       vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = projectionMatrix * modelViewMatrix * vec4(position,1.0); gl_Position = p.xyww; }`,
       fragmentShader: `
-        uniform vec3 uUp, uSun, uTop, uHorizon, uCloud, uDusk, uAbyssCol, uAbyssMid; uniform float uTime, uAbyss; varying vec3 vDir;
+        uniform vec3 uUp, uSun, uTop, uHorizon, uCloud, uDusk, uAbyssCol, uAbyssMid; uniform float uTime, uAbyss, uDreamSky; varying vec3 vDir;
         float h(vec3 p){ return fract(sin(dot(p, vec3(127.1,311.7,74.7))) * 43758.5453); }
         void main(){
           vec3 d = normalize(vDir);

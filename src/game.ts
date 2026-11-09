@@ -10,7 +10,7 @@ import { WORLDS } from './world/worlds';
 const FOX_WORLD = WORLDS.findIndex(w => w.id === 'pines');
 import { Planet } from './world/planet';
 import { Sky } from './world/sky';
-import { SkyIslands, CloudSea, beaconTexture } from './world/skyIslands';
+import { SkyIslands, CloudSea, beaconTexture, LOOK_CAM } from './world/skyIslands';
 import { prepare, populate, FOX_SPOT, HOME_LIGHT, type WorldContent, type Interactable } from './world/content';
 import * as Q from './world/props2';
 import { randState, setRandState, skipRand } from './world/props';
@@ -62,6 +62,13 @@ interface Ride { to: number; curve: THREE.Curve<THREE.Vector3>; s: number; dur: 
 const FOG_BASE = 0.0026;
 /** Haze in the far views (the title, the sky view, the home-light shot): the deepest world is softly veiled. */
 const FOG_FAR = 0.00024;
+const LOOK_BACK = LOOK_CAM.back, LOOK_HIGH = LOOK_CAM.high, LOOK_SIDE = LOOK_CAM.side;
+/** The dreamy sky of the "Look up." shot: a luminous cornflower overhead, a warm pearly cream low down. */
+const DREAM_TOP = new THREE.Color('#7fabea');
+const DREAM_LOW = new THREE.Color('#fff0dc');
+/** The title's sky: a deeper cornflower overhead, warm gold low down. */
+const TITLE_TOP = new THREE.Color('#5c8bd9');
+const TITLE_LOW = new THREE.Color('#ffe2b8');
 const FAR_HAZE = new THREE.Color('#c9d8f4');
 /** How many numbers the five later worlds of the six-world journey took from the shared prop generator. */
 const SIX_WORLD_LATER_RAND = 4441;
@@ -308,7 +315,7 @@ export class Game {
     this.beacon.renderOrder = 10;
     this.scene.add(this.beacon);
     this.islands = new SkyIslands(this.scene, this.planets);
-    this.cloudSea = new CloudSea(this.scene, this.planets, this.sky.cloudMat);
+    this.cloudSea = new CloudSea(this.scene, this.planets);
 
     this.seq = new Sequencer((who, text) => this.hud.showCaption(who, text));
     if (this.fast > 1) this.seq.speed = 4;
@@ -575,6 +582,8 @@ export class Game {
     // a high morning sun over the cloud sea, so the banks have bright crowns and soft lavender shade
     // (a new game sets its own time of day when Nilo wakes; Continue loads the saved one)
     this.day.setLocal(new THREE.Vector3(0, 1, 0), 0.6);
+    this.day.update(0, new THREE.Vector3(0, 1, 0));
+    Opening.setupTitleSky(this);
     const saved = loadSave();
     const has = !!saved.data;
     const el = document.createElement('div');
@@ -598,6 +607,7 @@ export class Game {
         // leave the title camera behind and start right behind Nilo
         this.cutCam = null; this.rig.override = null; this.rig.faceDir(this.player.up, this.player.facing); this.rig.snap();
         this.mode = 'play';
+        this.defaultLookFrame();
         this.hud.showBanner(WORLDS[this.cur].name, CHAPTERS[this.cur].n + '. ' + CHAPTERS[this.cur].title);
       } else {
         clearSave();
@@ -1406,7 +1416,8 @@ export class Game {
     const hasSun = sunT.lengthSq() > 1e-4;
     sunT.normalize();
     const face = pl.facing.clone().projectOnPlane(u).normalize();
-    if (this.lookPlan && this.lookPlan.at.distanceTo(pl.pos) < 0.2) { this.islands.setFrame(pl.pos, u, this.lookPlan.dir, -this.lookSide); return this.lookPlan.dir.clone(); }
+    this.islands.configure('lookup');
+    if (this.lookPlan && this.lookPlan.at.distanceTo(pl.pos) < 0.2) { this.islands.setFrame(pl.pos, u, this.lookPlan.dir, -this.lookSide, this.day.sun); return this.lookPlan.dir.clone(); }
     const eye = pl.pos.clone().addScaledVector(u, 0.4);
     // what could stand across that sky: everything near him on this world (trees, roofs, Hollo), not the ground itself
     const skip = new Set<THREE.Object3D>([this.sky.mesh, this.sky.clouds, this.grass.group, p.group, this.player.root, this.fold.root, this.fold.string,
@@ -1452,9 +1463,9 @@ export class Game {
     // the sky the shot looks into, seen from where the camera will be (low behind him, to one side):
     // where the moons hang, the frame round them, and the line to his head
     const probes: [number, number, number][] = [];
-    for (let el = 20; el <= 70; el += 6) for (let az = -45; az <= 45; az += 9) {
+    for (let el = 18; el <= 74; el += 5) for (let az = -45; az <= 45; az += 9) {
       // the middle of the frame, where the moons hang, matters most
-      probes.push([el, az, (el > 26 && Math.abs(az) < 30 ? 1 : 0.4) * 0.5]);
+      probes.push([el, az, (el > 32 && Math.abs(az) < 30 ? 1 : 0.4) * 0.5]);
     }
     let best = face.clone(), bestS = Infinity, bestSide = -1;
     for (let k = 0; k < 24; k++) {
@@ -1468,12 +1479,12 @@ export class Game {
         base += Math.max(0, 0.6 - ds) * 8 + Math.max(0, ds - 1.4) * 3;
       }
       for (const side of [-1, 1]) {
-        const cam = pl.pos.clone().addScaledVector(dir, -1.8).addScaledVector(u, 0.3).addScaledVector(right, side * 0.7);
+        const cam = pl.pos.clone().addScaledVector(dir, -LOOK_BACK).addScaledVector(u, LOOK_HIGH).addScaledVector(right, side * LOOK_SIDE);
         let score = base;
         for (const [el, az, w] of probes) {
           const h = hitDist(cam, at(az0, el, az));
           // something right beside the camera fills half the frame: that counts far more than a tree far off
-          if (h < Infinity) score += 4 * w * (h < 8 ? 10 : 1);
+          if (h < Infinity) score += 4 * w * (h < 4.5 ? 25 : h < 9 ? 8 : 1);
         }
         const head = pl.pos.clone().addScaledVector(u, 1.1).sub(cam);
         const hl = head.length();
@@ -1483,24 +1494,157 @@ export class Game {
     }
     this.lookSide = bestSide;
     // the nearest world goes on the other side of the frame from Nilo
-    this.islands.setFrame(pl.pos, u, best, -bestSide);
+    this.islands.setFrame(pl.pos, u, best, -bestSide, this.day.sun);
     this.lookPlan = { at: pl.pos.clone(), dir: best.clone() };
     return best;
   }
 
-  /** Paint the later worlds into the sky moons (once; a short hitch, so it is done while the letter is open). */
+  /** Paint the worlds into the sky moons (once, on the title's first frame; a short hitch while the title fades in). */
   bakeIslands() {
     if (this.islands.baked) return;
-    if (this.mode === 'letter') this.planLookUp();
     const fog = this.scene.fog as THREE.FogExp2;
-    const sunSide = Math.sign(this.day.sun.dot(this.islands.right)) || 1;
+    const density = fog.density;
     this.islands.bake({
-      renderer: this.renderer, scene: this.scene, planets: this.planets, sunSide, sunLight: this.sunLight,
+      renderer: this.renderer, scene: this.scene, planets: this.planets, sunLight: this.sunLight,
       light: i => this.day.apply(WORLDS[i].palette, this.sunLight, this.moonLight, fog, this.planets[i].center),
+      // put back this world's own light, fog and paint, so the next frame is not lit as the last world painted
+      restore: () => {
+        this.day.apply(WORLDS[this.cur].palette, this.sunLight, this.moonLight, fog, this.planet.center);
+        fog.density = density;
+        this.sunLight.position.copy(this.player.pos).addScaledVector(this.day.sun, 120);
+        this.sunLight.target.position.copy(this.player.pos); this.sunLight.target.updateMatrixWorld();
+      },
       hide: [this.sky.mesh, this.sky.clouds, ...this.streams, ...this.updrafts, this.beacon, this.cloudSea.group, this.grass.group,
         this.motes.points, this.rain.points, this.blizzard.points, this.player.root, this.fold.root, this.fold.string, ...this.skyView.silhouettes, this.skyView.marker],
       homePos: this.beaconPos,
     });
+  }
+
+  /**
+   * Things that would stand across the sky in the "Look up." shot: the near cumulus overhead (the plastic kind,
+   * next to the painted banks) and the props right round Nilo (the lantern post, a fence). Each is put away only
+   * while the camera can't see it, and put back the same way, so nothing pops; `forceNear` puts the props away (or
+   * back) at once even in view, while the camera is moving fast.
+   */
+  private swap: { items: { s: THREE.Sphere; near: boolean; hidden: boolean; hide: () => void; show: () => void }[]; want: 'hide' | 'show' } | null = null;
+  forceNear = false;
+  prepareLookSwap(view: CamPose) {
+    this.endLookSwap(true);
+    // the sky frame the shot ends up in: only what stands across it is put away
+    const cam = this.camera.clone();
+    cam.position.copy(view.pos); cam.up.copy(view.up); cam.lookAt(view.look); cam.updateMatrixWorld();
+    const sky = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
+    const pl = this.player, u = pl.up, items: NonNullable<Game['swap']>['items'] = [];
+    const m = new THREE.Matrix4(), p = new THREE.Vector3(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
+    const clouds = this.sky.clouds;
+    for (let i = 0; i < clouds.count; i++) {
+      clouds.getMatrixAt(i, m); m.decompose(p, q, sc);
+      if (sc.x < 1e-3 || p.clone().sub(pl.pos).dot(u) < 0) continue;
+      const keep = m.clone();
+      items.push({ s: new THREE.Sphere(p.clone(), Math.max(sc.x, sc.y, sc.z) * 1.3), near: false, hidden: false,
+        hide: () => { clouds.setMatrixAt(i, new THREE.Matrix4().makeScale(0, 0, 0)); clouds.instanceMatrix.needsUpdate = true; },
+        show: () => { clouds.setMatrixAt(i, keep); clouds.instanceMatrix.needsUpdate = true; } });
+    }
+    const p0 = this.planets[0];
+    const skip = new Set<THREE.Object3D>([this.sky.mesh, this.sky.clouds, this.grass.group, p0.group, this.player.root, this.fold.root, this.fold.string,
+      this.islands.group, this.cloudSea.group, this.beacon, this.motes.points, this.rain.points, this.blizzard.points, ...this.streams, ...this.updrafts]);
+    const sph = new THREE.Sphere();
+    const near = (c: THREE.Vector3, r: number) => r < 9 && c.distanceTo(pl.pos) < 18 + r && c.clone().sub(pl.pos).dot(u) > 0.25 && sky.intersectsSphere(new THREE.Sphere(c, r));
+    for (const root of this.scene.children) {
+      if (skip.has(root) || !root.visible || (root as THREE.Light).isLight) continue;
+      root.traverseVisible(o => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh || !mesh.geometry) return;
+        if (!mesh.geometry.boundingSphere) mesh.geometry.computeBoundingSphere();
+        const bs = mesh.geometry.boundingSphere!;
+        const inst = o as THREE.InstancedMesh;
+        if (inst.isInstancedMesh) {
+          for (let i = 0; i < inst.count; i++) {
+            inst.getMatrixAt(i, m);
+            sph.copy(bs).applyMatrix4(m.clone().premultiply(inst.matrixWorld));
+            if (!near(sph.center, sph.radius)) continue;
+            const keep = m.clone();
+            items.push({ s: sph.clone(), near: true, hidden: false,
+              hide: () => { inst.setMatrixAt(i, new THREE.Matrix4().makeScale(0, 0, 0)); inst.instanceMatrix.needsUpdate = true; },
+              show: () => { inst.setMatrixAt(i, keep); inst.instanceMatrix.needsUpdate = true; } });
+          }
+          return;
+        }
+        sph.copy(bs).applyMatrix4(mesh.matrixWorld);
+        if (!near(sph.center, sph.radius)) return;
+        items.push({ s: sph.clone(), near: true, hidden: false, hide: () => { mesh.visible = false; }, show: () => { mesh.visible = true; } });
+      });
+    }
+    this.swap = { items, want: 'hide' };
+  }
+  /** Start putting back what the shot put away (as the camera turns from it); `now` puts it all back at once. */
+  endLookSwap(now = false) {
+    if (!this.swap) return;
+    this.swap.want = 'show';
+    if (now) { for (const it of this.swap.items) if (it.hidden) { it.show(); it.hidden = false; } this.swap = null; }
+  }
+  private tickSwap() {
+    const sw = this.swap;
+    if (!sw) return;
+    this.camera.updateMatrixWorld();
+    const fr = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse));
+    let left = 0;
+    for (const it of sw.items) {
+      const seen = fr.intersectsSphere(it.s);
+      if (sw.want === 'hide' && !it.hidden && (!seen || (it.near && this.forceNear))) { it.hide(); it.hidden = true; }
+      else if (sw.want === 'show' && it.hidden) { if (!seen || (it.near && this.forceNear)) { it.show(); it.hidden = false; } else left++; }
+    }
+    if (sw.want === 'show' && !left) this.swap = null;
+  }
+
+  /** On Continue, the worlds hang in World 1's sky above the spring, where the letter is read. */
+  defaultLookFrame() {
+    if (!this.flags.has('read-letter')) return;
+    const p0 = this.planets[0], d = p0.dirRiver(PK.spring[0], PK.spring[1]);
+    const at = p0.surfacePoint(d), up = d.clone();
+    const fwd = p0.surfacePoint(p0.dirRiver(PK.wake[0], PK.wake[1])).sub(at).projectOnPlane(up).normalize();
+    this.islands.configure('lookup');
+    this.islands.setFrame(at, up, fwd, 1, this.day.sun);
+    this.lookPlan = { at, dir: fwd };
+  }
+
+  /** The "Look up." shot's sky, set by the shot each frame (null when it isn't running). */
+  moonShot: { t: number; show: number; reveal: number; light: number; veil: number; dream: number } | null = null;
+  /** 0..1: the dreamy grade of the far shots (title, "Look up."): luminous sky, lifted warm light, no motes. */
+  dream = 0;
+  private moonT = 0;
+
+  /**
+   * The worlds as moons: the title's sky, the "Look up." shot (driven by moonShot), and afterwards, faintly, in
+   * World 1's sky for the rest of the chapter (where they hung in the shot). Also the dreamy sky grade.
+   */
+  private updateMoons(dt: number, far: number) {
+    const isl = this.islands, sh = this.moonShot;
+    let dream = 0;
+    this.moonT += dt;
+    if (this.mode === 'title') {
+      isl.update(this.camera, this.moonT, 1, 1, 1, 0, false, 1);
+      dream = 1;
+    } else if (sh) {
+      isl.update(this.camera, sh.t, sh.show, sh.reveal, sh.light, sh.veil, true, sh.dream);
+      dream = sh.dream;
+    } else if (this.cur === 0 && this.flags.has('read-letter') && isl.kind === 'lookup' && this.lookPlan && this.mode !== 'ride') {
+      // after the shot they stay in the sky, faint, by day only; the planet itself hides them as they set
+      const k = 0.55 * this.day.day * (1 - smoothstep(0.05, 0.4, far));
+      isl.update(this.camera, 20 + this.moonT * 0.05, k, 1, 1, 0, false, 0);
+    } else isl.update(this.camera, 0, 0, 0, 0);
+    // the sky view speaks the same language: the luminous sky, a clean grade
+    dream = Math.max(dream, smoothstep(0.3, 0.9, this.skyView.k) * 0.85);
+    (isl.beacon.material as THREE.SpriteMaterial).depthTest = (isl.beaconGlow.material as THREE.SpriteMaterial).depthTest = !sh && this.mode !== 'title';
+    this.dream = dream;
+    this.tickSwap();
+    // the sky itself: the world's own colours, or the luminous dream sky of the far shots
+    const pal = WORLDS[this.cur].palette, U = this.sky.mat.uniforms;
+    (U.uTop.value as THREE.Color).set(pal.skyTop).lerp(DREAM_TOP, dream * 0.75);
+    (U.uHorizon.value as THREE.Color).set(pal.skyHorizon).lerp(DREAM_LOW, dream * 0.85);
+    if (this.mode === 'title') { (U.uTop.value as THREE.Color).copy(TITLE_TOP); (U.uHorizon.value as THREE.Color).copy(TITLE_LOW); }
+    U.uDreamSky.value = dream;
+    isl.skyTop.copy(U.uTop.value); isl.skyLow.copy(U.uHorizon.value);
   }
 
   openLetter() {
@@ -1509,8 +1653,8 @@ export class Game {
     this.player.pose = { listen: 1 };
     this.hud.showLetter(Opening.LETTER_TEXT);
     this.sound.sfxPlay('paper');
-    // the next shot looks up at the other worlds: paint them now, while the page is up
-    setTimeout(() => this.bakeIslands(), 300);
+    // the next shot looks up at the other worlds (painted on the title): plan where to look while the page is up
+    setTimeout(() => { if (this.mode === 'letter') this.planLookUp(); }, 300);
   }
 
   /** Slow motion, for looking closely (1 is normal speed). */
@@ -1574,6 +1718,7 @@ export class Game {
     this.day.update(this.mode === 'overlay' ? 0 : dt * (this.sitting ? 9 : 1), viewUp);
     this.menu.setButton(this.mode === 'play' || this.mode === 'overlay');
     if (this.mode !== 'play' && this.mode !== 'overlay') inp.lockLost = false;
+    if (this.mode === 'title' && !this.islands.baked) this.bakeIslands();
     this.day.apply(WORLDS[this.cur].palette, this.sunLight, this.moonLight, this.scene.fog as THREE.FogExp2, p.center);
     const aw = this.mode === 'title' ? [] : this.areaWeights();
     for (const { a, w } of aw) this.sunLight.color.lerp(new THREE.Color(a.light), w * 0.3);
@@ -1610,12 +1755,13 @@ export class Game {
     }
     const fog = this.scene.fog as THREE.FogExp2;
     const far = this.mode === 'title' ? 1 : Math.max(this.fogK, smoothstep(0, 0.5, this.skyView.k));
+    this.updateMoons(dt, far);
     (this.beacon.material as THREE.SpriteMaterial).depthTest = far < 0.3;
     // far away, the air between the worlds is a soft pearly haze, so the deeper worlds sink into light
     fog.density = lerp(FOG_BASE, FOG_FAR, far);
     fog.color.lerp(FAR_HAZE, far * 0.4);
     this.sky.mat.uniforms.uAbyss.value = far;
-    this.cloudSea.update(this.time, smoothstep(0.35, 0.9, far));
+    this.cloudSea.update(this.time, this.mode === 'title' ? 0 : smoothstep(0.35, 0.9, far));
     this.sky.clouds.visible = far < 0.6;
 
     (this.contents[this.cur].refs.lifeNear as THREE.Vector3 | undefined)?.copy(this.player.pos);
@@ -1626,7 +1772,7 @@ export class Game {
     if (this.streamMat) this.streamMat.uniforms.uTime.value = this.time;
     for (const pl of this.planets) if (pl.ocean) (pl.ocean.material as THREE.ShaderMaterial).uniforms.uTime.value = this.time;
     // Seen from far away (title, sky view, the home light shot) the cloud sea is always in plain daylight.
-    const upForSky = far > 0.5 ? this.day.sun.clone().lerp(new THREE.Vector3(0, 1, 0), 0.25).normalize() : this.rig.override ? this.rig.override.up : this.rig.smoothUp;
+    const upForSky = this.mode === 'title' || (far > 0.5 && this.day.sun.y > 0.15) ? new THREE.Vector3(0, 1, 0) : far > 0.5 ? this.day.sun.clone().lerp(new THREE.Vector3(0, 1, 0), 0.25).normalize() : this.rig.override ? this.rig.override.up : this.rig.smoothUp;
     this.sky.setCloudSky((this.scene.fog as THREE.FogExp2).color, (this.scene.fog as THREE.FogExp2).density * far);
     this.sky.update(upForSky, this.camera.position, this.time, this.day.sun, Math.max(this.day.day, far), this.day.dusk * (1 - far));
     this.skyread.update(dt, p, this.time);
@@ -1642,6 +1788,8 @@ export class Game {
     if (this.mode !== 'cut') this.beacon.scale.setScalar(this.mode === 'title' ? 0.1 + 0.04 * blink : 0.03 + this.skyView.k * 0.03);
     for (const u of this.updrafts) u.visible = this.skyView.k < 0.5;
     if (this.mode !== 'ride') this.motes.update(dt, p.center, this.player.pos, onPeaks ? 0.6 : 0.8, onPeaks ? 0.6 : 0.35);
+    // the drifting motes read as stray white specks against the open sky of the far shots
+    this.motes.points.visible = this.dream < 0.05;
     this.blizzard.update(dt, p.center, this.player.pos, 7, onPeaks ? this.winter : 0);
     this.rain.update(dt, p.center, this.player.pos, 16, this.ch1.rainT > 0 ? 1 : 0);
     // sound
@@ -1687,6 +1835,9 @@ export class Game {
     this.hud.update(dt);
     this.finish.mat.uniforms.uTime.value = this.time;
     this.finish.mat.uniforms.uNight.value = 1 - Math.max(this.day.day, far);
+    this.finish.mat.uniforms.uDream.value = this.dream;
+    this.renderer.toneMappingExposure = 0.92 + 0.1 * this.dream;
+    this.bloom.strength = 0.2 * (1 - 0.6 * this.dream);
     {
       const U = this.finish.mat.uniforms;
       const sp = this.camera.position.clone().addScaledVector(this.day.sun, 900).project(this.camera);

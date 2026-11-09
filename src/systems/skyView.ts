@@ -5,6 +5,9 @@ import { CHAPTERS } from '../data/story';
 import { smoothstep } from '../world/noise';
 import { PAINT } from '../render/paint';
 
+/** How far out the sky view stands from the middle of the column of worlds. */
+export const SKY_DIST = 1400;
+
 export interface CamPose { pos: THREE.Vector3; look: THREE.Vector3; up: THREE.Vector3 }
 
 /** Pull the camera up past the clouds to see every world at once, the river threading them, and home below. */
@@ -64,8 +67,9 @@ export class SkyView {
 
   skyPose(): CamPose {
     const a = 0.75 + this.orbit;
-    const off = new THREE.Vector3(Math.cos(a), 0.32, Math.sin(a)).normalize().multiplyScalar(1450); // frames the four worlds (y 0 to -1020)
-    return { pos: this.center.clone().add(off), look: this.center.clone().add(new THREE.Vector3(0, -60, 0)), up: new THREE.Vector3(0, 1, 0) };
+    // close enough that the column of four worlds (y 0 to -1020) fills most of the frame, from a little above
+    const off = new THREE.Vector3(Math.cos(a), 0.42, Math.sin(a)).normalize().multiplyScalar(SKY_DIST);
+    return { pos: this.center.clone().add(off), look: this.center.clone().add(new THREE.Vector3(0, -20, 0)), up: new THREE.Vector3(0, 1, 0) };
   }
 
   enter(from: CamPose) { this.from = { pos: from.pos.clone(), look: from.look.clone(), up: from.up.clone() }; this.dir = 1; }
