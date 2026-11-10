@@ -631,7 +631,7 @@ export class Game {
     el.className = 'title';
     el.innerHTML = `<h1 class="hand">The Light<br>Below the Clouds</h1><div class="tag">a long way from home, and a river that knows the way back</div>
       ${saved.notice ? `<div class="notice">${esc(saved.notice)}</div>` : ''}
-      <div>${has ? '<button data-a="continue">Continue</button>' : ''}<button data-a="new">${has ? 'Begin again' : 'Begin'}</button></div>
+      <div>${has ? '<button data-a="continue">Continue</button>' : ''}<button data-a="new">${has ? 'Begin again' : 'Begin'}</button><button data-a="try2" class="try2">Try World 2</button></div>
       <button class="tset" data-a="settings" aria-label="Settings (Esc)">${TITLE_GEAR}<span>Settings</span></button>
       <div class="foot">Chapter One &middot; best with headphones &middot; <b>Esc</b> settings</div>`;
     document.getElementById('ui')!.append(el);
@@ -643,7 +643,20 @@ export class Game {
       el.classList.add('out');
       setTimeout(() => el.remove(), 900);
       this.titleEl = null;
-      if ((b as HTMLElement).dataset.a === 'continue' && saved.data) {
+      if ((b as HTMLElement).dataset.a === 'try2') {
+        // A quick tryout of the Sky Isles for the preview: start at the World 2 landing as if World 1 were done.
+        // Nothing is saved, so a real journey (and its save) is untouched.
+        this.saveOff = true;
+        this.give('read-letter');
+        for (const n of this.contents[0].npcs) this.flags.add('met:' + n.id);
+        this.enterWorld(1, false);
+        this.player.placeAt(this.planets[1], this.arrivalDir(1));
+        this.meet = null; this.cutCam = null; this.rig.override = null;
+        this.rig.faceDir(this.player.up, this.player.facing); this.rig.snap();
+        this.hud.setFade(0, '#fff8ee', true);
+        this.mode = 'play';
+        this.ch2?.arrive();
+      } else if ((b as HTMLElement).dataset.a === 'continue' && saved.data) {
         this.load(saved.data);
         // leave the title camera behind and start right behind Nilo
         this.cutCam = null; this.rig.override = null; this.rig.faceDir(this.player.up, this.player.facing); this.rig.snap();
