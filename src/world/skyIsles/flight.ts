@@ -80,6 +80,8 @@ export interface GlideInput {
   steer?: { turn: number; climb: number } | null;
   /** The gravity the caller already took off vU this step (m/s²): the open wing holds it up instead. */
   gravity?: number;
+  /** Distance from the planet centre: cancels the drift up that straight flight over a sphere gives. */
+  radius?: number;
 }
 
 const _t = new THREE.Vector3(), _c = new THREE.Vector3();
@@ -112,6 +114,9 @@ export function stepGlide(g: GliderState, vU: number, vTan: THREE.Vector3, I: Gl
   g.heading.projectOnPlane(I.up).normalize();
   // the wing carries his weight: the sink below is all there is (not the sink plus a fall)
   if (I.gravity) vU += I.gravity * dt;
+  // flying straight over a little round world the ground falls away under you (h²/r): take that back, so level
+  // flight stays level at any speed
+  if (I.radius) vU -= (vTan.lengthSq() / I.radius) * dt;
 
   // steer: turn the heading toward the stick, banking into the turn
   let turnRate = 0;
@@ -148,12 +153,14 @@ export function stepGlide(g: GliderState, vU: number, vTan: THREE.Vector3, I: Gl
   // speed: gravity along the path in a dive; a slow bleed gliding level; a climb trades speed for height
   const down = Math.max(0, -Math.sin(g.pitch));
   if (I.dive) g.speed += 15 * down * dt;
-  else if (climb < 0) g.speed += 6 * -climb * dt;
+  else if (climb < 0) g.speed += (g.speed < 15 ? 6 : 0) * -climb * dt;
   else if (climb > 0) g.speed -= 2.2 * climb * dt;
   else {
     g.speed -= GLIDE.bleed * dt;
     if (g.speed > 13) g.speed -= (g.speed - 13) * 0.22 * dt;
   }
+  // (arrow steering is the gentle way to fly: never so fast that a turn swings wide)
+  if (S && !I.dive && g.speed > 15) g.speed -= (g.speed - 15) * 0.9 * dt;
   if (g.pull > 0) g.speed -= Math.max(0, g.speed - GLIDE.cruise) * 1.4 * dt;
   g.speed = clamp(g.speed, GLIDE.min, GLIDE.max);
   g.boost = Math.max(0, g.boost - g.boost * 1.2 * dt - 0.4 * dt);

@@ -407,7 +407,7 @@ export function showGlideCard(html: string, secs: number) {
   if (!el) {
     el = document.createElement('div'); el.className = 'glidecard';
     const st = document.createElement('style');
-    st.textContent = `.glidecard { position: absolute; left: 50%; top: 96px; transform: translateX(-50%); font: 16px Georgia, serif; color: #fff8ee; background: rgba(46,34,48,0.62);
+    st.textContent = `.glidecard { position: absolute; left: 50%; top: 132px; transform: translateX(-50%); font: 16px Georgia, serif; color: #fff8ee; background: rgba(46,34,48,0.62);
       padding: 10px 20px; border-radius: 16px; letter-spacing: 0.02em; pointer-events: none; text-shadow: 0 1px 2px #0006; white-space: nowrap; transition: opacity 0.6s; opacity: 0; }
       .glidecard.on { opacity: 1; } .glidecard b { color: #ffe39a; }`;
     document.head.append(st);

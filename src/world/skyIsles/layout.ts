@@ -158,11 +158,14 @@ export const SPOTS = {
  * ring's centre above the ground there.
  */
 export const RINGS: { isle: string; lat: number; off: number; ring: number; qualifier?: boolean }[] = [
-  { isle: 'chime', lat: 98, off: 6, ring: 7, qualifier: true },
-  { isle: 'chime', lat: 104, off: -9, ring: 8.5, qualifier: true },
-  { isle: 'chime', lat: 113, off: -11, ring: 7.5, qualifier: true },
-  { isle: 'chime', lat: 119, off: 2, ring: 9, qualifier: true },
-  { isle: 'chime', lat: 111, off: 9.5, ring: 8, qualifier: true },
+  // the qualifier: six rings on one gentle oval round the garden, three up the east side, three back down the west,
+  // all at about the same height, so the line from one to the next is a soft, steady curve
+  { isle: 'chime', lat: 91.5, off: 8, ring: 8, qualifier: true },
+  { isle: 'chime', lat: 101.7, off: 12.5, ring: 8.3, qualifier: true },
+  { isle: 'chime', lat: 111.8, off: 8, ring: 8, qualifier: true },
+  { isle: 'chime', lat: 111.8, off: -11, ring: 8, qualifier: true },
+  { isle: 'chime', lat: 101.7, off: -15.5, ring: 8.3, qualifier: true },
+  { isle: 'chime', lat: 91.5, off: -11, ring: 8, qualifier: true },
   { isle: 'sailtown', lat: 72, off: 15, ring: 9 },
   { isle: 'windmill', lat: 58, off: -40, ring: 8 },
   { isle: 'landing', lat: 9, off: -8, ring: 8 },

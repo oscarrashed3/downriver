@@ -507,14 +507,21 @@ export function dressIsles(w: SkyWorld): Dressing {
   {
     const d = D('chime');
     const isle = d.isle;
+    // the qualifier's six rings stand on one round loop about the garden's middle, 60 degrees apart, set 30 degrees
+    // off the river so no pole stands in it: every turn from one ring to the next is the same soft curve
+    const VC = riverFrame(isle, 101.7);
     for (const [i, rg] of RINGS.filter(r => r.isle === 'chime').entries()) {
-      let q = isle.at(rg.lat, rg.off);
-      if (!d.free(q.x, q.z, 1.0, 6.5, 2)) {
-        // nudge it onto good ground
-        for (let k = 1; k < 30; k++) { const a = k * 2.4, r = 0.6 * k; const q2 = { x: q.x + Math.cos(a) * r, z: q.z + Math.sin(a) * r }; if (d.free(q2.x, q2.z, 1.0, 6.5, 2)) { q = q2; break; } }
+      const at = (rad: number, da = 0) => { const a = (150 - i * 60 + da) * Math.PI / 180; return VC(Math.cos(a) * rad, Math.sin(a) * rad); };
+      let q = rg.qualifier ? at(15) : isle.at(rg.lat, rg.off);
+      if (rg.qualifier && !d.free(q.x, q.z, 0.8, 2.5, 2)) {
+        // nudge it onto good ground, only a little (the loop's shape must stay gentle)
+        for (let k = 1; k < 12; k++) {
+          const q2 = at(15 + (k % 2 ? -1 : 1) * Math.ceil(k / 2) * 0.6, (k % 3 - 1) * 4);
+          if (d.free(q2.x, q2.z, 0.8, 2.5, 2)) { q = q2; break; }
+        }
       }
       // rings face along the qualifier's loop (round the garden's centre)
-      const tang = Math.atan2(q.x, -q.z);
+      const c0 = VC(0, 0), tang = Math.atan2(-(q.z - c0.z), q.x - c0.x);
       rings[RINGS.indexOf(rg)] = ring(d, q.x, q.z, tang, rg.ring, 10 + i);
       d.claim(q.x, q.z, 1.5);
     }
