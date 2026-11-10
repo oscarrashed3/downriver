@@ -89,6 +89,7 @@ export default async ({ page, ev }) => {
     await ev('window.__pilot = null; __game.input.down.clear()');
     await toBeat(0, 2500);
     await snap('6-finish-chimes');
+    console.log('fin', await ev(`(() => { const g = __game, P = g.planets[1], f = v => v ? +(v.distanceTo(P.center) - P.R).toFixed(1) : null; return JSON.stringify({ cam: f(g.camera.position), cc: g.cutCam && f(g.cutCam.pos), pl: f(g.player.pos), z: f(g.ch2.npc('zephy').root.position), d: g.cutCam && +g.cutCam.pos.distanceTo(g.player.pos).toFixed(1), mode: g.mode, beat: g.seq.i }); })()`));
     await endCut();
     console.log('won', await state());
   }

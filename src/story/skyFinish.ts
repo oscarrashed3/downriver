@@ -102,7 +102,7 @@ export class SkyFinish {
     if (this.whale.root.visible) this.whale.update(dt, g.time);
     // after the race the friends wait at Whale's Rest; walk up to them for the goodbye
     if (this.has('sky:won') && !this.has('sky:goodbye')) {
-      if (!this.atRest) this.gatherAtRest();
+      if (!this.atRest && g.mode === 'play') this.gatherAtRest();
       if (g.mode === 'play' && g.player.grounded && g.player.pos.distanceTo(this.ch.p.surfacePoint(this.site().nilo)) < 9) g.cut(this.goodbyeBeats());
     }
   }

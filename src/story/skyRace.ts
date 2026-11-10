@@ -448,13 +448,14 @@ export class SkyRace {
       const wd = pl.pos.clone().addScaledVector(pl.facing, 1.7).sub(ch.p.center).normalize();
       const wp = ch.p.surfacePoint(wd, -0.05);
       wren.place(wp, wd, pl.pos.clone().sub(wp));
+      pl.facing.copy(wp.clone().sub(pl.pos).projectOnPlane(pl.up).normalize()); pl.sync(); pl.lookAt = wp.clone().addScaledVector(wd, 1.1);
       wren.lookAt = pl.pos.clone().addScaledVector(pl.up, 1.2);
       void w;
     };
     return [
       { line: { text: W.lost }, dur: 3.5, enter: meet, tick: k => { g.cutCam = this.twoShot(wren.root.position, 7 - k * 1.5, 3 - k); } },
       { line: { who: 'Gran Wren', text: W.wren1 }, enter: () => { wren.pose = { cheer: 1 } as Npc['pose']; }, tick: k => { g.cutCam = this.twoShot(wren.root.position, 3.8 - k * 0.3, 1.6); } },
-      { line: { who: 'Gran Wren', text: W.wren2 }, tick: () => { g.cutCam = this.twoShot(wren.root.position, 3.5, 1.6); }, exit: () => { wren.pose = {}; wren.lookAt = null; ch.sendHome(wren); g.hud.notify(W.again); } },
+      { line: { who: 'Gran Wren', text: W.wren2 }, tick: () => { g.cutCam = this.twoShot(wren.root.position, 3.5, 1.6); }, exit: () => { wren.pose = {}; wren.lookAt = null; pl.lookAt = null; ch.sendHome(wren); g.hud.notify(W.again); } },
     ];
   }
 }
