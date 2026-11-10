@@ -1,3 +1,4 @@
+import { skySkip } from './story/skySkip';
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -658,6 +659,7 @@ export class Game {
         this.hud.setFade(0, '#fff8ee', true);
         this.mode = 'play';
         this.ch2?.arrive();
+        this.addSkipButton();
       } else if ((b as HTMLElement).dataset.a === 'continue' && saved.data) {
         this.load(saved.data);
         // leave the title camera behind and start right behind Nilo
@@ -681,6 +683,23 @@ export class Game {
     this.titleEl?.classList.toggle('dim', on);
     if (on) { this.menu.showSettings(this.settingsInfo()); this.sound.sfxPlay('paper'); }
     else { this.menu.hidePage(); this.sound.sfxPlay('soft'); }
+  }
+
+  /** Tryout only (the "Try World 2" start): a button that moves the Sky Isles story on by one task per click. */
+  addSkipButton() {
+    const b = document.createElement('button');
+    b.className = 'skip-task';
+    b.textContent = 'Skip task \u23ED';
+    b.style.cssText = 'position:fixed;right:24px;top:96px;z-index:50;padding:8px 16px;border-radius:999px;border:2px solid #2a2436;'
+      + 'background:#fff8eecc;color:#2a2436;font:600 15px Georgia,serif;cursor:pointer;box-shadow:0 2px 8px #0003';
+    b.addEventListener('mousedown', e => e.preventDefault());
+    b.addEventListener('click', e => {
+      e.stopPropagation(); b.blur();
+      if (!this.isSky() || !this.ch2) { this.hud.notify('Skip works in the Sky Isles.'); return; }
+      const said = skySkip(this, this.ch2);
+      if (said) this.hud.notify(said);
+    });
+    document.body.appendChild(b);
   }
 
   /** Play a scripted scene. The traveler can't move; Space skips spoken lines. */
