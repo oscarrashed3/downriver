@@ -1233,7 +1233,7 @@ export class Game {
 
   /** Names over people's heads when you are close: "Tor, who builds kites", or how you'd describe them. */
   updateNameTags() {
-    const show = this.mode === 'play' && (this.cur === 0 || this.skyStory());
+    const show = this.mode === 'play' && (this.cur === 0 || (this.skyStory() && !this.ch2?.race.active));
     const npcs = show ? this.contents[this.cur].npcs.filter(n => n.root.position.distanceTo(this.player.pos) < 9) : [];
     const els = this.nameTags.children;
     while (els.length < npcs.length) this.nameTags.append(document.createElement('div'));

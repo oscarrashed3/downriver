@@ -262,7 +262,7 @@ export class SkyChapter {
       }
       case 'qualify': return this.at([96, 2]);
       case 'race': return this.at([66.5, 12]);
-      case 'goodbye': case 'whale': return this.at([SPOTS.whalesRest.lat, SPOTS.whalesRest.off]);
+      case 'goodbye': case 'whale': return this.p.surfacePoint(this.finish.site().nilo);
       default: return null;
     }
   }

@@ -4,7 +4,7 @@ import { mkdirSync } from 'fs';
 export default async ({ page, ev }) => {
   const dir = process.env.SKYSHOTS ?? '/home/user/sky-shots/phase5';
   mkdirSync(dir, { recursive: true });
-  const snap = async (name) => { await ev(`document.querySelectorAll('.notify, .toast').forEach(e => e.remove())`); await page.screenshot({ path: `${dir}/${name}.png`, timeout: 600000 }); console.log('shot', `${dir}/${name}.png`); };
+  const snap = async (name) => { console.log('beat', await ev('__game.seq.running ? __game.seq.i : -1')); await ev(`document.querySelectorAll('.notify, .toast').forEach(e => e.remove())`); await page.screenshot({ path: `${dir}/${name}.png`, timeout: 600000 }); console.log('shot', `${dir}/${name}.png`); };
   await page.waitForSelector('button[data-a="new"]', { timeout: 600000 });
   await page.click('button[data-a="new"]');
   for (let i = 0; i < 200 && (await ev('__game.mode')) !== 'play'; i++) { await page.waitForTimeout(150); await ev(`(() => { const g = __game; g.input.pressed.add(g.mode === 'letter' ? 'KeyE' : 'Space'); })()`); }
@@ -18,7 +18,7 @@ export default async ({ page, ev }) => {
     window.__pilot = null;
     window.__fly = (via) => { window.__pilot = () => { const R = g.ch2.race, pl = g.player; if (!R.mode || !pl.glider || !pl.glider.open || g.mode !== 'play') return;
       const c = R.course, i = R.passed.findIndex((x, k) => !x && !R.notes.includes(k)); if (i < 0) return; const gt = c.gates[i];
-      const nn = gt.normal.clone().multiplyScalar(Math.sign(gt.normal.dot(c.dir(c.gateS[i]))) || 1); let tgt = pl.pos.distanceTo(gt.center) < 4 ? gt.center.clone().addScaledVector(nn, 6) : gt.center.clone().addScaledVector(nn, -1.5);
+      const nn = gt.normal.clone().multiplyScalar(Math.sign(gt.normal.dot(c.dir(c.gateS[i]))) || 1); const dg = pl.pos.distanceTo(gt.center), before = pl.pos.clone().sub(gt.center).dot(nn) < 0; let tgt = before && dg < 10 ? gt.center.clone().addScaledVector(nn, 3) : c.at(Math.min(c.length, R.progress + 9));
       if (via && via.length && pl.pos.distanceTo(via[0]) < 4) via.shift();
       if (via && via.length && R.passed[via[0].after]) tgt = via[0].clone();
       const up = pl.up; const h = tgt.clone().sub(pl.pos).projectOnPlane(up).normalize(); pl.glider.heading.lerp(h, 0.6).projectOnPlane(up).normalize();
@@ -73,7 +73,7 @@ export default async ({ page, ev }) => {
     await ev('__fly([])');
     await run(4000);
     await snap('4-race-chase');
-    for (let i = 0; i < 80 && (await ev('__game.ch2.race.mode')); i++) await run(500, false);
+    for (let i = 0; i < 200 && (await ev('__game.ch2.race.mode')); i++) { await run(500, false); if (i % 10 === 0) console.log('dbg', await ev(`(() => { const g = __game, pl = g.player, R = g.ch2.race; return JSON.stringify({ p: Math.round(R.progress), sp: pl.glider && +pl.glider.speed.toFixed(1), open: pl.glider?.open, gr: pl.grounded, resc: !!g.skyMove.rescue, alt: +(pl.pos.distanceTo(g.planets[1].center) - R.course.at(R.progress).distanceTo(g.planets[1].center)).toFixed(1), off: +pl.pos.distanceTo(R.course.at(R.progress)).toFixed(1), cam: +g.camera.position.distanceTo(pl.pos).toFixed(1), racers: R.racers.map(r => Math.round(r.s)), mode: g.mode, gateS: R.course.gateS.map(Math.round), solids: g.planets[1].solids.map(q => [q.obj.position.distanceTo(pl.pos), (q.obj.name || q.obj.type) + '<' + (q.obj.parent?.name || ''), q.shape.kind, q.shape.r ?? q.shape.hw, q.h ?? q.height]).sort((a, b) => a[0] - b[0]).slice(0, 3).map(a => [a[0].toFixed(1), ...a.slice(1)]) }); })()`)); }
     console.log('race end', await state());
     await ev('window.__pilot = null; __game.input.down.clear()');
     await toBeat(1, 1500);
@@ -84,7 +84,7 @@ export default async ({ page, ev }) => {
     await ev(`(() => { const g = __game; g.flags.add('sky:ribbon'); __go([66, 10]); __it('skyRaceStart').act(); })()`);
     await endCut();
     await ev(`(() => { const R = __game.ch2.race; __fly([Object.assign(R.fallsAt.clone(), { after: 4 })]); })()`);
-    for (let i = 0; i < 80 && (await ev('__game.ch2.race.mode')); i++) { await run(500, false); await ev(`(() => { const R = __game.ch2.race; if (R.progress > R.course.length * 0.85) R.gust = true; })()`); }
+    for (let i = 0; i < 200 && (await ev('__game.ch2.race.mode')); i++) { await run(500, false); await ev(`(() => { const R = __game.ch2.race; if (R.progress > R.course.length * 0.85) R.gust = true; })()`); }
     console.log('win end', await state());
     await ev('window.__pilot = null; __game.input.down.clear()');
     await toBeat(0, 2500);
@@ -93,7 +93,7 @@ export default async ({ page, ev }) => {
     console.log('won', await state());
   }
   if (steps.includes('goodbye')) {
-    await ev(`(() => { const g = __game; g.flags.add('sky:ribbon'); g.flags.add('sky:won'); __go([170, 21]); })()`);
+    await ev(`(() => { const g = __game; if (g.ch2.race.active) g.ch2.race.end(null); g.seq.running && (g.seq.running = false); g.mode = 'play'; g.cutCam = null; g.flags.add('sky:ribbon'); g.flags.add('sky:won'); g.ch2.finish.restore?.(); __go([159, 0]); g.player.placeAt(g.planets[1], g.ch2.finish.site().nilo); g.rig.snap(); })()`);
     for (let i = 0; i < 40 && (await ev('__game.mode')) !== 'cut'; i++) await run(200, false);
     await toBeat(2, 4500);
     await snap('7-whale-rises');

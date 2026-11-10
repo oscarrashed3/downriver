@@ -242,7 +242,7 @@ export class SkyRace {
         new Racer(lark.person as Windfolk, 'lark', 1.8, lark.root, lark),
         new Racer(this.tumble, 'wren', 3.4, null),
       ];
-      this.racers.forEach((r, i) => { r.board(this.wingRoot); r.s = 1 + i * 0.5; r.speed = 11; });
+      this.racers.forEach((r, i) => { r.board(this.wingRoot); r.s = 7 + i * 2.5; r.speed = 11; });
     }
     this.hudEl.classList.remove('hidden');
     g.sound.sfxPlay('whoosh');
@@ -287,6 +287,8 @@ export class SkyRace {
     this.t += dt;
     if (this.countdown > 0) this.countdown -= dt;
     pl.forceOpen = true;
+    // the festival wind along the course carries the wing: it never bleeds below a racing pace (dive for more)
+    if (pl.glider?.open) pl.glider.speed = Math.max(pl.glider.speed, this.mode === 'race' ? 12 : 10.5);
     // progress along the course
     this.idx = c.nearest(pl.pos, this.idx - 8, this.idx + 40);
     this.progress = c.s[this.idx];
@@ -331,6 +333,11 @@ export class SkyRace {
   /** Skimming a hillside, the chase camera never sinks into the island behind (inside it is all dark outline). */
   private aboveGround(v: THREE.Vector3) {
     const P = this.ch.p, pl = this.g.player, cd = v.clone().sub(P.center).normalize();
+    // and never inside a racer's wing at the chase camera's shoulder
+    for (const r of this.racers) {
+      const d = v.clone().sub(r.wing.root.position), L = d.length();
+      if (L < 2.6) v.addScaledVector(L > 1e-3 ? d.normalize() : pl.up, 2.6 - L);
+    }
     if (!onIsle(P, cd)) return v;
     const ground = P.surfacePoint(cd, 1.4), gr = ground.distanceTo(P.center);
     return pl.pos.distanceTo(P.center) > gr - 3 && v.distanceTo(P.center) < gr ? ground : v;
@@ -395,12 +402,21 @@ export class SkyRace {
       {
         line: { text: n === this.passed.length ? W.qualClean : W.qualDone(n) }, dur: 4,
         // Nilo glides down by the race gate, where Zephy is waiting with the ribbon
-        enter: () => { ch.land(safeSpot(ch.p, ch.dir([63.8, 11]), [], 3)); g.player.facing.copy(zephy.root.position.clone().sub(g.player.pos).projectOnPlane(g.player.up).normalize()); g.player.sync(); },
-        tick: k => { g.cutCam = ch.orbit(g.player.pos.clone().lerp(zephy.root.position, 0.5), 5.5, 2.2, 1.0 + k * 0.3); },
+        enter: () => { ch.land(safeSpot(ch.p, ch.dir([63.8, 11]), [], 3)); g.player.facing.copy(zephy.root.position.clone().sub(g.player.pos).projectOnPlane(g.player.up).normalize()); g.player.sync(); zephy.place(zephy.root.position.clone(), zephy.up.clone(), g.player.pos.clone().sub(zephy.root.position)); zephy.lookAt = g.player.pos.clone().addScaledVector(g.player.up, 1.2); },
+        tick: k => { g.cutCam = this.twoShot(zephy.root.position, 5.5 - k * 0.6, 2.2); },
       },
-      { line: { who: 'Zephy', text: W.ribbonZephy }, enter: () => { zephy.smileT = 2; }, tick: k => { g.cutCam = ch.orbit(g.player.pos.clone().lerp(zephy.root.position, 0.5), 4.5, 1.9, 1.3 + k * 0.2); } },
-      { dur: 0.1, exit: () => { g.flags.add('sky:ribbon'); g.give('item:racer-ribbon'); } },
+      { line: { who: 'Zephy', text: W.ribbonZephy }, enter: () => { zephy.smileT = 2; }, tick: k => { g.cutCam = this.twoShot(zephy.root.position, 4.4 - k * 0.3, 1.8); } },
+      { dur: 0.1, exit: () => { zephy.lookAt = null; g.flags.add('sky:ribbon'); g.give('item:racer-ribbon'); } },
     ];
+  }
+
+  /** Nilo and someone side by side, seen from the side away from the festival crowd (who would stand in the way). */
+  twoShot(other: THREE.Vector3, r: number, h: number) {
+    const ch = this.ch, pl = this.g.player, mid = pl.pos.clone().lerp(other, 0.5);
+    const up = mid.clone().sub(ch.p.center).normalize();
+    const side = new THREE.Vector3().crossVectors(up, other.clone().sub(pl.pos)).normalize();
+    if (side.dot(ch.at([69.5, 19.5]).sub(mid)) > 0) side.negate();
+    return { pos: mid.clone().addScaledVector(side, r).addScaledVector(up, h), look: mid.clone().addScaledVector(up, 1.0), up };
   }
 
   raceStart(): Beat[] {
@@ -413,11 +429,19 @@ export class SkyRace {
   }
 
   loseBeats(): Beat[] {
-    const g = this.g, ch = this.ch, wren = ch.npc('granwren');
+    const g = this.g, ch = this.ch, wren = ch.npc('granwren'), pl = g.player;
+    const meet = () => {
+      // Nilo comes down beside Gran Wren, who has been watching from the square
+      const w = wren.root.position, up = w.clone().sub(ch.p.center).normalize();
+      const d = safeSpot(ch.p, w.clone().addScaledVector(wren.homeForward.clone().projectOnPlane(up).normalize(), 2.3).sub(ch.p.center).normalize(), [], 3);
+      ch.land(d, w.clone().sub(ch.p.surfacePoint(d)));
+      wren.place(w.clone(), wren.up.clone(), pl.pos.clone().sub(w));
+      wren.lookAt = pl.pos.clone().addScaledVector(pl.up, 1.2);
+    };
     return [
-      { line: { text: W.lost }, dur: 3.5, enter: () => { ch.land(ch.dir([60, 12])); } },
-      { line: { who: 'Gran Wren', text: W.wren1 }, enter: () => { wren.pose = { cheer: 1 } as Npc['pose']; }, tick: () => { g.cutCam = ch.orbit(wren.root.position, 4.5, 1.9, 2.2); } },
-      { line: { who: 'Gran Wren', text: W.wren2 }, exit: () => { wren.pose = {}; g.hud.notify(W.again); } },
+      { line: { text: W.lost }, dur: 3.5, enter: meet, tick: k => { g.cutCam = this.twoShot(wren.root.position, 7 - k * 1.5, 3 - k); } },
+      { line: { who: 'Gran Wren', text: W.wren1 }, enter: () => { wren.pose = { cheer: 1 } as Npc['pose']; }, tick: k => { g.cutCam = this.twoShot(wren.root.position, 4.4 - k * 0.3, 1.8); } },
+      { line: { who: 'Gran Wren', text: W.wren2 }, tick: () => { g.cutCam = this.twoShot(wren.root.position, 4.1, 1.8); }, exit: () => { wren.pose = {}; wren.lookAt = null; g.hud.notify(W.again); } },
     ];
   }
 }
