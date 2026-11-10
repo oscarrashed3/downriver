@@ -13,6 +13,7 @@ import { SKY_RACE_WORDS as W } from '../data/skyStory';
 import { clamp, lerp, smoothstep } from '../world/noise';
 import { orientTo } from '../world/sphere';
 import { onIsle } from '../world/skyIsles/terrain';
+import { safeSpot } from '../world/spots';
 
 const sm = (k: number) => k * k * (3 - 2 * k);
 const _v = new THREE.Vector3(), _w = new THREE.Vector3();
@@ -391,8 +392,13 @@ export class SkyRace {
   ribbonBeats(n: number): Beat[] {
     const g = this.g, ch = this.ch, zephy = ch.npc('zephy');
     return [
-      { line: { text: n === this.passed.length ? W.qualClean : W.qualDone(n) }, dur: 4 },
-      { line: { who: 'Zephy', text: W.ribbonZephy }, enter: () => { zephy.smileT = 2; }, tick: () => { g.cutCam = ch.orbit(g.player.pos, 4, 1.8, 2); } },
+      {
+        line: { text: n === this.passed.length ? W.qualClean : W.qualDone(n) }, dur: 4,
+        // Nilo glides down by the race gate, where Zephy is waiting with the ribbon
+        enter: () => { ch.land(safeSpot(ch.p, ch.dir([63.8, 11]), [], 3)); g.player.facing.copy(zephy.root.position.clone().sub(g.player.pos).projectOnPlane(g.player.up).normalize()); g.player.sync(); },
+        tick: k => { g.cutCam = ch.orbit(g.player.pos.clone().lerp(zephy.root.position, 0.5), 5.5, 2.2, 1.0 + k * 0.3); },
+      },
+      { line: { who: 'Zephy', text: W.ribbonZephy }, enter: () => { zephy.smileT = 2; }, tick: k => { g.cutCam = ch.orbit(g.player.pos.clone().lerp(zephy.root.position, 0.5), 4.5, 1.9, 1.3 + k * 0.2); } },
       { dur: 0.1, exit: () => { g.flags.add('sky:ribbon'); g.give('item:racer-ribbon'); } },
     ];
   }
@@ -409,7 +415,7 @@ export class SkyRace {
   loseBeats(): Beat[] {
     const g = this.g, ch = this.ch, wren = ch.npc('granwren');
     return [
-      { line: { text: W.lost }, dur: 3.5, enter: () => { g.player.placeAt(ch.p, ch.dir([60, 12])); g.player.sync(); } },
+      { line: { text: W.lost }, dur: 3.5, enter: () => { ch.land(ch.dir([60, 12])); } },
       { line: { who: 'Gran Wren', text: W.wren1 }, enter: () => { wren.pose = { cheer: 1 } as Npc['pose']; }, tick: () => { g.cutCam = ch.orbit(wren.root.position, 4.5, 1.9, 2.2); } },
       { line: { who: 'Gran Wren', text: W.wren2 }, exit: () => { wren.pose = {}; g.hud.notify(W.again); } },
     ];

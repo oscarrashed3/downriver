@@ -162,6 +162,9 @@ export class WindScarf {
     const drag = 1.25;
     this.colliders.forEach((c, i) => { c.o.getWorldPosition(this.cs[i].c); this.cs[i].r = c.r * c.o.getWorldScale(_ws).x; });
     this.anchor.getWorldPosition(_a);
+    // a teleport (boarding a kite-wing, sent home, a scene cut) lays the scarf out afresh instead of whipping it
+    // across the world, and a cloth that has blown up (not finite) starts over too
+    if (this.x[0].distanceToSquared(_a) > 9 || !Number.isFinite(this.x[this.n - 1].x)) { this.reset(air); this.anchor.getWorldPosition(_a); }
     const airLen = air.length();
     let steps = 0;
     while (this.acc >= H && steps < 8) {

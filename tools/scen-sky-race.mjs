@@ -17,7 +17,7 @@ export default async ({ page, ev }) => {
     // autopilot: steer at the next ring, and hold the ring's height (a test of the flow, not of flying)
     window.__pilot = null;
     window.__fly = (via) => { window.__pilot = () => { const R = g.ch2.race, pl = g.player; if (!R.mode || !pl.glider || !pl.glider.open || g.mode !== 'play') return;
-      const c = R.course, i = R.passed.findIndex(x => !x); if (i < 0) return; const gt = c.gates[i];
+      const c = R.course, i = R.passed.findIndex((x, k) => !x && !R.notes.includes(k)); if (i < 0) return; const gt = c.gates[i];
       let tgt = gt.center.clone().addScaledVector(gt.normal, 1.5);
       if (via && via.length && pl.pos.distanceTo(via[0]) < 4) via.shift();
       if (via && via.length && R.passed[via[0].after]) tgt = via[0].clone();
@@ -50,17 +50,16 @@ export default async ({ page, ev }) => {
     await ev('__fly([])');
     await run(2500);
     await snap('2-qualifier');
-    if (process.env.DBG) { console.log(await ev(`(() => { const g = __game, cam = g.camera; const T = cam.position.constructor; const el = document.elementFromPoint(800, 450);
-      const dir = new T(0, 0, -1).applyQuaternion(cam.quaternion); const hits = []; const ray = { o: cam.position.clone(), d: dir };
-      g.scene.updateMatrixWorld(true);
-      g.scene.traverseVisible(o => { if (!o.isMesh || !o.geometry.attributes.position) return; const pos = o.geometry.attributes.position, idx = o.geometry.index; const n = idx ? idx.count : pos.count; if (n > 60000) return;
-        const a = new T(), b = new T(), c = new T(), e1 = new T(), e2 = new T(), pv = new T(), tv = new T(), qv = new T(); let best = Infinity;
-        for (let k = 0; k < n; k += 3) { const i0 = idx ? idx.getX(k) : k, i1 = idx ? idx.getX(k + 1) : k + 1, i2 = idx ? idx.getX(k + 2) : k + 2;
-          a.fromBufferAttribute(pos, i0).applyMatrix4(o.matrixWorld); b.fromBufferAttribute(pos, i1).applyMatrix4(o.matrixWorld); c.fromBufferAttribute(pos, i2).applyMatrix4(o.matrixWorld);
-          e1.subVectors(b, a); e2.subVectors(c, a); pv.crossVectors(ray.d, e2); const det = e1.dot(pv); if (Math.abs(det) < 1e-9) continue; const inv = 1 / det; tv.subVectors(ray.o, a); const u = tv.dot(pv) * inv; if (u < 0 || u > 1) continue; qv.crossVectors(tv, e1); const v = ray.d.dot(qv) * inv; if (v < 0 || u + v > 1) continue; const t = e2.dot(qv) * inv; if (t > 0.01 && t < best) best = t; }
-        if (best < 60) { let nm = [], q = o; while (q && nm.length < 6) { nm.push((q.name || q.type) + (q.visible ? '' : '(hidden)')); q = q.parent; } hits.push(best.toFixed(2) + ' ' + nm.join('<') + ' side=' + o.material.side + ' col=' + (o.material.color ? o.material.color.getHexString() : '-')); } });
-      hits.sort((x, y) => parseFloat(x) - parseFloat(y));
-      return JSON.stringify({ el: el && (el.tagName + '.' + el.className), cam: cam.position.toArray().map(x => +x.toFixed(1)), near: cam.near, far: cam.far, fov: cam.fov, hits: hits.slice(0, 12) }); })()`)); return; }
+    if (process.env.DBG) {
+      await ev(`(() => { const g = __game, R = g.renderer; window.__scan = () => { g.composer.render(); const rt = g.bloom.renderTargetBright, w = rt.width, h = rt.height, buf = new Uint16Array(w * h * 4); R.readRenderTargetPixels(rt, 0, 0, w, h, buf);
+          let n = 0, x0 = 1, y0 = 1, x1 = 0, y1 = 0; for (let i = 0; i < w * h; i++) for (let c = 0; c < 3; c++) if ((buf[i * 4 + c] & 0x7C00) === 0x7C00) { n++; const x = (i % w) / w, y = Math.floor(i / w) / h; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); break; } return { n, box: [x0, y0, x1, y1].map(v => +v.toFixed(3)) }; }; })()`);
+      console.log('NAN0', await ev('JSON.stringify(__scan())'));
+      const nm = await ev(`(() => { const set = new Set(); __game.scene.traverseVisible(o => { if (o.material) for (const m of [].concat(o.material)) set.add(m); }); window.__mats = [...set]; return __mats.length; })()`);
+      console.log('mats', nm);
+      for (let k = 0; k < nm; k += 8) console.log('m', k, await ev(`(() => { const ms = __mats.slice(${k}, ${k} + 8); ms.forEach(m => m.visible = false); const r = __scan(); ms.forEach(m => m.visible = true);
+        if (r.n) return r.n; const out = []; for (const m of ms) { m.visible = false; const q = __scan(); m.visible = true; if (!q.n) { let who = ''; __game.scene.traverse(o => { if (!who && o.material && [].concat(o.material).includes(m)) { let a = [], z = o; while (z && a.length < 5) { a.push(z.name || z.type); z = z.parent; } who = a.join('<'); } }); out.push(m.type + ':' + (m.name || '') + ' ' + who); } } return 'FOUND ' + JSON.stringify(out); })()`));
+      return; }
+
     console.log(await ev(`(() => { const g = __game, pl = g.player, c = g.camera.position, o = g.rig.override; const P = v => v ? [v.x, v.y, v.z].map(x => x.toFixed(1)).join(',') : 'null';
       return JSON.stringify({ cam: P(c), pl: P(pl.pos), ov: o && P(o.pos), head: P(pl.glider?.heading), open: pl.glider?.open, mode: g.mode, fade: g.hud.fadeEl?.style?.opacity, z: P(g.ch2.npc('zephy').person.root.getWorldPosition(c.clone())) }); })()`));
     for (let i = 0; i < 40 && (await ev('__game.ch2.race.mode')); i++) await run(500, false);

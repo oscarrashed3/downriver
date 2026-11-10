@@ -69,6 +69,8 @@ export default async ({ page, ev }) => {
   if (steps.includes('build')) {
     await ev(`(() => { const g = __game; for (const f of ['sky:part-frame', 'sky:part-cloth', 'sky:part-string', 'sky:parts-all']) g.flags.add(f); __go([55, 6]); g.ch2.afterTalk('lark'); })()`);
     await toBeat(4, 1500);
+    console.log('nilo', await ev(`(() => { const pl = __game.player, r = pl.person.root, q = pl.root.quaternion; const T = pl.up.constructor; const ru = new T(0, 1, 0).applyQuaternion(pl.root.quaternion); const pu = new T(0, 1, 0).applyQuaternion(r.getWorldQuaternion(q.clone()));
+      return JSON.stringify({ roll: pl.rollT, flip: pl.flipT, tumble: pl.tumble, rot: r.rotation.toArray().slice(0, 3).map(x => +x.toFixed(2)), rootUpDot: +ru.dot(pl.up).toFixed(2), personUpDot: +pu.dot(pl.up).toFixed(2), grounded: pl.grounded, pose: pl.pose, mode: pl.mode, torso: pl.person.torso?.rotation.toArray().slice(0, 3).map(x => +x.toFixed(2)), hips: pl.person.hips?.rotation.toArray().slice(0, 3).map(x => +x.toFixed(2)), hipsPos: pl.person.hips?.position.toArray().map(x => +x.toFixed(2)) }); })()`));
     await snap('6-kite-build');
     await endCut();
     console.log('build', await state());

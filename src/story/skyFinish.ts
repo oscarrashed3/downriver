@@ -112,7 +112,7 @@ export class SkyFinish {
         line: { text: W.chimes }, dur: 5,
         enter: () => {
           g.flags.add('sky:won');
-          pl.placeAt(ch.p, ch.dir([66.5, 10.5])); pl.facing.copy(gate.clone().sub(pl.pos).projectOnPlane(pl.up).normalize()); pl.sync();
+          ch.land(ch.dir([66.5, 10.5])); pl.facing.copy(gate.clone().sub(pl.pos).projectOnPlane(pl.up).normalize()); pl.sync();
           pl.pose = { wave: 1 };
           this.throwStreamers(gate);
           for (const o of (ch.c.refs.rings ?? []) as THREE.Object3D[]) (o?.userData.chime as { ring?: (k?: number) => void } | undefined)?.ring?.(1);
@@ -152,7 +152,7 @@ export class SkyFinish {
         enter: () => {
           g.hud.setFade(1, '#fff8ee', true);
           golden();
-          pl.placeAt(p, safeSpot(p, ch.dir(NILO_AT), [], 3)); pl.facing.copy(toWhale.clone().negate()); pl.sync();
+          ch.land(safeSpot(p, ch.dir(NILO_AT), [], 3), toWhale.clone().negate());
           for (const n of [lark, zephy, wren]) faceN(n);
         },
         tick: k => { golden(); g.hud.setFade(1 - smoothstep(0.2, 1, k), '#fff8ee'); g.cutCam = ch.orbit(meet, 9, 3.6, 0.6 + k * 0.1); },

@@ -257,8 +257,8 @@ export class SkyParts {
           const lp = spot(-1.6, 0.6), wp = spot(1.6, 0.6), np = spot(0, -1.7);
           lark.place(p.surfacePoint(lp, -0.05), lp, mid.clone().sub(p.surfacePoint(lp)));
           wren.place(p.surfacePoint(wp, -0.05), wp, mid.clone().sub(p.surfacePoint(wp)));
-          pl.placeAt(p, np); pl.facing.copy(fwd); pl.sync();
-          lark.pose = { kneel: 1 } as typeof lark.pose; wren.pose = {};
+          ch.land(np, fwd);
+          lark.pose = {}; wren.pose = {};
           this.wing.root.visible = true; this.wing.fold(1);
           g.fold.root.visible = false;
         },

@@ -311,6 +311,17 @@ export class SkyChapter {
   }
 
   // ------------------------------------------------------------------ scenes
+  /** Set Nilo down standing at d for a scene: off the wing, still, upright (cut scenes do not run the flight that
+   *  would otherwise fold the glide pose away). */
+  land(d: THREE.Vector3, face?: THREE.Vector3) {
+    const pl = this.g.player;
+    pl.placeAt(this.p, d);
+    if (face) pl.facing.copy(face.clone().projectOnPlane(pl.up).normalize());
+    pl.grounded = true; pl.vel.set(0, 0, 0); pl.forceOpen = false; pl.glidePose = 0; pl.pose = {};
+    if (pl.glider) pl.glider.open = false;
+    pl.sync();
+  }
+
   /** The least gap (metres, at most 9) between a camera's sight line and any building or wall it would look through. */
   sightGap(pos: THREE.Vector3, look: THREE.Vector3): number {
     let best = 9;
