@@ -136,7 +136,12 @@ export class SkyFinish {
           RING_SONG.concat([84, 88, 91]).forEach((m, i) => g.sound.tone(m, i * 0.22, 'bells', 0.55));
           g.sound.sfxPlay('power');
         },
-        tick: k => { g.cutCam = ch.race.twoShot(zephy.root.position, 8 + k * 3, 3.5 + k * 2.5); },
+        tick: k => {
+          // Nilo and Zephy in front, the cheering crowd and the streamers behind them
+          const mid = pl.pos.clone().lerp(zephy.root.position, 0.5), up = mid.clone().sub(ch.p.center).normalize();
+          const crowd = ch.at([69.5, 19.5]), away = mid.clone().sub(crowd).projectOnPlane(up).normalize();
+          g.cutCam = { pos: mid.clone().addScaledVector(away, 5 + k * 1.5).addScaledVector(up, 2.4 + k * 1.2), look: mid.clone().lerp(crowd, 0.35).addScaledVector(up, 1.4), up };
+        },
       },
       { line: { who: 'Zephy', text: W.zephyLost }, enter: () => { pl.pose = {}; zephy.lookAt = pl.pos.clone().addScaledVector(pl.up, 1.2); }, tick: k => { g.cutCam = ch.race.twoShot(zephy.root.position, 4.4 - k * 0.3, 1.8); } },
       { line: { who: 'Lark', text: W.larkWon }, exit: () => { zephy.lookAt = null; this.gatherAtRest(); g.hud.notify(W.toRest); } },
@@ -164,6 +169,13 @@ export class SkyFinish {
       const wu = up.clone().addScaledVector(toWhale, dive * 0.2).normalize();
       w.root.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3().crossVectors(wu, ahead).normalize(), wu, ahead));
     };
+    // the whale coming up, seen from along the lip (whichever side has no trees in the way), Nilo in the corner
+    let riseSide = 0;
+    const riseCam = (k: number) => {
+      const nilo = p.surfacePoint(S.nilo), at = (s: number) => nilo.clone().addScaledVector(toWhale, 2).addScaledVector(along, s * 7).addScaledVector(up, 2.6);
+      if (!riseSide) riseSide = ch.sightGap(at(1), whaleBase) >= ch.sightGap(at(-1), whaleBase) ? 1 : -1;
+      return { pos: at(riseSide), look: this.whale.root.position.clone().addScaledVector(up, 1 + 2 * k), up };
+    };
     const ride = () => { const a = this.whale.rideAnchor.getWorldPosition(new THREE.Vector3()); pl.pos.copy(a); pl.up.copy(a.clone().sub(p.center).normalize()); pl.facing.copy(along); pl.grounded = true; pl.pose = { sit: 1 }; };
     const beats: Beat[] = [
       { dur: 0.8, tick: k => { g.hud.setFade(smoothstep(0, 1, k), '#fff8ee'); } },
@@ -181,7 +193,7 @@ export class SkyFinish {
       {
         line: { text: W.whaleRises }, dur: 6,
         enter: () => { this.whale.root.visible = true; placeWhale(0); g.sound.sfxPlay('whoosh'); },
-        tick: k => { golden(); placeWhale(sm(Math.min(1, k * 1.4))); for (const n of [lark, zephy, wren]) n.lookAt = this.whale.root.position.clone(); pl.lookAt = this.whale.root.position.clone(); g.cutCam = { pos: p.surfacePoint(S.nilo).addScaledVector(toWhale, -6).addScaledVector(up, 3.2).addScaledVector(along, -3.5), look: this.whale.root.position.clone().addScaledVector(up, 2 * k), up }; },
+        tick: k => { golden(); placeWhale(sm(Math.min(1, k * 1.4))); for (const n of [lark, zephy, wren]) n.lookAt = this.whale.root.position.clone(); pl.lookAt = this.whale.root.position.clone(); g.cutCam = riseCam(k); },
         exit: () => { for (const n of [lark, zephy, wren]) faceN(n); pl.lookAt = null; },
       },
     ];

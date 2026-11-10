@@ -84,8 +84,8 @@ export default async ({ page, ev }) => {
     await ev(`(() => { const g = __game; g.flags.add('sky:ribbon'); __go([66, 10]); __it('skyRaceStart').act(); })()`);
     await endCut();
     await ev(`(() => { const R = __game.ch2.race; __fly([Object.assign(R.fallsAt.clone(), { after: 4 })]); })()`);
-    for (let i = 0; i < 200 && (await ev('__game.ch2.race.mode')); i++) { await run(500, false); await ev(`(() => { const R = __game.ch2.race; if (R.progress > R.course.length * 0.85) R.gust = true; })()`); }
-    console.log('win end', await state());
+    for (let i = 0; i < 200 && (await ev('__game.ch2.race.mode')); i++) { await run(500, false); await ev(`(() => { const R = __game.ch2.race; if (R.progress > R.course.length * 0.85) R.gust = true; })()`); if (i % 8 === 0 || (await ev('__game.ch2.race.progress')) > 240) console.log('wdbg', await ev(`(() => { const g = __game, pl = g.player, R = g.ch2.race; return JSON.stringify({ r: +(pl.pos.distanceTo(g.planets[1].center) - g.planets[1].R).toFixed(1), cr: +(R.course.at(R.progress).distanceTo(g.planets[1].center) - g.planets[1].R).toFixed(1), tgtI: R.passed.findIndex((x, k) => !x && !R.notes.includes(k)), notes: R.notes.join(''), fr: +(R.fallsAt.distanceTo(g.planets[1].center) - g.planets[1].R).toFixed(1), p: Math.round(R.progress), sp: pl.glider && +pl.glider.speed.toFixed(1), gr: pl.grounded, resc: !!g.skyMove.rescue, sc: R.shortcut, gu: R.gust, falls: +pl.pos.distanceTo(R.fallsAt).toFixed(1), alt: +(pl.pos.distanceTo(g.planets[1].center) - R.course.at(R.progress).distanceTo(g.planets[1].center)).toFixed(1), racers: R.racers.map(r => Math.round(r.s)) }); })()`)); }
+    console.log('win end', await ev('__game.ch2.race.endWhy'), await state());
     await ev('window.__pilot = null; __game.input.down.clear()');
     await toBeat(0, 2500);
     await snap('6-finish-chimes');

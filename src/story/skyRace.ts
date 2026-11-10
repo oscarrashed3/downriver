@@ -6,7 +6,7 @@ import type { Game } from '../game';
 import type { Beat } from './sequencer';
 import type { SkyChapter } from './skyChapter';
 import type { Npc } from '../systems/npc';
-import { RINGS } from '../world/skyIsles/layout';
+import { RINGS, isleDef } from '../world/skyIsles/layout';
 import { KiteWing, type WingPattern } from '../world/skyIsles/kiteWing';
 import { makeWindfolk, type Windfolk } from '../world/skyIsles/windfolk';
 import { SKY_RACE_WORDS as W } from '../data/skyStory';
@@ -154,6 +154,8 @@ export class SkyRace {
   private gust = false;
   private groundT = 0;
   private countdown = 0;
+  /** Why the last flight ended (for playtests). */
+  endWhy = '';
   private notes: number[] = [];
   qualGates: Gate[] = [];
   raceGates: Gate[] = [];
@@ -177,8 +179,12 @@ export class SkyRace {
     this.startQ = ch.at([96, 2], 14);
     this.startR = ch.at([67.5, 12], 12);
     // the Chime Garden's west cascade, just over the lip; the last gust is placed on the course in begin()
-    const lip = ch.at([104, -19]), r = lip.distanceTo(ch.p.center);
-    this.fallsAt = ch.dir([104, -24]).multiplyScalar(r - 3).add(ch.p.center);
+    // (worked out from the isle itself: its middle's height, and the way its falls go over the edge)
+    const isle = isleDef('chime'), fall = isle.falls![0];
+    const mid = ch.at([isle.lat, isle.off]), mUp = mid.clone().sub(ch.p.center).normalize();
+    const out = ch.at([fall.lat, fall.off]).sub(mid).projectOnPlane(mUp).normalize();
+    const lipDir = mid.clone().addScaledVector(out, isle.r + 2).sub(ch.p.center).normalize();
+    this.fallsAt = lipDir.multiplyScalar(mid.distanceTo(ch.p.center) - 3).add(ch.p.center);
     this.gustAt = ch.at([40, 8], 4);
     for (const gt of [...this.qualGates, ...this.raceGates]) gt.normal.multiplyScalar(1);
     // orient each gate's normal along the way it is flown
@@ -307,8 +313,8 @@ export class SkyRace {
     // the end: through (or past) the last gate, or down on the ground for a while
     this.groundT = pl.grounded ? this.groundT + dt : 0;
     const last = gates.length - 1;
-    if (this.passed[last] || this.progress >= c.length - 1) { this.end(this.mode === 'race' ? this.winner() : null); return; }
-    if (this.groundT > 2.5 || g.skyMove?.rescue) { this.end(this.mode === 'race' ? false : null); return; }
+    if (this.passed[last] || this.progress >= c.length - 1) { this.endWhy = `line ${this.passed[last]} ${this.progress.toFixed(0)}`; this.end(this.mode === 'race' ? this.winner() : null); return; }
+    if (this.groundT > 2.5 || g.skyMove?.rescue) { this.endWhy = this.groundT > 2.5 ? 'ground' : 'rescue'; this.end(this.mode === 'race' ? false : null); return; }
     // the soft timer and the rings so far
     const n = this.passed.filter(Boolean).length;
     this.hudEl.innerHTML = `<b>${this.mode === 'race' ? W.raceTitle : W.qualTitle}</b> · ${gates.map((_, i) => this.passed[i] ? '●' : this.notes.includes(i) ? '·' : '○').join('')} · ${this.t.toFixed(1)}s${this.mode === 'race' ? ` · ${this.place()}` : ''}`;
@@ -363,7 +369,7 @@ export class SkyRace {
       r.fly(c, dt, t);
     });
     // the crowd cheers when the racers pass
-    if (this.racers[0].s >= c.length - 0.5 && !this.passed[c.gates.length - 1]) this.end(false);
+    if (this.racers[0].s >= c.length - 0.5 && !this.passed[c.gates.length - 1]) { this.endWhy = 'beaten'; this.end(false); }
   }
 
   private place() {
@@ -416,7 +422,10 @@ export class SkyRace {
     const up = mid.clone().sub(ch.p.center).normalize();
     const side = new THREE.Vector3().crossVectors(up, other.clone().sub(pl.pos)).normalize();
     if (side.dot(ch.at([69.5, 19.5]).sub(mid)) > 0) side.negate();
-    return { pos: mid.clone().addScaledVector(side, r).addScaledVector(up, h), look: mid.clone().addScaledVector(up, 1.0), up };
+    const look = mid.clone().addScaledVector(up, 1.0), at = (s: number) => mid.clone().addScaledVector(side, s * r).addScaledVector(up, h);
+    // a house in the way: take the crowd's side instead
+    const sgn = ch.sightGap(at(1), look) < 0.8 && ch.sightGap(at(-1), look) > ch.sightGap(at(1), look) ? -1 : 1;
+    return { pos: at(sgn), look, up };
   }
 
   raceStart(): Beat[] {
@@ -435,13 +444,17 @@ export class SkyRace {
       const w = wren.root.position, up = w.clone().sub(ch.p.center).normalize();
       const d = safeSpot(ch.p, w.clone().addScaledVector(wren.homeForward.clone().projectOnPlane(up).normalize(), 2.3).sub(ch.p.center).normalize(), [], 3);
       ch.land(d, w.clone().sub(ch.p.surfacePoint(d)));
-      wren.place(w.clone(), wren.up.clone(), pl.pos.clone().sub(w));
+      // and Gran Wren comes over to him (off the riverbank)
+      const wd = pl.pos.clone().addScaledVector(pl.facing, 1.7).sub(ch.p.center).normalize();
+      const wp = ch.p.surfacePoint(wd, -0.05);
+      wren.place(wp, wd, pl.pos.clone().sub(wp));
       wren.lookAt = pl.pos.clone().addScaledVector(pl.up, 1.2);
+      void w;
     };
     return [
       { line: { text: W.lost }, dur: 3.5, enter: meet, tick: k => { g.cutCam = this.twoShot(wren.root.position, 7 - k * 1.5, 3 - k); } },
-      { line: { who: 'Gran Wren', text: W.wren1 }, enter: () => { wren.pose = { cheer: 1 } as Npc['pose']; }, tick: k => { g.cutCam = this.twoShot(wren.root.position, 4.4 - k * 0.3, 1.8); } },
-      { line: { who: 'Gran Wren', text: W.wren2 }, tick: () => { g.cutCam = this.twoShot(wren.root.position, 4.1, 1.8); }, exit: () => { wren.pose = {}; wren.lookAt = null; g.hud.notify(W.again); } },
+      { line: { who: 'Gran Wren', text: W.wren1 }, enter: () => { wren.pose = { cheer: 1 } as Npc['pose']; }, tick: k => { g.cutCam = this.twoShot(wren.root.position, 3.8 - k * 0.3, 1.6); } },
+      { line: { who: 'Gran Wren', text: W.wren2 }, tick: () => { g.cutCam = this.twoShot(wren.root.position, 3.5, 1.6); }, exit: () => { wren.pose = {}; wren.lookAt = null; ch.sendHome(wren); g.hud.notify(W.again); } },
     ];
   }
 }
