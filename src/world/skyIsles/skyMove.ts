@@ -12,7 +12,7 @@ import { CloudPad } from './cloudPad';
 import { SkyWhale } from './whale';
 import { newGlider, type GliderState } from './flight';
 import { UPDRAFTS, AQ_DECK, AQ_KERB } from './layout';
-import { onIsle, isleAt, pushOutOfIsles, sky, type Isle } from './terrain';
+import { onIsle, isleAt, pushOutOfIsles, inIsleRock, sky, type Isle } from './terrain';
 import { SKY_MOVE } from '../../data/skyWords';
 import type { SkyWorld } from './world';
 import { SeeThrough } from './seeThrough';
@@ -109,12 +109,13 @@ interface Rescue {
   t: number;
   whale: boolean;
   /** Path (world space) from under the cloud to beside the island's lip. */
-  curve: THREE.CubicBezierCurve3;
+  curve: THREE.Curve<THREE.Vector3>;
   /** Where he steps off onto the island (world). */
   land: THREE.Vector3;
   from: THREE.Vector3;
   face: THREE.Vector3;
   dur: number;
+  ahead?: THREE.Vector3;
 }
 
 export class SkyMove {
@@ -373,13 +374,9 @@ export class SkyMove {
     const startUp = from.clone().sub(p.center).normalize();
     const s0 = startUp.clone().multiplyScalar(p.R + 1.4).add(p.center);
     const endUp = end.clone().sub(p.center).normalize();
-    const out = end.clone().sub(land).projectOnPlane(endUp).normalize();
-    const curve = new THREE.CubicBezierCurve3(
-      s0, s0.clone().addScaledVector(startUp, 9),
-      end.clone().addScaledVector(out, 7).addScaledVector(endUp, -4), end,
-    );
-    const dist = s0.distanceTo(end);
-    this.rescue = { phase: 'sink', t: 0, whale, curve, land, from, face: land.clone().sub(end).projectOnPlane(endUp).normalize(), dur: clamp(dist / 7, 3.6, 6.5) };
+    const curve = this.liftPath(is, a, s0, end, lipH);
+    const dist = curve.getLength();
+    this.rescue = { phase: 'sink', t: 0, whale, curve, land, from, face: land.clone().sub(end).projectOnPlane(endUp).normalize(), dur: clamp(dist / 6.5, 4.2, 8) };
     if (pl.glider) pl.glider.open = false;
     pl.vel.set(0, 0, 0);
     // the carrier comes up from under the cloud tops
@@ -400,6 +397,33 @@ export class SkyMove {
     }
     g.sound.sfxPlay('soft');
     g.fold.feel('scared');
+  }
+
+  /** The lift's way up: out from under the island into open sky first, straight up well clear of its lip, then
+   * in over the meadow's edge, one soft curve that never cuts through rock (checked, and pushed wider if it would). */
+  private liftPath(is: Isle, a: number, s0: THREE.Vector3, end: THREE.Vector3, lipH: number): THREE.Curve<THREE.Vector3> {
+    const p = this.world.p;
+    const sH = s0.distanceTo(p.center) - is.Rt;
+    let best: THREE.CatmullRomCurve3 | null = null;
+    for (let wide = 6; wide <= 22; wide += 4) {
+      // the widest the island reaches round this side (lips and bulges a few degrees either way)
+      let rim = 0;
+      for (let k = -3; k <= 3; k++) rim = Math.max(rim, is.shape.outline(a + k * 0.12));
+      const R = rim + wide;
+      const q0 = is.toLocal(s0.clone().sub(p.center).normalize());
+      const r0 = Math.max(Math.hypot(q0.x, q0.z), 0.1);
+      const at = (rad: number, y: number) => is.toPlanet(Math.cos(a) * rad, y, Math.sin(a) * rad).add(p.center);
+      // the fall point, a little out and up from it, the column beside the lip, just above the lip, the step
+      const pts = [s0];
+      if (r0 < R - 1) pts.push(at(Math.max(r0 + 2, R - 1.5), sH + 2.5));
+      pts.push(at(R, (sH + lipH - is.def.top) * 0.5 + 1), at(R - 1, lipH - is.def.top + 3.2), at(rim + 4.2, lipH - is.def.top + 1.6), end);
+      const c = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
+      best = c;
+      let clear = true;
+      for (let i = 0; i <= 60 && clear; i++) if (inIsleRock(p, c.getPointAt(i / 60, _v).sub(p.center), 1.2)) clear = false;
+      if (clear) break;
+    }
+    return best!;
   }
 
   private placeWhale(at: THREE.Vector3, up: THREE.Vector3, ahead: THREE.Vector3) {
@@ -429,7 +453,7 @@ export class SkyMove {
     if (R.phase === 'sink') {
       // sinking softly into the cloud tops; the carrier comes up under him
       const e = sstep(0, 0.8, R.t);
-      const goal = R.curve.getPoint(0);
+      const goal = R.curve.getPointAt(0);
       pl.pos.lerpVectors(R.from, goal, e);
       const below = goal.clone().addScaledVector(up, -6 + 6 * sstep(0.2, 0.85, R.t));
       this.placeCarrier(below, up, R.face);
@@ -443,14 +467,21 @@ export class SkyMove {
         g.hud.notify(R.whale ? SKY_MOVE.rescueWhale : SKY_MOVE.rescuePad);
         g.fold.feel('happy'); g.fold.hop();
         pl.facing.copy(R.face).projectOnPlane(up).normalize();
+        // the camera swings round, softly, to the open-sky side: it rides up beside him looking in at the island,
+        // never into its rock or snapped up over its lip
+        g.rig.easeFromHere(2); g.rig.faceDir(up, R.face); g.rig.pitch = 0.3;
       }
       return;
     }
     if (R.phase === 'rise') {
-      const u = sstep(0, 1, R.t / R.dur);
-      const at = R.curve.getPoint(u);
+      // eased at both ends, steady along the way (by distance along the path, so no lurch where points bunch)
+      const x = clamp(R.t / R.dur), u = x * x * x * (x * (x * 6 - 15) + 10);
+      const at = R.curve.getPointAt(u);
       const cu = at.clone().sub(p.center).normalize();
-      const ahead = R.curve.getTangent(Math.min(0.999, u + 0.01)).projectOnPlane(cu).normalize();
+      // the whale swims along the way; straight up the column it keeps its heading (no flips)
+      const tg = R.curve.getTangentAt(Math.min(0.999, u + 0.01)).projectOnPlane(cu);
+      const tl = tg.length();
+      const ahead = (R.ahead ??= R.face.clone()).projectOnPlane(cu).lerp(tg.divideScalar(Math.max(tl, 1e-6)), (1 - Math.exp(-3 * dt)) * clamp(tl * 4)).normalize();
       this.placeCarrier(at, cu, R.whale ? ahead : R.face);
       this.carrierTop(pl.pos);
       pl.up.copy(cu); pl.grounded = true; pl.vel.set(0, 0, 0);
@@ -461,7 +492,7 @@ export class SkyMove {
     }
     // the hop onto the island
     const e = clamp(R.t / 0.75);
-    const pos = R.from.clone().lerp(R.land, e);
+    const pos = R.from.clone().lerp(R.land, e * e * (3 - 2 * e));
     const pu = pos.clone().sub(p.center).normalize();
     pos.addScaledVector(pu, Math.sin(Math.PI * e) * 1.6);
     pl.pos.copy(pos); pl.up.copy(pu); pl.grounded = e >= 1;
