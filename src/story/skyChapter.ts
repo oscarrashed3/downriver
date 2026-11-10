@@ -139,7 +139,7 @@ export class SkyChapter {
     this.parts = new SkyParts(g, this);
     this.race = new SkyRace(g, this);
     this.finish = new SkyFinish(g, this);
-    if (g.skyMove) g.skyMove.onSailTop = () => this.parts.onSailTop();
+    if (g.skyMove) g.skyMove.onRopeTop = () => this.parts.onRopeTop();
     this.setActive(false);
   }
 

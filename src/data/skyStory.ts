@@ -24,7 +24,7 @@ export const SKY_POSTMAN = {
 export const SKY_GOAL = {
   lark: 'Talk to the girl in the yellow scarf by the pool.',
   larkTown: 'Find Lark in Sailtown, across the aqueduct.',
-  frame: "Ride the big windmill's sail to the top for the frame",
+  frame: "Climb the rope up the big windmill for the frame",
   cloth: "Ask the sail-mender on his island for sailcloth",
   laundry: "Catch Old Fenn's laundry before it blows away",
   laundryBack: 'Bring the washing back to Old Fenn',
@@ -90,9 +90,11 @@ export const SKY_TRADES: { npc: string; want: string; give: string; line: string
 
 /** Phase 4: the kite parts (frame, sailcloth, string), Fold's wing, the fox, the kite put together. */
 export const SKY_PARTS_WORDS = {
-  frameGot: 'At the very top, tied to the windmill cap: a kite frame. Nilo pulls it free.',
-  foldWing: 'Fold rustles, and opens. Not a kite this time. A wing, just big enough for one.',
-  glideTeach: 'Fold is a wing now. <b>Hold Space</b> to glide, <b>C</b> to dive, let go to land.',
+  frameGot: 'At the very top of the windmill, tied to the balcony rail: a kite frame! Nilo unties it.',
+  foldWing: 'Fold watches the kites. Then he folds himself, crease by crease, into a paper glider. A wing just big enough for one.',
+  foldHow: 'Now Nilo can glide. Jump off somewhere high, and hold Space: Fold opens under him and carries him.',
+  glideTeach: 'You can glide now. Climb back down the rope, or jump off and glide.',
+  glideCard: '<b>Gliding</b> &nbsp; Jump off an edge and <b>hold Space</b> &nbsp;&middot;&nbsp; <b>Left / Right</b> to turn &nbsp;&middot;&nbsp; <b>Up / Down</b> to rise and sink &nbsp;&middot;&nbsp; let go of Space to land',
   partGot: (n: number) => n >= 3 ? 'All three kite parts! <i>Take them to Lark in Sailtown.</i>' : `A kite part, ${n} of 3.`,
   caught: (name: string, n: number) => `Caught: <b>${name}</b>. <i>${n} of 3.</i>`,
   laundryDone: "That's all of Old Fenn's washing. <i>Take it back to him.</i>",

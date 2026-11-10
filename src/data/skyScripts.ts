@@ -50,7 +50,7 @@ export const SKY_SCRIPTS: Record<string, Script> = {
                 ] },
                 { type: 'say', text: 'A kite needs three things. A frame, sailcloth, and string.' },
                 { type: 'silence', seconds: 2, reward: 'And a bit of nerve. You have that. You fell out of the sky and laughed.' },
-                { type: 'say', text: 'The frame is on top of Windmill Isle. Climb the windmill, or ride a sail up.' },
+                { type: 'say', text: 'The frame is on top of Windmill Isle. There is a rope all the way up the big windmill.' },
                 { type: 'say', text: 'Old Fenn the sail-mender has sailcloth. Pell, in the Chime Garden, has string.' },
                 { type: 'give', items: ['sky:quest-kite', 'map:sky'] },
               ] },

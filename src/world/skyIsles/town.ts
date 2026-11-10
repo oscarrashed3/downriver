@@ -16,7 +16,7 @@ import {
   raceGate, pavedPath, addBarrel, addCrate, addPot, addSack, SAIL, FloraField, flowerBed, townTree, hedge,
   doorChimes, stoneWall, type PlanterKind,
 } from './sailtown';
-import { Kit, T, clothGrid, boxM, WOOD_TILE } from './sailtownKit';
+import { Kit, T, clothGrid, boxM, ropeGeo, WOOD_TILE } from './sailtownKit';
 import { FestivalKite, FESTIVAL } from './kites';
 import { islandTree } from './islandFlora';
 import { RINGS, SPOTS } from './layout';
@@ -441,10 +441,22 @@ export function dressIsles(w: SkyWorld): Dressing {
     d.solid(m, 2.3, 14);
     refs.windmill = m;
     m.userData.sailLen = 6.5;
+    // the climbing rope (picture a long golden braid let down from a tower): it hangs from a little lookout
+    // balcony near the top, on the side away from the sails, down to the grass
+    const climb = millRope(14, 2.4);
+    m.add(climb);
+    m.userData.rope = climb.userData;
     const f: V2[] = [];
     for (let a = 0; a <= Math.PI * 2 + 0.01; a += 0.2) f.push({ x: Math.cos(a) * 4.6, z: Math.sin(a) * 4.6 });
     fenceRun(d, f.filter(q => d.isle.inset(q.x, q.z) > 1), 71);
-    clutter(d, [{ x: 2.9, z: 1.2, kind: 2 }, { x: 3.1, z: 0.5, kind: 2 }, { x: 2.6, z: 1.9, kind: 0 }, { x: -2.9, z: -1, kind: 1 }], 12);
+    // clutter at the foot, kept off the rope's landing spot and the bridges' landings
+    {
+      const yaw = m.rotation.y, rx = Math.cos(yaw) * 3.45, rz = -Math.sin(yaw) * 3.45;
+      const spots = [{ x: 2.9, z: 1.2, kind: 2 }, { x: 3.1, z: 0.5, kind: 2 }, { x: 2.6, z: 1.9, kind: 0 }, { x: -2.9, z: -1, kind: 1 }, { x: -2.2, z: 2.6, kind: 0 }, { x: 1.2, z: -3.1, kind: 2 }]
+        .filter(q => Math.hypot(q.x - rx, q.z - rz) > 2.2 && d.free(q.x, q.z, 0.3, 0, 0.8));
+      clutter(d, spots.slice(0, 4), 12);
+      d.claim(rx, rz, 1.6);
+    }
     for (let i = 0; i < 2; i++) { const a = 1 + i * 2.6, r = 6; if (d.free(Math.cos(a) * r, Math.sin(a) * r, 1, 0, 1.5)) { const p = d.put(pennantPole(80 + i, 5.5), Math.cos(a) * r, Math.sin(a) * r); d.solid(p, 0.12, 5); } }
   }
 
@@ -679,4 +691,58 @@ export function dressIsles(w: SkyWorld): Dressing {
       for (const k of kites) k.update(dt, t);
     },
   };
+}
+
+/**
+ * The windmill's climbing rope and the lookout balcony it hangs from (in the windmill's own frame: +X is the side
+ * away from the sails). userData: ropeX (how far out the rope hangs), top (where the hands are at the top of the
+ * climb), deckY (the balcony's planks), deckX0/deckX1 (its inner and outer ends), frame (where the kite frame waits).
+ */
+export function millRope(H: number, R: number): THREE.Group {
+  const Rt = R * 0.7, rAt = (y: number) => R + (Rt - R) * (y / H);
+  const yB = H - 1.7, x0 = rAt(yB) - 0.1, x1 = 3.7, ropeX = 3.45, w = 1.0;
+  const k = new Kit(), r = skyRng(733);
+  // the balcony: planks on three brackets, a rail round it with a gap at the outer end where the rope comes up
+  for (let z = -w + 0.11; z < w; z += 0.25) k.add(boxM(x1 - x0, 0.07, 0.22, WOOD_TILE), 'wood', new THREE.Color(SAIL.plank).multiplyScalar(0.9 + r() * 0.15), T((x0 + x1) / 2, yB - 0.035, z, 0, (r() - 0.5) * 0.02, 0));
+  k.add(boxM(x1 - x0, 0.12, 0.12, WOOD_TILE), 'wood', SAIL.timberDark, T((x0 + x1) / 2, yB - 0.12, -w + 0.06));
+  k.add(boxM(x1 - x0, 0.12, 0.12, WOOD_TILE), 'wood', SAIL.timberDark, T((x0 + x1) / 2, yB - 0.12, w - 0.06));
+  for (const z of [-w + 0.1, 0, w - 0.1]) {
+    const a = new THREE.Vector3(rAt(yB - 1.6) + 0.02, yB - 1.6, z), b = new THREE.Vector3(x1 - 0.3, yB - 0.1, z);
+    const dv = b.clone().sub(a), L = dv.length();
+    k.add(boxM(0.11, 0.11, L, WOOD_TILE).translate(0, 0, L / 2), 'wood', SAIL.timberDark, new THREE.Matrix4().compose(a, new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), dv.normalize()), new THREE.Vector3(1, 1, 1)));
+  }
+  const posts: [number, number][] = [[x0 + 0.15, -w + 0.05], [(x0 + x1) / 2, -w + 0.05], [x1 - 0.05, -w + 0.05], [x0 + 0.15, w - 0.05], [(x0 + x1) / 2, w - 0.05], [x1 - 0.05, w - 0.05], [x1 - 0.05, -0.42], [x1 - 0.05, 0.42]];
+  for (const [x, z] of posts) k.add(boxM(0.08, 1.0, 0.08, WOOD_TILE, true), 'wood', SAIL.timber, T(x, yB + 0.5, z));
+  for (const y of [0.55, 0.98]) {
+    for (const s of [-1, 1]) k.add(boxM(x1 - x0 - 0.1, 0.06, 0.06, WOOD_TILE), 'wood', SAIL.timber, T((x0 + x1) / 2, yB + y, s * (w - 0.05)));
+    for (const s of [-1, 1]) k.add(boxM(0.06, 0.06, w - 0.42, WOOD_TILE), 'wood', SAIL.timber, T(x1 - 0.05, yB + y, s * (w + 0.42) / 2));
+  }
+  // the davit the rope hangs from, braced back to the wall
+  const dy = yB + 1.6;
+  k.add(boxM(ropeX - rAt(dy) + 0.25, 0.14, 0.14, WOOD_TILE), 'wood', SAIL.timberDark, T((ropeX + rAt(dy)) / 2 + 0.05, dy, 0));
+  {
+    const a = new THREE.Vector3(rAt(yB + 0.6), yB + 0.6, 0), b = new THREE.Vector3(ropeX - 0.5, dy - 0.05, 0);
+    const dv = b.clone().sub(a), L = dv.length();
+    k.add(boxM(0.09, 0.09, L, WOOD_TILE).translate(0, 0, L / 2), 'wood', SAIL.timberDark, new THREE.Matrix4().compose(a, new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), dv.normalize()), new THREE.Vector3(1, 1, 1)));
+  }
+  k.add(new THREE.TorusGeometry(0.09, 0.03, 5, 10), 'brass', SAIL.brass, T(ropeX, dy - 0.1, 0, 0, Math.PI / 2, 0));
+  // the rope itself: three golden strands plaited into one thick braid, a knot every arm's length, and a ribbon
+  // bow at the foot
+  const top = dy - 0.15, foot = 0.35, n = Math.round((top - foot) / 0.08);
+  const gold = new THREE.Color('#e8bc5a'), gold2 = new THREE.Color('#d6a246'), gold3 = new THREE.Color('#f2d27e');
+  [gold, gold2, gold3].forEach((c, si) => {
+    const pts: THREE.Vector3[] = [];
+    for (let i = 0; i <= n; i++) {
+      const y = top - (top - foot) * i / n, a = i * 0.55 + si * Math.PI * 2 / 3;
+      pts.push(new THREE.Vector3(ropeX + Math.cos(a) * 0.035, y, Math.sin(a) * 0.035));
+    }
+    k.add(ropeGeo(pts, 0.035, 5), 'plain', c, undefined);
+  });
+  for (let y = top - 0.9; y > foot + 0.3; y -= 0.75) k.add(new THREE.SphereGeometry(0.075, 7, 5).scale(1, 0.8, 1), 'plain', gold2, T(ropeX, y, 0));
+  k.add(new THREE.SphereGeometry(0.1, 7, 5), 'plain', gold2, T(ropeX, foot, 0));
+  for (const s of [-1, 1]) k.add(new THREE.ConeGeometry(0.09, 0.26, 4).rotateZ(s * Math.PI / 2), 'cloth', '#d94a3a', T(ropeX + s * 0.14, foot + 0.12, 0));
+  const g = new THREE.Group(); g.name = 'millRope';
+  k.build(g, { inkWidth: 0.016 });
+  Object.assign(g.userData, { ropeX, top: top - 0.4, foot, deckY: yB, deckX0: x0, deckX1: x1, deckW: w * 2, frame: new THREE.Vector3(x0 + 0.35, yB + 0.62, 0.55) });
+  return g;
 }

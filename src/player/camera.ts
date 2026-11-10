@@ -23,6 +23,9 @@ export class CameraRig {
   block: ((look: THREE.Vector3, pos: THREE.Vector3) => number) | null = null;
   /** Also push in the current override shot (talks); hand-placed cutscene shots are left alone. */
   blockOverride = false;
+  /** Sky Isles: ease the push-in (in fast, out slowly) instead of jumping; off elsewhere. */
+  smoothBlock = false;
+  private blockK = 1;
   /**
    * Sky Isles: the ground under a camera at distance r from the centre (a camera under an island sees the cloud
    * floor, not the top above it). Null elsewhere: the terrain's surface.
@@ -108,7 +111,11 @@ export class CameraRig {
     else { pos = this.pos.clone(); look = this.look; up2 = this.smoothUp; }
     // never inside a house or a rock: push in toward the look point
     if (this.block && (!this.override || this.blockOverride)) {
-      const k = this.block(look, pos);
+      let k = this.block(look, pos);
+      if (this.smoothBlock && !this.override) {
+        this.blockK += (k - this.blockK) * (1 - Math.exp(-(k < this.blockK ? 14 : 2.5) * dt));
+        k = Math.min(1, this.blockK + 0.06);
+      }
       // a talk shot may come right in; the follow camera never closer than about 3 m
       if (k < 1) pos.lerpVectors(look, pos, Math.max(this.override ? 0.5 : 0.35, k - 0.06));
     }

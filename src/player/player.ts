@@ -48,6 +48,8 @@ export class Player {
   glider: GliderState | null = null;
   /** Sky Isles: the dive key is held. */
   diveHeld = false;
+  /** Sky Isles: arrow-key steering of the glider (turn, climb), or null (camera-relative, as on foot). */
+  glideSteer: { turn: number; climb: number } | null = null;
   /** Sky Isles: open the wing without a jump (stepping into an updraft). */
   forceOpen = false;
   /** Sky Isles: updraft strength (0..1) at a position. */
@@ -200,7 +202,7 @@ export class Player {
       const lift = this.liftAt ? this.liftAt(this.pos) : 0;
       if (lift > 0 && !this.glider.open && !this.grounded) vU = Math.min(vU + lift * 27 * dt, Math.max(vU, 7)); // a column of warm air lifts you even without a wing
       const clearance = r - planet.groundBelow(this.up, r);
-      vU = stepGlide(this.glider, vU, vTan, { dt, up: this.up, moveDir, hold: wantGlide, dive: this.diveHeld, grounded: this.grounded, clearance, lift, forceOpen: this.forceOpen, facing: this.facing });
+      vU = stepGlide(this.glider, vU, vTan, { dt, up: this.up, moveDir, hold: wantGlide, dive: this.diveHeld, grounded: this.grounded, clearance, lift, forceOpen: this.forceOpen, facing: this.facing, steer: this.glideSteer, gravity: 22 });
       this.gliding = this.glider.open;
       if (this.gliding) this.facing.copy(this.glider.heading);
     } else {

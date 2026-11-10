@@ -73,6 +73,13 @@ export interface GlideInput {
   forceOpen?: boolean;
   /** Facing, used as the heading if the glider opens from a standstill. */
   facing: THREE.Vector3;
+  /**
+   * Direct steering (arrow keys): turn -1 left .. +1 right; climb +1 up (trades speed for height) .. -1 down (a dive).
+   * When given it replaces moveDir.
+   */
+  steer?: { turn: number; climb: number } | null;
+  /** The gravity the caller already took off vU this step (m/s²): the open wing holds it up instead. */
+  gravity?: number;
 }
 
 const _t = new THREE.Vector3(), _c = new THREE.Vector3();
@@ -103,10 +110,19 @@ export function stepGlide(g: GliderState, vU: number, vTan: THREE.Vector3, I: Gl
   }
   g.openT += dt;
   g.heading.projectOnPlane(I.up).normalize();
+  // the wing carries his weight: the sink below is all there is (not the sink plus a fall)
+  if (I.gravity) vU += I.gravity * dt;
 
   // steer: turn the heading toward the stick, banking into the turn
   let turnRate = 0;
-  if (I.moveDir.lengthSq() > 0.01) {
+  const S = I.steer;
+  if (S) {
+    // left / right: a steady, gentle turn while held (never a sudden swing)
+    const rate = GLIDE.turn * 0.62 * clamp(S.turn, -1, 1);
+    const step = -rate * dt;
+    if (step !== 0) g.heading.applyAxisAngle(I.up, step).normalize();
+    turnRate = dt > 0 ? step / dt : 0;
+  } else if (I.moveDir.lengthSq() > 0.01) {
     _t.copy(I.moveDir).projectOnPlane(I.up).normalize();
     const cross = _c.crossVectors(g.heading, _t).dot(I.up);
     const ang = Math.atan2(cross, g.heading.dot(_t));
@@ -119,16 +135,21 @@ export function stepGlide(g: GliderState, vU: number, vTan: THREE.Vector3, I: Gl
   g.bank = approach(g.bank, clamp(-turnRate * 0.32, -0.6, 0.6), 5, dt);
 
   // pitch: nose down in a dive, nearly level gliding, a little up in the pull-out
+  const climb = S ? clamp(S.climb, -1, 1) : 0;
+  const diveNow = I.dive || climb < -0.5;
   const wasDiving = g.diving;
-  g.diving = I.dive;
-  if (wasDiving && !I.dive && g.speed > GLIDE.cruise + 2) g.pull = 0.9;
+  g.diving = diveNow;
+  if (wasDiving && !diveNow && g.speed > GLIDE.cruise + 2 && !S) g.pull = 0.9;
   g.pull = Math.max(0, g.pull - dt);
-  const pitchGoal = I.dive ? GLIDE.divePitch : g.pull > 0 ? 0.28 : -0.06;
+  // (the arrow keys: down noses gently down, up gently up; the dive key is the steep one)
+  const pitchGoal = I.dive ? GLIDE.divePitch : climb < 0 ? -0.32 * -climb : climb > 0 ? 0.22 * climb : g.pull > 0 ? 0.28 : -0.06;
   g.pitch = approach(g.pitch, pitchGoal, I.dive ? 3.2 : 2.6, dt);
 
   // speed: gravity along the path in a dive; a slow bleed gliding level; a climb trades speed for height
   const down = Math.max(0, -Math.sin(g.pitch));
   if (I.dive) g.speed += 15 * down * dt;
+  else if (climb < 0) g.speed += 6 * -climb * dt;
+  else if (climb > 0) g.speed -= 2.2 * climb * dt;
   else {
     g.speed -= GLIDE.bleed * dt;
     if (g.speed > 13) g.speed -= (g.speed - 13) * 0.22 * dt;
@@ -141,10 +162,12 @@ export function stepGlide(g: GliderState, vU: number, vTan: THREE.Vector3, I: Gl
   const slow = clamp((10.5 - g.speed) / (10.5 - GLIDE.min), 0, 1);
   let goal = -(GLIDE.sinkFast + (GLIDE.sinkSlow - GLIDE.sinkFast) * slow);
   if (I.dive) goal = -g.speed * down * 1.05;
+  else if (climb < 0) goal = -3.2 * -climb - 0.5;
+  else if (climb > 0) goal = 2.6 * climb * clamp((g.speed - GLIDE.min) / 3, 0, 1) + goal * (1 - climb);
   if (g.pull > 0) goal = Math.min(6.5, (g.speed - GLIDE.cruise) * 0.75 + 1.5);
   goal += I.lift * GLIDE.lift;
   // opening from a fall flares gently instead of stopping dead; a dive bites quickly
-  vU = approach(vU, goal, I.dive ? 4 : g.openT < 0.5 ? 3 : 4.5, dt);
+  vU = approach(vU, goal, I.dive ? 4 : S ? 2.4 : g.openT < 0.5 ? 3 : 4.5, dt);
 
   const h = (g.speed + g.boost) * Math.cos(g.pitch * 0.5);
   vTan.copy(g.heading).multiplyScalar(h);

@@ -92,11 +92,12 @@ export class SkyParts {
     p.solids.push({ obj: root, shape: { kind: 'circle', r: 0.25 }, h: 2.6 } as any);
     this.chime = { root, weight, tubes, notch: 0, swing: 0, glow };
 
-    // ---- the kite frame, tied to the windmill's cap on Windmill Isle
+    // ---- the kite frame, tied to the rail of the windmill's lookout balcony on Windmill Isle
     const mill = ch.c.refs.windmill as THREE.Object3D;
     this.frameObj = kiteFrame();
-    this.frameObj.position.set(0, 14.4, -1.3);
-    this.frameObj.rotation.x = -0.35;
+    const fr = (mill.userData.rope as { frame?: THREE.Vector3 } | undefined)?.frame;
+    if (fr) { this.frameObj.position.copy(fr); this.frameObj.rotation.set(0, Math.PI / 2, 0.18); }
+    else { this.frameObj.position.set(0, 14.4, -1.3); this.frameObj.rotation.x = -0.35; }
     mill.add(this.frameObj);
 
     // ---- the wing Lark and Gran Wren help put together (laid out in the square for the scene)
@@ -147,43 +148,83 @@ export class SkyParts {
   }
 
   // ------------------------------------------------------------------ the frame, and Fold's wing
-  /** The sail ride let go at the top: the frame comes free, and (the first time) Fold becomes a wing. */
-  onSailTop() {
-    const g = this.g;
+  /** Up the rope and onto the balcony at the top: the frame is there, and (the first time) Fold becomes a wing. */
+  onRopeTop() {
     if (this.has('sky:part-frame')) return;
-    g.flags.add('sky:part-frame');
-    this.frameObj.visible = false;
-    g.sound.sfxPlay('gift');
-    this.partNote();
-    if (!this.has('form:glider')) g.cut(this.gliderIntro());
+    this.g.cut(this.frameBeats(), () => this.g.save());
   }
 
-  /** At the top of the sail: Fold unfolds into a paper wing. Then the wind takes over, and you glide. */
-  gliderIntro(): Beat[] {
-    const g = this.g, pl = g.player;
-    const up = pl.up.clone(), side = new THREE.Vector3().crossVectors(up, pl.facing).normalize();
-    const vel = pl.vel.clone();
-    const cam = (k: number) => ({ pos: pl.pos.clone().addScaledVector(side, 3.8 - k).addScaledVector(pl.facing, 2.6 + k).addScaledVector(up, 1.6 + k * 0.6), look: pl.pos.clone().addScaledVector(up, 0.2), up });
-    return [
-      { line: { text: W.frameGot }, dur: 3.2, enter: () => { pl.vel.set(0, 0, 0); }, tick: k => { pl.grounded = true; g.cutCam = cam(k * 0.3); } },
+  /** Nilo unties the kite frame from the balcony rail; then Fold shows him the glider, and how to fly it. */
+  frameBeats(): Beat[] {
+    const g = this.g, pl = g.player, fo = this.frameObj;
+    const up = pl.up.clone();
+    const fp = fo.getWorldPosition(new THREE.Vector3());
+    const toF = fp.clone().sub(pl.pos).projectOnPlane(up).normalize();
+    const side = new THREE.Vector3().crossVectors(up, toF).normalize();
+    const shot = (k: number) => ({ pos: pl.pos.clone().addScaledVector(toF, 0.6).addScaledVector(side, 2.6 + k * 0.4).addScaledVector(up, 1.7 + k * 0.3), look: pl.pos.clone().addScaledVector(toF, 0.5).addScaledVector(up, 0.9), up });
+    const wing = this.wing;
+    const ws = { speed: 6, bank: 0, pitch: 0, dive: 0, upright: 0, run: 0 };
+    const out = side.clone();
+    const beats: Beat[] = [
       {
-        line: { text: W.foldWing }, dur: 4,
-        enter: () => {
-          g.fold.hop(); g.sound.sfxPlay('power');
-          // Fold opens under him: the wing is shown (skyMove draws it whenever the glider is open)
-          g.flags.add('form:glider');
-          pl.glider ??= newGlider();
-          Object.assign(pl.glider, { open: true, speed: 10, openT: 1, airT: 1 });
-          pl.glider.heading.copy(pl.facing); pl.grounded = false;
+        line: { text: W.frameGot }, dur: 3.4,
+        enter: () => { pl.facing.copy(toF); pl.vel.set(0, 0, 0); pl.pose = { kneel: 0.6 } as typeof pl.pose; pl.sync(); },
+        tick: k => {
+          g.cutCam = shot(k * 0.4);
+          // the frame comes off the rail into his hands, and he tucks it under his arm
+          const hand = pl.pos.clone().addScaledVector(up, 0.95).addScaledVector(toF, 0.35);
+          const m = smoothstep(0.35, 0.8, k);
+          fo.parent!.worldToLocal(fo.position.copy(fp).lerp(hand, m));
+          fo.scale.setScalar(1 - smoothstep(0.8, 1, k) * 0.9);
         },
-        tick: k => { g.cutCam = cam(0.3 + k * 0.5); },
         exit: () => {
-          g.give('power:glide');
-          pl.vel.copy(vel); pl.forceOpen = true;
-          g.hud.notify(W.glideTeach);
+          pl.pose = {};
+          g.flags.add('sky:part-frame');
+          fo.visible = false; fo.scale.setScalar(1);
+          g.sound.sfxPlay('gift');
+          this.partNote();
         },
       },
     ];
+    if (!this.has('form:glider')) beats.push(
+      {
+        line: { text: W.foldWing }, dur: 5,
+        enter: () => {
+          g.fold.hop(); g.sound.sfxPlay('paper');
+          g.fold.root.visible = false; if (g.skyMove) g.skyMove.foldHidden = true;
+          wing.root.visible = true; wing.fold(1);
+        },
+        tick: (k, dt) => {
+          // Fold, beside him over the rail, unfolding into the glider and hovering on the breeze
+          const at = pl.pos.clone().addScaledVector(toF, -1.9).addScaledVector(up, 1.1 + Math.sin(g.time * 2) * 0.08);
+          wing.root.position.copy(at);
+          orientTo(wing.root, up, out);
+          wing.fold(1 - smoothstep(0.1, 0.75, k));
+          wing.update(dt, g.time, ws);
+          g.cutCam = { pos: pl.pos.clone().addScaledVector(toF, -1.4).addScaledVector(out, 4.4).addScaledVector(up, 1.7), look: at.clone().lerp(pl.pos, 0.45).addScaledVector(up, 0.1), up };
+          if (k > 0.75 && k - dt / 5 <= 0.75) g.sound.sfxPlay('power');
+        },
+      },
+      {
+        line: { text: W.foldHow }, dur: 5,
+        tick: (k, dt) => {
+          const at = pl.pos.clone().addScaledVector(toF, -1.9).addScaledVector(up, 1.1 + Math.sin(g.time * 2) * 0.08);
+          wing.root.position.copy(at);
+          orientTo(wing.root, up, out);
+          wing.fold(smoothstep(0.75, 1, k));
+          wing.update(dt, g.time, ws);
+          g.cutCam = { pos: pl.pos.clone().addScaledVector(toF, -1.4).addScaledVector(out, 4.4).addScaledVector(up, 1.7), look: at.clone().lerp(pl.pos, 0.45).addScaledVector(up, 0.1), up };
+        },
+        exit: () => {
+          wing.root.visible = false; g.fold.root.visible = true; g.fold.hop(); if (g.skyMove) g.skyMove.foldHidden = false;
+          g.flags.add('form:glider');
+          g.give('power:glide');
+          g.hud.notify(W.glideTeach);
+          showGlideCard(W.glideCard, 14);
+        },
+      },
+    );
+    return beats;
   }
 
   /** A part in hand: say which, and what is left. */
@@ -322,8 +363,8 @@ export class SkyParts {
     c.weight.rotation.y += (c.notch * 1.2 - c.weight.rotation.y) * (1 - Math.exp(-6 * dt));
     const gm = c.glow.material as THREE.MeshBasicMaterial;
     gm.opacity = this.has('sky:chime-tuned') ? 0.18 + 0.12 * Math.sin(t * 2) : this.has('sky:quest-string') ? 0.08 * c.swing : 0;
-    // the frame on the windmill glints until it is taken
-    this.frameObj.visible = !this.has('sky:part-frame');
+    // the frame on the windmill glints until it is taken (and while he unties it)
+    if (g.mode !== 'cut') this.frameObj.visible = !this.has('sky:part-frame');
     // the first glide: Fold stays open until Nilo is down
     if (pl.forceOpen && pl.grounded) pl.forceOpen = false;
     // the fox: the first time you see her from Landing Isle, Lark comes to help
@@ -358,4 +399,22 @@ function kiteFrame(): THREE.Group {
   const glint = new THREE.Mesh(new THREE.SphereGeometry(0.6, 10, 8), new THREE.MeshBasicMaterial({ color: '#ffd88a', transparent: true, opacity: 0.22, depthWrite: false, blending: THREE.AdditiveBlending }));
   glint.position.y = 0.2; g.add(glint);
   return g;
+}
+
+/** The glider's controls on a card at the foot of the screen for a while (the first time Fold becomes a wing). */
+export function showGlideCard(html: string, secs: number) {
+  let el = document.querySelector('.glidecard') as HTMLDivElement | null;
+  if (!el) {
+    el = document.createElement('div'); el.className = 'glidecard';
+    const st = document.createElement('style');
+    st.textContent = `.glidecard { position: absolute; left: 50%; top: 96px; transform: translateX(-50%); font: 16px Georgia, serif; color: #fff8ee; background: rgba(46,34,48,0.62);
+      padding: 10px 20px; border-radius: 16px; letter-spacing: 0.02em; pointer-events: none; text-shadow: 0 1px 2px #0006; white-space: nowrap; transition: opacity 0.6s; opacity: 0; }
+      .glidecard.on { opacity: 1; } .glidecard b { color: #ffe39a; }`;
+    document.head.append(st);
+    document.getElementById('ui')?.append(el);
+  }
+  el.innerHTML = html;
+  el.classList.add('on');
+  clearTimeout((el as unknown as { _t: number })._t);
+  (el as unknown as { _t: number })._t = setTimeout(() => el!.classList.remove('on'), secs * 1000) as unknown as number;
 }

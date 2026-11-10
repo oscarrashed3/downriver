@@ -1866,7 +1866,7 @@ export class Game {
     else if (this.mode === 'cut' || this.mode === 'letter') this.rig.override = null;
     // talk shots and the first-meet portrait are worked out on the fly, so keep them out of walls and Hollo
     this.rig.blockOverride = !!this.talkCam || !!this.meet;
-    this.rig.update(dt, this.player.pos, this.player.up, p, free ? inp.mouseDX : 0, free ? inp.mouseDY : 0, free ? inp.axis(['ArrowLeft'], ['ArrowRight']) : 0);
+    this.rig.update(dt, this.player.pos, this.player.up, p, free ? inp.mouseDX : 0, free ? inp.mouseDY : 0, free && !this.player.glider?.open ? inp.axis(['ArrowLeft'], ['ArrowRight']) : 0);
     if (this.mode === 'sky' || this.skyView.open) {
       const pose = this.skyView.update(dt, { pos: this.rig.pos.clone(), look: this.rig.look.clone(), up: this.rig.smoothUp.clone() }, this.player.pos, this.cur, this.visited(), true, this.camera);
       if (pose) { this.camera.position.copy(pose.pos); this.camera.up.copy(pose.up); this.camera.lookAt(pose.look); }

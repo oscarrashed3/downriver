@@ -15,6 +15,7 @@ import { UPDRAFTS, AQ_DECK, AQ_KERB } from './layout';
 import { onIsle, isleAt, pushOutOfIsles, sky, type Isle } from './terrain';
 import { SKY_MOVE } from '../../data/skyWords';
 import type { SkyWorld } from './world';
+import { SeeThrough } from './seeThrough';
 
 const clamp = (x: number, a = 0, b = 1) => Math.min(b, Math.max(a, x));
 const sstep = (a: number, b: number, x: number) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
@@ -127,31 +128,51 @@ export class SkyMove {
   private rescues = 0;
   active = false;
   private hinted = false;
-  private sail: { phase: 'climb' | 'grab' | 'ride'; t: number; from: THREE.Vector3; stock: number; peak: number; rising: boolean } | null = null;
-  /** Story hook: Nilo let go at the top of the windmill's sail. */
-  onSailTop: (() => void) | null = null;
+  /** On the windmill's rope: climbing up or down it, or stepping over onto (or off) the balcony at the top. */
+  climb: { phase: 'up' | 'over' | 'down' | 'onto'; y: number; t: number; from: THREE.Vector3; moving: number } | null = null;
+  /** Story hook: Nilo climbed the rope and stepped onto the balcony at the top of the windmill. */
+  onRopeTop: (() => void) | null = null;
+  private ropeHinted = false;
+  /** A scene has Fold busy elsewhere (unfolding into the glider beside Nilo): keep his usual self hidden. */
+  foldHidden = false;
   /** Extra lift added everywhere (the race's festival wind keeps you near the course's height); may be negative. */
   extraLift: ((pos: THREE.Vector3) => number) | null = null;
   /** Story hook: a fall into the cloud sea ended (he is back on an island). */
   onRescued: (() => void) | null = null;
 
+  /** The melt round Nilo, so trees and houses never block the view of him. */
+  readonly see: SeeThrough;
+  private scanT = 0;
+
   constructor(private g: Game, private world: SkyWorld, private idx: number) {
     const p = world.p;
+    this.see = new SeeThrough(g.scene, () => [world.root, ...(g.ch2 ? [g.ch2.root] : []), ...g.contents[idx].npcs.map(n => n.root), ...(g.fox ? [g.fox.f.root] : [])]);
     this.wingVis = new NiloWing(g.player);
     for (const u of UPDRAFTS) {
       const d = p.dirRiver(u.lat, u.off / (p.R * Math.PI / 180 * Math.sin(u.lat * Math.PI / 180)));
       this.drafts.push({ dir: d, r0: p.R + 3, r1: p.R + 4 + u.h, rad: 3.6 });
     }
-    // the windmill on Windmill Isle: climb up and ride a sail over the top
+    // the windmill on Windmill Isle: a rope up to the lookout balcony near the top
     const mill = world.dressing.refs.windmill;
-    if (mill) {
+    if (mill?.userData.rope) {
       world.root.updateMatrixWorld(true);
-      const foot = mill.localToWorld(new THREE.Vector3(0, 0.4, 3.4));
+      const R = mill.userData.rope as { ropeX: number; deckY: number; deckX0: number; deckX1: number; deckW: number };
       g.contents[idx].interactables.push({
-        id: 'skySail', world: idx, pos: foot, radius: 2.6,
-        label: () => (this.sail || this.rescue ? null : SKY_MOVE.sailPrompt),
-        act: () => this.startSail(),
+        id: 'skyRope', world: idx, pos: this.ropeAt(0.4, 0.5), radius: 2.2,
+        label: () => (this.climb || this.rescue || !this.g.player.grounded || this.g.player.onDeck ? null : SKY_MOVE.ropePrompt),
+        act: () => this.startClimb(),
       });
+      g.contents[idx].interactables.push({
+        id: 'skyRopeDown', world: idx, pos: mill.localToWorld(new THREE.Vector3(R.ropeX - 0.6, R.deckY, 0)), radius: 1.5,
+        label: () => (this.climb || !this.g.player.onDeck ? null : SKY_MOVE.ropeDown),
+        act: () => this.startDown(),
+      });
+      // the balcony is a deck you stand on (the tower wall is the windmill's own solid)
+      const obj = new THREE.Object3D();
+      obj.position.copy(mill.localToWorld(new THREE.Vector3((R.deckX0 + R.deckX1) / 2, R.deckY, 0)));
+      mill.getWorldQuaternion(obj.quaternion);
+      world.anchors.add(obj);
+      p.decks.push({ obj, span: R.deckX1 - R.deckX0, width: R.deckW, top: () => 0.01 });
     }
   }
 
@@ -230,15 +251,17 @@ export class SkyMove {
     this.active = on;
     const pl = this.g.player;
     if (!on) {
-      pl.glider = null; pl.liftAt = null; pl.collide = null; pl.diveHeld = false;
-      this.g.rig.floor = null; this.g.rig.follow = null;
+      pl.glider = null; pl.liftAt = null; pl.collide = null; pl.diveHeld = false; pl.glideSteer = null;
+      this.g.rig.floor = null; this.g.rig.follow = null; this.g.rig.smoothBlock = false;
+      this.see.off();
       this.wingVis.detach();
       this.g.fold.root.visible = true;
       this.g.camera.fov = 58; this.g.camera.updateProjectionMatrix();
       this.endRescue();
     } else {
       pl.liftAt = this.lift; pl.collide = this.collide;
-      this.g.rig.floor = this.floor;
+      this.g.rig.floor = this.floor; this.g.rig.smoothBlock = true;
+      this.scanT = 0;
     }
   }
 
@@ -247,14 +270,20 @@ export class SkyMove {
 
   // ------------------------------------------------------------------ play
 
-  /** In updatePlay, before the player moves: true when this takes over the frame (the soft fall, the sail ride). */
+  /** In updatePlay, before the player moves: true when this takes over the frame (the soft fall, the rope climb). */
   takeOver(dt: number): boolean {
     if (this.rescue) { this.updateRescue(dt); return true; }
-    if (this.sail) { this.updateSail(dt); return true; }
+    if (this.climb) { this.updateClimb(dt); return true; }
     const pl = this.g.player;
     if (this.canGlide) { pl.glider ??= newGlider(); } else pl.glider = null;
     const inp = this.g.input;
     pl.diveHeld = !!pl.glider?.open && (inp.key('KeyC') || inp.key('ControlLeft') || inp.key('KeyX') || inp.key('ShiftLeft') || inp.key('ShiftRight'));
+    // in the air the arrows (and WASD) fly the wing directly: left / right turn, up / down climb and sink
+    if (pl.glider?.open) {
+      const turn = (inp.key('ArrowRight') || inp.key('KeyD') ? 1 : 0) - (inp.key('ArrowLeft') || inp.key('KeyA') ? 1 : 0);
+      const climb = (inp.key('ArrowUp') || inp.key('KeyW') ? 1 : 0) - (inp.key('ArrowDown') || inp.key('KeyS') ? 1 : 0);
+      pl.glideSteer = { turn, climb };
+    } else pl.glideSteer = null;
     return false;
   }
 
@@ -278,7 +307,7 @@ export class SkyMove {
     const pl = this.g.player, g = pl.glider;
     const folded = this.wingVis.update(dt, t, g);
     if (folded) { this.wingVis.bundleAt(this.g.fold.pos); this.g.fold.hop(); }
-    this.g.fold.root.visible = !this.wingVis.shown && !this.rescue?.whale;
+    this.g.fold.root.visible = !this.wingVis.shown && !this.rescue?.whale && !this.foldHidden;
     if (g?.open && g.openT < dt * 1.5) this.g.sound.sfxPlay('paper');
     // the camera swings in behind the glide, and widens a little with speed
     const rig = this.g.rig;
@@ -295,6 +324,10 @@ export class SkyMove {
     if (this.raft) this.raft.update(dt, t);
     if (this.whale && this.whale.root.visible) this.whale.update(dt, t);
     if (this.fade) this.updateFade(dt);
+    // trees, houses and windmills between the camera and Nilo melt away round him
+    if ((this.scanT -= dt) <= 0) { this.scanT = 4; this.see.scan(); }
+    const free = (this.g.mode === 'play' || this.g.mode === 'talk') && !this.g.rig.override;
+    this.see.update(dt, free, this.g.camera, _w.copy(pl.pos).addScaledVector(pl.up, 0.9), this.g.renderer);
   }
 
   // ------------------------------------------------------------------ the soft fall
@@ -467,87 +500,98 @@ export class SkyMove {
     if (this.raft) this.raft.root.visible = false;
   }
 
-  // ------------------------------------------------------------------ the windmill sail
+  // ------------------------------------------------------------------ the windmill's rope
 
-  private tip(i: number, out: THREE.Vector3) {
+  private get rope() { return this.world.dressing.refs.windmill.userData.rope as { ropeX: number; top: number; foot: number; deckY: number; deckX0: number; deckX1: number }; }
+  /** A point by the rope (world space): y up the tower, out metres further out than the rope. */
+  ropeAt(y: number, out = 0.34, v = new THREE.Vector3()) {
     const mill = this.world.dressing.refs.windmill;
-    const spin = mill.userData.rotor as THREE.Object3D;
-    const L = (mill.userData.sailLen as number | undefined) ?? 6.5;
-    const a = i * Math.PI / 2 + 0.3;
-    spin.updateMatrixWorld(true);
-    // the outer end of the stock's lattice (hands on the last sail bar)
-    out.set(-Math.sin(a) * (L - 0.5) + Math.cos(a) * 0.4, Math.cos(a) * (L - 0.5) + Math.sin(a) * 0.4, 0.2);
-    return spin.localToWorld(out);
+    return mill.localToWorld(v.set(this.rope.ropeX + out, y, 0));
   }
+  /** Feet height at the top of the climb (hands at the rope's top). */
+  private get ropeTopY() { return this.rope.top - 1.25; }
 
-  private startSail() {
+  startClimb() {
     const g = this.g, pl = g.player;
-    const spin = this.world.dressing.refs.windmill.userData.rotor as THREE.Object3D;
-    // the sails turn faster while you ride one (a gust picks up)
-    this.world.dressing.town.speedUp(spin, 3.2);
-    this.sail = { phase: 'climb', t: 0, from: pl.pos.clone(), stock: 0, peak: -1e9, rising: false };
     if (pl.glider) pl.glider.open = false;
     pl.vel.set(0, 0, 0);
-    g.sound.sfxPlay('whoosh');
+    this.climb = { phase: 'onto', y: 0.25, t: 0, from: pl.pos.clone(), moving: 0 };
+    g.sound.sfxPlay('soft');
+    if (!this.ropeHinted) { this.ropeHinted = true; g.hud.notify(SKY_MOVE.ropeHint); }
+    // the camera comes round behind him, looking at the tower
+    const p = this.world.p, mill = this.world.dressing.refs.windmill;
+    const up = this.ropeAt(0).sub(p.center).normalize();
+    const inward = mill.localToWorld(new THREE.Vector3(0, 0, 0)).sub(this.ropeAt(0)).projectOnPlane(up).normalize();
+    g.rig.easeFromHere(0.9); g.rig.faceDir(up, inward); g.rig.pitch = 0.35;
   }
 
-  private endSail() {
-    const spin = this.world.dressing.refs.windmill.userData.rotor as THREE.Object3D;
-    this.world.dressing.town.speedUp(spin, 1);
-    this.sail = null;
+  startDown() {
+    const pl = this.g.player;
+    pl.vel.set(0, 0, 0);
+    this.climb = { phase: 'over', y: this.ropeTopY, t: 0, from: pl.pos.clone(), moving: -1 };
+    this.g.sound.sfxPlay('soft');
   }
 
-  private updateSail(dt: number) {
-    const g = this.g, p = this.world.p, pl = g.player, s = this.sail!;
+  private updateClimb(dt: number) {
+    const g = this.g, p = this.world.p, pl = g.player, c = this.climb!, inp = g.input;
+    c.t += dt;
     const mill = this.world.dressing.refs.windmill;
-    s.t += dt;
-    const millPos = mill.getWorldPosition(new THREE.Vector3());
-    const mUp = millPos.clone().sub(p.center).normalize();
-    const toMill = millPos.clone().sub(pl.pos).projectOnPlane(mUp).normalize();
-    if (s.phase === 'climb') {
-      // up the ivy on the tower's face to where the sails sweep past
-      const k = sstep(0, 1.6, s.t);
-      const grab = mill.localToWorld(new THREE.Vector3(0, 7.2, 2.55));
-      pl.pos.lerpVectors(s.from, grab, k);
-      pl.up.copy(pl.pos).sub(p.center).normalize();
-      pl.facing.copy(toMill);
-      pl.grounded = true;
-      pl.animate(dt, 2.5, true); pl.sync();
-      if (s.t > 1.6) {
-        // the stock whose tip is nearest, coming down past
-        let best = 1e9;
-        for (let i = 0; i < 4; i++) { const d = this.tip(i, _v).distanceTo(pl.pos); if (d < best) { best = d; s.stock = i; } }
-        s.phase = 'grab'; s.t = 0; s.from = pl.pos.clone();
-      }
+    const inward = (y: number) => mill.localToWorld(_v.set(0, y, 0)).sub(this.ropeAt(y, 0, _w)).normalize();
+    const settle = (pos: THREE.Vector3, face: THREE.Vector3, moving: number, climbing = true) => {
+      pl.pos.copy(pos);
+      pl.up.copy(pos).sub(p.center).normalize();
+      pl.facing.copy(face).projectOnPlane(pl.up).normalize();
+      pl.vel.set(0, 0, 0); pl.grounded = true;
+      pl.animate(dt, moving, climbing); pl.sync();
+    };
+    const topStand = () => mill.localToWorld(new THREE.Vector3(this.rope.ropeX - 0.75, this.rope.deckY + 0.01, 0));
+    if (c.phase === 'onto') {
+      // a step to the rope and a hop up onto it
+      const k = sstep(0, 0.45, c.t);
+      const to = this.ropeAt(c.y);
+      const at = c.from.clone().lerp(to, k).addScaledVector(pl.up, Math.sin(Math.PI * k) * 0.3);
+      settle(at, inward(c.y), 1.5, k > 0.5);
+      if (c.t >= 0.45) { c.phase = 'up'; c.t = 0; }
       return;
     }
-    const tip = this.tip(s.stock, new THREE.Vector3());
-    const tu = tip.clone().sub(p.center).normalize();
-    const hang = tip.clone().addScaledVector(tu, -1.55);
-    if (s.phase === 'grab') {
-      const k = sstep(0, 0.4, s.t);
-      pl.pos.lerpVectors(s.from, hang, k);
-      if (s.t >= 0.4) { s.phase = 'ride'; s.t = 0; g.sound.sfxPlay('bump'); }
-    } else {
-      pl.pos.copy(hang);
-      const h = tip.distanceTo(p.center);
-      if (h > s.peak) { s.peak = h; s.rising = true; }
-      // over the top: let go
-      if (s.rising && h < s.peak - 0.05 && s.t > 0.8) {
-        const nxt = this.tip(s.stock, new THREE.Vector3());
-        void nxt;
-        pl.vel.copy(toMill).multiplyScalar(-1.5).addScaledVector(tu, 4.5);
-        pl.grounded = false;
-        this.endSail();
-        if (pl.glider) g.hud.notify(SKY_MOVE.sailLetGo);
-        g.sound.sfxPlay('whoosh');
-        this.onSailTop?.();
+    if (c.phase === 'up' || c.phase === 'down') {
+      // hold up (W, the up arrow or Space) to climb, down (S or the down arrow) to slide back down
+      const upK = inp.key('KeyW') || inp.key('ArrowUp') || inp.key('Space') ? 1 : 0;
+      const downK = inp.key('KeyS') || inp.key('ArrowDown') ? 1 : 0;
+      const want = c.phase === 'down' ? -1 : upK - downK;
+      c.moving += (want - c.moving) * (1 - Math.exp(-8 * dt));
+      c.y += c.moving * (c.moving > 0 ? 2.3 : 3.0) * dt;
+      // the rope sways a little under him
+      const sway = Math.sin(g.time * 1.3) * 0.05;
+      const top = this.ropeTopY;
+      if (c.y >= top) { c.y = top; c.phase = 'over'; c.t = 0; c.from = this.ropeAt(top); c.moving = 1; }
+      if (c.y <= 0.25 && c.moving < 0) {
+        // at the foot: step off onto the grass
+        c.y = 0.25;
+        const off = this.ropeAt(0, 0.9);
+        const d = off.sub(p.center).normalize();
+        pl.placeAt(p, d); pl.facing.copy(inward(0)).negate().projectOnPlane(pl.up).normalize(); pl.sync();
+        pl.grounded = true;
+        this.climb = null;
         return;
       }
+      const at = this.ropeAt(c.y, 0.34).addScaledVector(_u.set(0, 0, 1).applyQuaternion(mill.getWorldQuaternion(_q)), sway);
+      settle(at, inward(c.y), Math.abs(c.moving) * 2.2, true);
+      return;
     }
-    pl.up.copy(tu); pl.facing.copy(toMill).projectOnPlane(tu).normalize();
-    pl.grounded = false;
-    pl.animate(dt, 0, true); pl.sync();
+    // over the balcony's edge (or back onto the rope going down): a smooth arc, then on his feet
+    const going = c.moving > 0;
+    const k = sstep(0, 0.8, c.t);
+    const b = going ? topStand() : this.ropeAt(this.ropeTopY);
+    const at = c.from.clone().lerp(b, k).addScaledVector(pl.up, Math.sin(Math.PI * k) * 0.45);
+    settle(at, inward(this.rope.deckY), 1.2, true);
+    if (c.t >= 0.8) {
+      if (going) {
+        this.climb = null;
+        pl.onDeck = true;
+        pl.animate(0, 0, false);
+        this.onRopeTop?.();
+      } else { c.phase = 'down'; c.t = 0; c.y = this.ropeTopY; c.moving = -1; }
+    }
   }
 }
-
