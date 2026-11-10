@@ -11,7 +11,7 @@ import { KiteWing } from './kiteWing';
 import { CloudPad } from './cloudPad';
 import { SkyWhale } from './whale';
 import { newGlider, type GliderState } from './flight';
-import { UPDRAFTS } from './layout';
+import { UPDRAFTS, AQ_DECK, AQ_KERB } from './layout';
 import { onIsle, isleAt, pushOutOfIsles, sky, type Isle } from './terrain';
 import { SKY_MOVE } from '../../data/skyWords';
 import type { SkyWorld } from './world';
@@ -195,6 +195,26 @@ export class SkyMove {
         this.g.sound.sfxPlay('soft');
         this.g.fold.hop();
         break;
+      }
+    }
+    // the aqueducts: the low kerb along each outer edge keeps you on the parapet walk
+    {
+      _u.copy(pl.pos).sub(p.center);
+      const r = _u.length(); _u.divideScalar(r);
+      const lim = AQ_DECK - AQ_KERB - 0.3;
+      if (!isleAt(p, _u)) {
+        const rn = p.riverNearest(_u);
+        if (rn.t > 0.01 && rn.t < 0.995 && rn.dist > lim && rn.dist < AQ_DECK + 0.6) {
+          const deckR = p.R + p.bedAt(rn.t) + p.cfg.waterDepth + 0.45;
+          if (r > deckR - 0.6 && r < deckR + 1.4) {
+            const c = p.pathPoint(rn.t, _w);
+            const tan = c.addScaledVector(_u, -c.dot(_u)).normalize();
+            _u.addScaledVector(tan, (rn.dist - lim) / p.R).normalize();
+            pl.pos.copy(_u).multiplyScalar(r).add(p.center);
+            const vo = pl.vel.dot(tan);
+            if (vo < 0) pl.vel.addScaledVector(tan, -vo);
+          }
+        }
       }
     }
     // island rock: slide along the cliffs and under the undersides, never through them

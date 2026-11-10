@@ -12,7 +12,7 @@ import { sky, POOL_R, type Isle } from './terrain';
 import { BRIDGES, PADS, UPDRAFTS } from './layout';
 import { bendGroup, placeRigid } from './bend';
 import { aqueduct } from './aqueduct';
-import { ropeBridge } from './ropeBridge';
+import { ropeBridge, bridgeFootprint } from './ropeBridge';
 import { updraftColumn } from './updraft';
 import { CloudSea } from './cloudSea';
 import { CloudPad } from './cloudPad';
@@ -44,6 +44,7 @@ export class SkyWorld {
     const T = sky(p);
     this.isles = T.isles;
     planZones(this);
+    this.planBridges();
     this.buildIsles();
     this.buildRiver();
     this.buildBridges();
@@ -83,6 +84,36 @@ export class SkyWorld {
       const bent = bendGroup(fi.group, isle);
       bent.name = 'isle:' + def.id;
       this.root.add(bent);
+      // the trees are solid: you walk round them, not through them
+      for (const t of fi.solids) {
+        const a = new THREE.Object3D();
+        a.position.copy(isle.toPlanet(t.x, isle.shape.height(t.x, t.z), t.z)).add(p.center);
+        a.quaternion.copy(isle.frameAt(t.x, t.z));
+        this.anchors.add(a);
+        p.solids.push({ obj: a, shape: { kind: 'circle', r: t.r }, h: t.h, id: 'sky' });
+      }
+    }
+  }
+
+  /** Spots on each island (local x, z, radius) kept clear for the bridges' landings: no trees, bushes, flowers or props. */
+  readonly bridgeSpots = new Map<string, { x: number; z: number; r: number }[]>();
+  private planBridges() {
+    const T = sky(this.p);
+    for (const b of BRIDGES) {
+      for (const f of bridgeFootprint(T.isle(b.a), T.isle(b.b))) {
+        const id = f.isle.def.id;
+        const list = this.bridgeSpots.get(id) ?? [];
+        for (const q of f.pts) list.push({ x: q.x, z: q.z, r: b.width / 2 + 1.6 });
+        this.bridgeSpots.set(id, list);
+        const cz = this.clearZones.get(id) ?? [];
+        for (const q of f.pts) cz.push({ x: q.x, z: q.z, r: b.width / 2 + 1.6 });
+        this.clearZones.set(id, cz);
+        // and the meadow's tall grass stays short there
+        for (const q of f.pts) {
+          const r = b.width / 2 + 1.0;
+          this.bareGrass.push({ dir: f.isle.dirAt(q.x, q.z), cosIn: Math.cos(r / f.isle.Rt), cosOut: Math.cos((r + 1.2) / f.isle.Rt) });
+        }
+      }
     }
   }
 

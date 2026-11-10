@@ -249,7 +249,7 @@ export class Player {
         if (vu3 < 0) this.vel.addScaledVector(u.up, -vu3);
         this.grounded = true; this.onDeck = true;
         const lim = d.width / 2 - 0.35;
-        if (Math.abs(u.z) > lim) {
+        if (Math.abs(u.z) > lim && (!d.rail || (u.x >= d.rail[0] && u.x <= d.rail[1]))) {
           this.pos.addScaledVector(u.side, Math.sign(u.z) * lim - u.z);
           const vs = this.vel.dot(u.side);
           if (vs * u.z > 0) this.vel.addScaledVector(u.side, -vs);

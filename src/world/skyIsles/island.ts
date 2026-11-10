@@ -72,6 +72,8 @@ export interface FloatingIsland {
   shape: IslandShape;
   /** triangle count and draw calls, for budgets */
   stats: { triangles: number; draws: number };
+  /** Where the trees and cottages stand (local x, z on the top) and their trunk or wall radius, for collision. */
+  solids: { x: number; z: number; r: number; h: number }[];
 }
 
 // soft, mostly white and butter-yellow drifts with a little pink, and the odd lilac of spikes: they read as soft
@@ -84,6 +86,7 @@ const MOSS_PAD = ['#6a9a40', '#77a646', '#5f8f3c', '#83ae4c'];
 export function buildFloatingIsland(opts: FloatingIslandOpts): FloatingIsland {
   const sh = new IslandShape(opts);
   const rng = makeRng(opts.seed * 3 + 1);
+  const solids: { x: number; z: number; r: number; h: number }[] = [];
   const R = opts.radius, sc = sh.sc;
   const s4 = Math.max(0.4, sc);
   /** grass and flowers keep their real size on big islands */
@@ -180,11 +183,12 @@ export function buildFloatingIsland(opts: FloatingIslandOpts): FloatingIsland {
       if (rng() < 0.35) continue;
       const p = l.p.clone().add(new THREE.Vector3((rng() - 0.5) * 0.5, (rng() - 0.5) * 0.3, (rng() - 0.5) * 0.5).multiplyScalar(s4));
       const out = new THREE.Vector3(Math.cos(l.a), 0, Math.sin(l.a));
+      if (opts.avoid?.(l.p.x, l.p.z, 0.3)) continue;
       tufts.push({ p, up: out.clone().multiplyScalar(0.6).addScaledVector(up, 0.6 + rng() * 0.4).normalize(), scale: (0.7 + rng() * 0.4) * gs, col: tmpC.set('#94bc54').clone().offsetHSL(0, 0, (rng() - 0.5) * 0.04) });
     }
     // tufts hanging under the turf edge, so it is never a clean line
     for (const l of shell.lipUnder) {
-      if (nearFall(l.a, 1.0) || rng() < 0.85) continue;
+      if (nearFall(l.a, 1.0) || rng() < 0.85 || opts.avoid?.(l.p.x, l.p.z, 0.3)) continue;
       const out = new THREE.Vector3(Math.cos(l.a), 0, Math.sin(l.a));
       tufts.push({ p: l.p.clone().addScaledVector(out, 0.05), up: out.clone().addScaledVector(up, -0.7).normalize(), scale: (0.6 + rng() * 0.5) * gs, col: tmpC.set('#6f9e42').clone() });
     }
@@ -213,6 +217,7 @@ export function buildFloatingIsland(opts: FloatingIslandOpts): FloatingIsland {
     const near = sh.drifts.find(d => Math.hypot(l.p.x - d.x, l.p.z - d.z) < d.r * 1.6);
     if (!near && rng() > 0.35) continue;
     const col = (near ? near.col : FLOWER_COLS[Math.floor(rng() * FLOWER_COLS.length)]).clone();
+    if (opts.avoid?.(l.p.x, l.p.z, 0.3)) continue;
     const out = new THREE.Vector3(Math.cos(l.a), 0, Math.sin(l.a));
     (near?.spike ? spikes : daisies).push({ p: l.p.clone(), up: out.multiplyScalar(0.7).addScaledVector(up, 0.7).normalize(), scale: (1.0 + rng() * 0.5) * gs, col });
   }
@@ -245,6 +250,7 @@ export function buildFloatingIsland(opts: FloatingIslandOpts): FloatingIsland {
       flora.add(c);
       placed.push({ v: new THREE.Vector2(q.x, q.z), r: 4.5 });
       houses.push(new THREE.Vector2(q.x, q.z));
+      solids.push({ x: q.x, z: q.z, r: 2.2, h: 5 });
       i++;
     }
     // copses of three to five trees near the rim (one or two leaning out over it), and the odd tree inland
@@ -256,6 +262,7 @@ export function buildFloatingIsland(opts: FloatingIslandOpts): FloatingIsland {
       if (lean) { const ax = new THREE.Vector3(-Math.sin(a), 0, Math.cos(a)); t.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(ax, -lean)); }
       flora.add(t);
       placed.push({ v: new THREE.Vector2(x, z), r: 2.4 * tScale * k });
+      solids.push({ x, z, r: 0.4 * tScale * k, h: 3 });
     };
     let grown = 0;
     for (let tries = 0; grown < nTrees && tries < 30; tries++) {
@@ -295,7 +302,7 @@ export function buildFloatingIsland(opts: FloatingIslandOpts): FloatingIsland {
       } else {
         const r = Ra * (0.86 + rng() * 0.1);
         const x = Math.cos(a) * r, z = Math.sin(a) * r;
-        if (!free(x, z, 0.6)) continue;
+        if (!free(x, z, 0.6) || nearWater(x, z, 0.8)) continue;
         b.position.set(x, sh.height(x, z) - 0.1, z);
       }
       b.rotateY(rng() * TAU);
@@ -405,7 +412,7 @@ export function buildFloatingIsland(opts: FloatingIslandOpts): FloatingIsland {
   const sprigs = [grass, fl1, fl2].filter(Boolean) as THREE.Mesh[];
   const debrisPhase = rng() * TAU;
   return {
-    group, shape: sh, stats: { triangles: Math.round(triangles), draws },
+    group, shape: sh, stats: { triangles: Math.round(triangles), draws }, solids,
     topY(x, z) { return sh.inside(x, z) ? sh.height(x, z) : null; },
     edge(a) { return sh.outline(a); },
     update(_dt, t) {

@@ -17,7 +17,9 @@ export const RIVER_TOPS = [24, 20.5, 17, 13.5] as const;
 
 /** Half-width of the aqueducts' water channel, and of the whole deck (to the outside of the parapets). */
 export const AQ_CHANNEL = 3.2;
-export const AQ_DECK = 4.3;
+export const AQ_DECK = 5.4;
+/** The low kerb wall along each aqueduct's outer edge (a soft wall: you walk the parapet, not off it). */
+export const AQ_KERB = 0.35;
 
 export interface FallDef {
   /** Where it goes over: toward this point (lat, off) from the island's centre. */
@@ -86,7 +88,7 @@ export const ISLES: IsleDef[] = [
   },
   // ---- off the river
   {
-    id: 'windmill', name: 'Windmill Isle', lat: 54, off: -27.4, r: 9, top: 26.5, seed: 41, cliff: 12, under: 10, wobble: 0.5, relief: 0.5,
+    id: 'windmill', name: 'Windmill Isle', lat: 54, off: -27.4, r: 9, top: 23.5, seed: 41, cliff: 12, under: 10, wobble: 0.5, relief: 0.5,
     knolls: [{ lat: 54, off: -27.4, r: 4.5, h: 0.8 }], trees: 3, flowers: 4,
   },
   {
@@ -106,13 +108,13 @@ export const isleDef = (id: string) => ISLES.find(i => i.id === id)!;
 /** Rope bridges between islands: plank decks you walk on, from lip to lip along the line between the two centres. */
 export interface BridgeDef { a: string; b: string; width: number; sag: number }
 export const BRIDGES: BridgeDef[] = [
-  // the first rope bridge, off Landing Isle by stepping islets to Windmill Isle
-  { a: 'landing', b: 'step1', width: 1.5, sag: 0.35 },
-  { a: 'step1', b: 'step2', width: 1.4, sag: 0.5 },
-  { a: 'step2', b: 'windmill', width: 1.4, sag: 0.55 },
+  // the first rope bridge, off Landing Isle by stepping islets to Windmill Isle (broad decks: an easy walk)
+  { a: 'landing', b: 'step1', width: 2.4, sag: 0.3 },
+  { a: 'step1', b: 'step2', width: 2.4, sag: 0.4 },
+  { a: 'step2', b: 'windmill', width: 2.4, sag: 0.45 },
   // the long bridge from Sailtown's green to Windmill Isle
-  { a: 'sailtown', b: 'windmill', width: 1.5, sag: 0.6 },
-  { a: 'chime', b: 'mender', width: 1.4, sag: 0.5 },
+  { a: 'sailtown', b: 'windmill', width: 2.4, sag: 0.45 },
+  { a: 'chime', b: 'mender', width: 2.4, sag: 0.4 },
 ];
 
 /**

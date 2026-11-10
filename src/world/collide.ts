@@ -42,7 +42,11 @@ export interface Solid {
 }
 
 /** A walkable deck, like the bridge: an arch along the object's local x axis. */
-export interface Deck { obj: THREE.Object3D; span: number; width: number; top: (x: number) => number }
+export interface Deck {
+  obj: THREE.Object3D; span: number; width: number; top: (x: number) => number;
+  /** Where along x the railings hold you on (default: the whole span). Off it you may step off the sides. */
+  rail?: [number, number];
+}
 
 const v = new THREE.Vector3(), ax = new THREE.Vector3(), az = new THREE.Vector3(), up = new THREE.Vector3();
 

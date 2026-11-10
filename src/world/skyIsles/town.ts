@@ -38,7 +38,10 @@ class Dresser {
   readonly flat = new THREE.Group();
   readonly placed: { x: number; z: number; r: number }[] = [];
   readonly solids: { obj: THREE.Object3D; r: number; h: number }[] = [];
-  constructor(readonly w: SkyWorld, readonly isle: Isle, readonly town: TownAnimator) {}
+  constructor(readonly w: SkyWorld, readonly isle: Isle, readonly town: TownAnimator) {
+    // the bridges' landings stay clear of props and flowers
+    for (const q of w.bridgeSpots.get(isle.def.id) ?? []) this.placed.push({ x: q.x, z: q.z, r: q.r });
+  }
   ground = (x: number, z: number) => this.isle.shape.height(x, z);
   /** Metres (on the top) from local (x, z) to the river, or Infinity on an island without one. */
   river(x: number, z: number) {
@@ -183,9 +186,13 @@ export function dressIsles(w: SkyWorld): Dressing {
 
   /** A fence along a polyline of local points, following the ground. */
   const fenceRun = (d: Dresser, pts: V2[], seed: number) => {
+    const bridges = w.bridgeSpots.get(d.isle.def.id) ?? [];
+    const onBridge = (q: V2) => bridges.some(b => Math.hypot(b.x - q.x, b.z - q.z) < b.r);
     for (let i = 0; i < pts.length - 1; i++) {
       const a = pts[i], b = pts[i + 1], len = Math.hypot(b.x - a.x, b.z - a.z);
       if (len < 0.6) continue;
+      // a gap where a bridge comes in
+      if (onBridge(a) || onBridge(b) || onBridge({ x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 })) continue;
       const y0 = d.ground(a.x, a.z);
       const f = fence(len, { seed: seed + i, heightAt: x => d.ground(a.x + (b.x - a.x) * x / len, a.z + (b.z - a.z) * x / len) - y0 });
       f.position.set(a.x, y0 - 0.02, a.z);

@@ -8,7 +8,7 @@ import { smoothstep, clamp, lerp } from '../noise';
 import { IslandShape, TAU, type WaterfallSpec } from './islandShape';
 import { ISLES, CLOUD_H, AQ_CHANNEL, AQ_DECK, type IsleDef } from './layout';
 
-const _v = new THREE.Vector3(), _h = new THREE.Vector3(), _q = new THREE.Quaternion();
+const _v = new THREE.Vector3(), _h = new THREE.Vector3(), _q = new THREE.Quaternion(), _push = new THREE.Vector3();
 
 /**
  * One island on the planet: its frame (up through its centre, e1 downriver, e2 toward the + side), the radius of
@@ -339,9 +339,10 @@ export function pushOutOfIsles(p: Planet, pl: THREE.Vector3, vel: THREE.Vector3 
     return true;
   }
   const k = (rim + radius) / rho;
-  isle.dirAt(x * k, z * k, _h).multiplyScalar(r);
-  const out = _h.clone().sub(pl);
-  pl.copy(_h);
+  // (its own vector: dirAt works in _h, so it must not also be the output)
+  const to = isle.dirAt(x * k, z * k, _push).multiplyScalar(r);
+  const out = _h.copy(to).sub(pl);
+  pl.copy(to);
   if (vel && out.lengthSq() > 1e-8) { out.normalize(); const vo = vel.dot(out); if (vo < 0) vel.addScaledVector(out, -vo); }
   return true;
 }

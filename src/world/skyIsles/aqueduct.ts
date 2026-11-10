@@ -5,8 +5,8 @@
 // see is the deck you walk on.
 import * as THREE from 'three';
 import type { Planet } from '../planet';
-import { AQ_CHANNEL, AQ_DECK } from './layout';
-import { Kit, STONE_TILE } from './sailtownKit';
+import { AQ_CHANNEL, AQ_DECK, AQ_KERB } from './layout';
+import { Kit, STONE_TILE, boxM } from './sailtownKit';
 import { skyRng } from './rand';
 
 // (bright: the stone texture and the toon ramp darken them a good deal, and picture 1's arches are near white)
@@ -46,15 +46,16 @@ export function aqueduct(p: Planet, t0: number, t1: number, seed: number): THREE
 
   const wall = depth + 0.45;
   // the cross-section, outer loop: [across (metres, at R like the heightfield), height above the bed or 'bottom']
-  const C = AQ_CHANNEL, D = AQ_DECK;
-  const sec: [number, number | 'b'][] = [[-D, wall], [-C, wall], [-C, 0], [C, 0], [C, wall], [D, wall], [D, 'b'], [-D, 'b']];
+  const C = AQ_CHANNEL, D = AQ_DECK, K = AQ_KERB, kh = wall + 0.55;
+  // (with a low kerb wall along each outer edge)
+  const sec: [number, number | 'b'][] = [[-D, kh], [-D + K, kh], [-D + K, wall], [-C, wall], [-C, 0], [C, 0], [C, wall], [D - K, wall], [D - K, kh], [D, kh], [D, 'b'], [-D, 'b']];
   const colOf = (k: number, h: number, u: number): THREE.Color => {
-    if (k === 2) return FLOOR;
-    if (k === 6) return SOFFIT;
+    if (k === 4) return FLOOR;
+    if (k === 10) return SOFFIT;
     const c = CREAM.clone().lerp(WARM, Math.min(1, Math.max(0, -h / 3))).lerp(DEEP, Math.min(1, Math.max(0, (-h - 3) / 4)));
     // moss along the parapets and dripping a little down the faces
-    if (h > wall - 0.05) c.lerp(MOSS, 0.35 + 0.35 * Math.max(0, Math.sin(u * 1.7 + seed) * Math.sin(u * 0.53)));
-    else if (h > -0.6 && (k === 5 || k === 7)) c.lerp(MOSS, 0.25 * Math.max(0, Math.sin(u * 2.3 + seed * 3)));
+    if (h > wall - 0.05 && h < kh - 0.05) c.lerp(MOSS, 0.35 + 0.35 * Math.max(0, Math.sin(u * 1.7 + seed) * Math.sin(u * 0.53)));
+    else if (h > -0.6 && (k === 9 || k === 11)) c.lerp(MOSS, 0.25 * Math.max(0, Math.sin(u * 2.3 + seed * 3)));
     return c;
   };
   const kit = new Kit();
@@ -116,6 +117,24 @@ export function aqueduct(p: Planet, t0: number, t1: number, seed: number): THREE
       const up = base.clone().normalize();
       const m = new THREE.Matrix4().compose(base, new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), up), new THREE.Vector3(1, 1, 1));
       kit.add(cone, 'stone', DEEP.clone().multiplyScalar(0.92 + rnd() * 0.1), m);
+    }
+  }
+  // at each end a broad stone abutment, wider than the deck and deep, set into the island's cliff, so the span
+  // visibly springs from the rock rather than floating beside it
+  for (const [u0, sgn] of [[0, 1], [len, -1]] as const) {
+    const L = 3.4, uc = u0 + sgn * (L / 2 - 0.9);
+    const c = place(uc, 0, 0, new THREE.Vector3()), upv = c.clone().normalize();
+    const f = place(uc + 0.1, 0, 0, new THREE.Vector3()).sub(c).normalize();
+    const sd = new THREE.Vector3().crossVectors(upv, f).normalize();
+    const m = new THREE.Matrix4().makeBasis(sd, upv, f.clone().crossVectors(sd, upv).normalize());
+    // [across centre, width, top (above the bed), height, length change]: the two side blocks beside the channel,
+    // then two broad courses under its floor, stepping in as they go down
+    const sw = D - C + 0.8;
+    for (const [x, w, topY, h, dl] of [[-(C + sw / 2), sw, wall + 0.04, 3.4, 0], [C + sw / 2, sw, wall + 0.04, 3.4, 0], [0, D * 2 + 0.8, -0.15, 3.6, -0.4], [0, D * 2 - 0.8, -3.7, 2.8, -1.0]] as const) {
+      const box = boxM(w, h, L + dl, STONE_TILE / 1.6);
+      const col = topY > 0 ? WARM : DEEP;
+      const mm = m.clone().setPosition(c.clone().addScaledVector(upv, topY - h / 2).addScaledVector(sd, x).addScaledVector(f, sgn * -dl * 0.5));
+      kit.add(box, 'stone', col.clone().multiplyScalar(0.95 + rnd() * 0.08), mm);
     }
   }
   const g = new THREE.Group(); g.name = 'aqueduct';
