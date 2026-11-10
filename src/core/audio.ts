@@ -36,6 +36,15 @@ export class Sound {
   /** Day (0 night .. 1 day), closeness to the campfire, the chimes and the edge, set by the game each frame. */
   amb = { day: 1, fire: 0, chimes: 0, edge: 0, birds: 1 };
   private melodyQ: { at: number; m: number }[] = [];
+  /**
+   * World 2 (the Sky Isles), set by the game each frame: on adds the airy flute and chime layer and the rising and
+   * falling wind; race plays the theme quicker; flap (0..1) is the kite cloth snapping while gliding.
+   */
+  sky = { on: false, race: false, flap: 0 };
+  private flapT = 0;
+  private nb: AudioBuffer | null = null;
+  /** One shared noise buffer for the World 2 layers (made once). */
+  private noise() { return this.nb ??= this.noiseBuffer(); }
 
   start() {
     if (this.ctx) { this.ctx.resume(); return; }
@@ -92,12 +101,14 @@ export class Sound {
     const t = ctx.currentTime;
     this.riverGain.gain.setTargetAtTime(riverNear * (0.08 + flow * 0.22), t, 0.3);
     this.riverFilter.frequency.setTargetAtTime(500 + flow * 700, t, 0.5);
-    this.windGain.gain.setTargetAtTime(0.03 + wind * 0.1, t, 0.8);
+    // (in the Sky Isles the wind rises and falls in long slow gusts, and blows harder at speed)
+    const gusts = this.sky.on ? 0.035 + 0.05 * Math.pow(0.5 + 0.5 * Math.sin(t * 0.21) * Math.sin(t * 0.077 + 1.3), 1.5) + this.sky.flap * 0.06 : 0;
+    this.windGain.gain.setTargetAtTime(0.03 + wind * 0.1 + gusts, t, 0.8);
     this.ambient(t);
     // Music scheduler: slow, sparse, fuller as the world heals.
     while (this.nextNote < t + 0.3) {
       this.scheduleBeat(this.nextNote);
-      this.nextNote += 60 / 66 / 2;
+      this.nextNote += 60 / (this.sky.on && this.sky.race ? 104 : 66) / 2;
     }
   }
 
@@ -112,6 +123,76 @@ export class Sound {
     }
     if (s % 16 === 0) this.note(root - 12 + scale[s % 32 === 0 ? 0 : 4 % scale.length], when, this.voice === 'bells' ? 'strings' : this.voice, 0.35, 5.5);
     if (this.health > 0.6 && r(4) < 0.25) this.note(root + 12 + scale[Math.floor(r(5) * scale.length)], when + 0.12, this.voice, 0.25);
+    if (this.sky.on) {
+      // the Sky Isles: an airy flute floating over the piano and strings, and now and then a high chime
+      const pent = [0, 2, 4, 7, 9, 12, 14];
+      if (r(6) < (this.sky.race ? 0.32 : 0.2)) this.flute(74 + pent[Math.floor(r(7) * pent.length)], when + 0.05, 0.4 + r(8) * 0.2, this.sky.race ? 0.6 : 1.4);
+      if (r(9) < 0.07) this.note(86 + pent[Math.floor(r(10) * 5)], when + 0.2, 'bells', 0.18);
+      if (this.sky.race && s % 2 === 0) this.note(48 + (s % 8 < 4 ? 0 : 5), when, 'marimba', 0.45);
+    }
+  }
+
+  /** A breathy flute note: a sine with a little vibrato and a puff of air at the start. */
+  private flute(m: number, when: number, vel: number, dur: number) {
+    const ctx = this.ctx!, f = midi(m);
+    const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f;
+    const o2 = ctx.createOscillator(); o2.type = 'sine'; o2.frequency.value = f * 2; const g2 = ctx.createGain(); g2.gain.value = 0.12;
+    const vib = ctx.createOscillator(); vib.frequency.value = 5.2; const vg = ctx.createGain(); vg.gain.value = f * 0.005;
+    vib.connect(vg).connect(o.frequency);
+    const g = ctx.createGain(); g.connect(this.music);
+    g.gain.setValueAtTime(0, when); g.gain.linearRampToValueAtTime(vel * 0.14, when + 0.12); g.gain.setValueAtTime(vel * 0.12, when + dur * 0.6); g.gain.linearRampToValueAtTime(0, when + dur);
+    o.connect(g); o2.connect(g2).connect(g);
+    const src = ctx.createBufferSource(); src.buffer = this.noise();
+    const bf = ctx.createBiquadFilter(); bf.type = 'bandpass'; bf.frequency.value = f * 2; bf.Q.value = 2;
+    const bg = ctx.createGain(); bg.gain.setValueAtTime(vel * 0.05, when); bg.gain.exponentialRampToValueAtTime(0.0001, when + 0.15);
+    src.connect(bf).connect(bg).connect(this.music);
+    for (const x of [o, o2, vib]) { x.start(when); x.stop(when + dur + 0.1); }
+    src.start(when); src.stop(when + 0.2);
+  }
+
+  /** A crowd cheering: many voices (vowel-filtered noise and rising whoops) and clapping, `k` 0..1 loud. */
+  cheer(k = 1, secs = 2.6) {
+    const ctx = this.ctx; if (!ctx) return;
+    const t = ctx.currentTime;
+    for (const [fq, q] of [[700, 3], [1100, 4], [2400, 5]] as const) {
+      const src = ctx.createBufferSource(); src.buffer = this.noise();
+      const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = fq; f.Q.value = q;
+      const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.09 * k, t + 0.25); g.gain.setValueAtTime(0.08 * k, t + secs * 0.6); g.gain.linearRampToValueAtTime(0, t + secs);
+      src.connect(f).connect(g).connect(this.sfx); src.start(t); src.stop(t + secs + 0.1);
+    }
+    for (let i = 0; i < 9; i++) {
+      const w = t + Math.random() * secs * 0.6, o = ctx.createOscillator(), g = ctx.createGain(), lp = ctx.createBiquadFilter();
+      o.type = 'sawtooth'; const b = 260 + Math.random() * 300;
+      o.frequency.setValueAtTime(b, w); o.frequency.exponentialRampToValueAtTime(b * (1.5 + Math.random() * 0.5), w + 0.35); o.frequency.exponentialRampToValueAtTime(b * 1.2, w + 0.6);
+      lp.type = 'bandpass'; lp.frequency.value = 1200; lp.Q.value = 1.5;
+      g.gain.setValueAtTime(0, w); g.gain.linearRampToValueAtTime(0.025 * k, w + 0.05); g.gain.linearRampToValueAtTime(0, w + 0.6);
+      o.connect(lp).connect(g).connect(this.sfx); o.start(w); o.stop(w + 0.65);
+    }
+    for (let i = 0; i < 40; i++) {
+      const w = t + Math.random() * secs, src = ctx.createBufferSource(); src.buffer = this.noise();
+      const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1500 + Math.random() * 1500; f.Q.value = 1;
+      const g = ctx.createGain(); g.gain.setValueAtTime(0.06 * k * Math.random(), w); g.gain.exponentialRampToValueAtTime(0.0001, w + 0.04);
+      src.connect(f).connect(g).connect(this.sfx); src.start(w); src.stop(w + 0.06);
+    }
+  }
+
+  /** The sky whale's song: low, slow, gliding calls deep under everything. */
+  whaleSong() {
+    const ctx = this.ctx; if (!ctx) return;
+    const t = ctx.currentTime;
+    const calls: [number, number, number, number][] = [[0, 2.6, 92, 128], [2.2, 3.2, 120, 74], [5.0, 2.4, 82, 110]];
+    for (const [at, dur, f0, f1] of calls) {
+      const w = t + at, o = ctx.createOscillator(), o2 = ctx.createOscillator(), g = ctx.createGain(), lp = ctx.createBiquadFilter();
+      o.type = 'triangle'; o2.type = 'sine';
+      o.frequency.setValueAtTime(f0, w); o.frequency.exponentialRampToValueAtTime(f1, w + dur * 0.7); o.frequency.exponentialRampToValueAtTime(f1 * 0.92, w + dur);
+      o2.frequency.setValueAtTime(f0 * 2.01, w); o2.frequency.exponentialRampToValueAtTime(f1 * 2.01, w + dur * 0.7);
+      const vib = ctx.createOscillator(); vib.frequency.value = 3.5; const vg = ctx.createGain(); vg.gain.value = 3; vib.connect(vg).connect(o.frequency);
+      lp.type = 'lowpass'; lp.frequency.value = 600;
+      const g2 = ctx.createGain(); g2.gain.value = 0.3;
+      g.gain.setValueAtTime(0, w); g.gain.linearRampToValueAtTime(0.22, w + dur * 0.35); g.gain.linearRampToValueAtTime(0, w + dur);
+      o.connect(lp); o2.connect(g2).connect(lp); lp.connect(g).connect(this.sfx);
+      for (const x of [o, o2, vib]) { x.start(w); x.stop(w + dur + 0.1); }
+    }
   }
 
   /** Hush the music (for a held breath before a big moment), or bring it back. */
@@ -167,6 +248,14 @@ export class Sound {
     const ctx = this.ctx!;
     const a = this.amb;
     if (this.melodyQ.length && this.melodyQ[0].at <= t + 0.2) { const n = this.melodyQ.shift()!; this.note(n.m, Math.max(t, n.at), 'lyre', 0.55); }
+    // kite cloth snapping and fluttering in the wind while gliding
+    if (this.sky.flap > 0.05 && t > this.flapT) {
+      this.flapT = t + 0.05 + Math.random() * 0.09;
+      const src = ctx.createBufferSource(); src.buffer = this.noise();
+      const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 380 + Math.random() * 500; f.Q.value = 1.4;
+      const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.06 * this.sky.flap * (0.4 + Math.random() * 0.6), t + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
+      src.connect(f).connect(g).connect(this.sfx); src.start(t); src.stop(t + 0.09);
+    }
     if (t < this.ambT) return;
     this.ambT = t + 0.25;
     // birdsong by day: short falling and rising sine chirps

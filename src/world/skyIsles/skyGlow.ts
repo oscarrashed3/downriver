@@ -87,7 +87,7 @@ export class SkyGlow {
         void main(){
           float r = length(vUv);
           if (r > 1.0) discard;
-          float a = atan(vUv.y, vUv.x);
+          float a = atan(vUv.y, vUv.x + 1e-5); // (atan(0, 0) is undefined: a NaN pixel at the sun's centre on some GPUs)
           // slow, soft streaks fanning out from the sun
           float s = 0.5 + 0.5 * sin(a * 11.0 + sin(a * 3.0 + uTime * 0.05) * 2.0 + uTime * 0.02);
           s *= 0.55 + 0.45 * sin(a * 7.0 - 1.3 + uTime * 0.03);

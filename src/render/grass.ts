@@ -66,6 +66,8 @@ export function makeGrassMaterial(flower: boolean) {
       uLush: { value: 0.4 },
       uSnow: { value: 0 },
       uBloom: { value: 0.3 },
+      uNear: { value: new THREE.Vector2(0.6, 2.6) },
+      uWarm: { value: 0 },
     }]),
     vertexShader: /* glsl */ `
       #include <common>
@@ -82,7 +84,7 @@ export function makeGrassMaterial(flower: boolean) {
         attribute vec3 iGround;
       #endif
       varying vec3 vGround;
-      uniform float uTime; uniform vec3 uWind; uniform vec3 uPlayer; uniform float uSnow; uniform float uBloom;
+      uniform float uTime; uniform vec3 uWind; uniform vec3 uPlayer; uniform float uSnow; uniform float uBloom; uniform vec2 uNear;
       uniform vec3 uThawC; uniform float uThawR; uniform float uThawOn;
       varying float vSnow;
       varying float vH; varying float vVar; varying vec3 vW; varying vec3 vUpN;
@@ -102,7 +104,7 @@ export function makeGrassMaterial(flower: boolean) {
         #endif
         lp.y *= (1.0 - snowE * 0.7);
         // blades right in front of the camera bow out of the way, so they never fill the screen
-        lp *= smoothstep(0.6, 2.6, distance(iPos, cameraPosition));
+        lp *= smoothstep(uNear.x, uNear.y, distance(iPos, cameraPosition));
         vec3 wp = iPos + ax * lp.x + up * lp.y + az * lp.z;
         vec3 w = uWind - up * dot(uWind, up); w = normalize(w + 1e-5);
         float along = dot(iPos, w);
@@ -132,7 +134,7 @@ export function makeGrassMaterial(flower: boolean) {
       #include <common>
       #include <fog_pars_fragment>
       uniform float uTime; uniform vec3 uSun; uniform vec3 uSunCol; uniform vec3 uAmbSky; uniform vec3 uWind;
-      uniform float uLush; uniform float uSnow; uniform float uCloudShadow;
+      uniform float uLush; uniform float uSnow; uniform float uCloudShadow; uniform float uWarm;
       varying float vSnow;
       varying float vH; varying float vVar; varying vec3 vW; varying vec3 vUpN; varying vec3 vGround;
       #ifdef FLOWER
@@ -146,6 +148,9 @@ export function makeGrassMaterial(flower: boolean) {
         vec3 base = mix(baseD, baseL, uLush), tip = mix(tipD, tipL, uLush);
         tip = mix(tip, tip * vec3(0.78, 0.95, 1.05), smoothstep(0.55, 0.9, vVar) * 0.6);
         vec3 col = mix(base, tip, smoothstep(0.0, 1.0, vH));
+        // (World 2) a softer, warmer meadow: the blades take the painted ground's own tones, varied blade to blade
+        vec3 warmC = mix(vGround * 0.62, vGround * mix(vec3(1.08, 1.04, 0.86), vec3(1.16, 1.1, 0.82), vVar), smoothstep(0.0, 1.0, vH));
+        col = mix(col, warmC, uWarm);
         #ifdef FLOWER
           col = mix(vec3(0.25, 0.45, 0.2), vFlower, vHead);
         #endif
@@ -177,7 +182,11 @@ export class Grass {
    * weight(i) gives grass density 0..1 at terrain vertex i; flowerW(dir) is the flower density.
    * perM2 is tufts per square meter at weight 1.
    */
-  constructor(private planet: Planet, weight: Float32Array, perM2: number, flowerW: (d: THREE.Vector3) => number) {
+  constructor(private planet: Planet, weight: Float32Array, perM2: number, flowerW: (d: THREE.Vector3) => number,
+    opts: { size?: number; near?: [number, number]; warm?: number; flowers?: number[][] } = {}) {
+    const size = opts.size ?? 1;
+    if (opts.near) for (const m of [this.mat, this.flowerMat]) m.uniforms.uNear.value.set(...opts.near);
+    this.mat.uniforms.uWarm.value = opts.warm ?? 0;
     for (const m of [this.mat, this.flowerMat]) Object.assign(m.uniforms, {
       ...THAW, uTime: PAINT.uTime, uWind: PAINT.uWind, uSun: PAINT.uSun, uSunCol: PAINT.uSunCol, uAmbSky: PAINT.uAmbSky, uCloudShadow: PAINT.uCloudShadow,
     });
@@ -189,7 +198,7 @@ export class Grass {
     let seed = 12345;
     const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), p = new THREE.Vector3(), n = new THREE.Vector3(), e1 = new THREE.Vector3(), e2 = new THREE.Vector3(), d = new THREE.Vector3();
-    const palette = [[1, 1, 0.94], [1, 0.85, 0.3], [0.98, 0.6, 0.75], [0.72, 0.62, 1.0], [1, 0.55, 0.35], [0.55, 0.75, 1.0]];
+    const palette = opts.flowers ?? [[1, 1, 0.94], [1, 0.85, 0.3], [0.98, 0.6, 0.75], [0.72, 0.62, 1.0], [1, 0.55, 0.35], [0.55, 0.75, 1.0]];
     const key = (dir: THREE.Vector3, fl: boolean) => {
       const lat = Math.acos(THREE.MathUtils.clamp(dir.y, -1, 1)) * 180 / Math.PI;
       const lon = Math.atan2(dir.z, dir.x) * 180 / Math.PI;
@@ -227,7 +236,7 @@ export class Grass {
         const up = p.clone().sub(center).normalize().lerp(n, 0.5).normalize();
         p.addScaledVector(up, -0.03);
         if (GC) { const w0 = 1 - u - v, at = (q: number) => GC[i0 * 3 + q] * w0 + GC[i1 * 3 + q] * u + GC[i2 * 3 + q] * v; gcol.setRGB(at(0), at(1), at(2)); }
-        push(false, p, up, (0.75 + rnd() * 0.55) * (0.7 + w * 0.5));
+        push(false, p, up, (0.75 + rnd() * 0.55) * (0.7 + w * 0.5) * size);
       }
       // Flowers
       d.copy(a).sub(center).normalize();

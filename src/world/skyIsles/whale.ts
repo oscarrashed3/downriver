@@ -486,7 +486,7 @@ const SKIN_GLSL = /* glsl */ `
       dark = mix(uFlank, uBack, smoothstep(-0.25, 0.6, yn + m * 0.2));
       dark = mix(dark, uRidge, smoothstep(0.55, 0.97, yn + m * 0.1) * smoothstep(0.08, 0.3, u) * 0.8);
       // countershading: the cream belly rises towards the head, with a soft, irregular edge
-      float bnd = mix(-0.4, -0.26, smoothstep(0.25, 0.45, u)) - 0.34 * smoothstep(0.55, 0.9, u);
+      float bnd = mix(-0.62, -0.5, smoothstep(0.25, 0.45, u)) - 0.3 * smoothstep(0.55, 0.9, u);
       bnd += m * 0.26 + big * 0.1;
       pale = smoothstep(bnd + 0.06, bnd - 0.12, yn);
       // the whole lower jaw is pale up to the mouth line, and the line runs on from the corner of the mouth,
@@ -516,7 +516,7 @@ const SKIN_GLSL = /* glsl */ `
     } else {
       // fluke: steel blue above, a pale, lightly mottled underside
       float under = smoothstep(0.15, -0.35, vRN.y);
-      pale = under * (0.75 + 0.2 * smoothstep(-0.1, 0.3, m));
+      pale = under * (0.45 + 0.2 * smoothstep(-0.1, 0.3, m));
       dark = mix(uBack, uRidge, 0.45);
       dors = 0.7 * (1.0 - under);
     }

@@ -470,7 +470,8 @@ export function smin(a: number, b: number, k: number) {
 // ------------------------------------------------------------------------------------------- the shell mesh
 
 const C = (s: string) => new THREE.Color(s);
-const GRASS = [C('#76a843'), C('#8cbc4e'), C('#a3cc5c'), C('#bad466')];
+// soft, warm meadow greens (picture 2): olive shade, sage, a sunny yellow-green, and pale straw dabs
+const GRASS = [C('#6c9a48'), C('#84ad54'), C('#9fbe62'), C('#c4c878')];
 const SOIL = C('#94704a'), SOIL_D = C('#6a4d36'), ROOTS = C('#4f3626');
 const MOSS = C('#86a84a'), MOSS_D = C('#6e9440'), MOSS_L = C('#a2bc5a');
 const EARTH = C('#c9a47a'), BED = C('#9a967a'), SAND = C('#dccca2');

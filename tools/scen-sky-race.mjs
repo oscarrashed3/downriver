@@ -6,7 +6,7 @@ export default async ({ page, ev }) => {
   mkdirSync(dir, { recursive: true });
   const snap = async (name) => { console.log('beat', await ev('__game.seq.running ? __game.seq.i : -1')); await ev(`document.querySelectorAll('.notify, .toast').forEach(e => e.remove())`); await page.screenshot({ path: `${dir}/${name}.png`, timeout: 600000 }); console.log('shot', `${dir}/${name}.png`); };
   await page.waitForSelector('button[data-a="new"]', { timeout: 600000 });
-  await page.click('button[data-a="new"]');
+  await page.click('button[data-a="new"]', { timeout: 600000 });
   for (let i = 0; i < 200 && (await ev('__game.mode')) !== 'play'; i++) { await page.waitForTimeout(150); await ev(`(() => { const g = __game; g.input.pressed.add(g.mode === 'letter' ? 'KeyE' : 'Space'); })()`); }
   await ev(`(() => { const g = __game; g.give('read-letter'); g.meet = null; for (const n of g.contents[0].npcs) g.flags.add('met:' + n.id); })()`);
   for (let i = 0; i < 100 && (await ev('__game.mode')) !== 'play'; i++) { await page.waitForTimeout(200); await ev(`__game.input.pressed.add('Space')`); }
@@ -65,6 +65,13 @@ export default async ({ page, ev }) => {
     await ev('window.__pilot = null; __game.input.down.clear()');
     console.log('qual', await state());
   }
+  if (steps.includes('losecut')) {
+    await ev(`(() => { const g = __game; __go([66, 10]); g.cut(g.ch2.race.loseBeats()); })()`);
+    await run(1500);
+    console.log('lc', await ev(`(() => { const g = __game, pl = g.player, w = g.ch2.npc('granwren'); const V = pl.pos.constructor, Q = pl.root.quaternion.constructor; const P = v => [v.x, v.y, v.z].map(x => x.toFixed(2)).join(','); const f = new V(0, 0, 1).applyQuaternion(pl.root.getWorldQuaternion(new Q())); const wp = w.root.getWorldPosition(new V()); return JSON.stringify({ face: P(pl.facing), rootF: P(f), toW: P(wp.clone().sub(pl.pos).normalize()), pl: P(pl.pos), root: P(pl.root.getWorldPosition(new V())), w: P(wp), wl: P(w.root.position), par: pl.root.parent?.type, beat: g.seq.i }); })()`));
+    await snap('lc');
+    await endCut();
+  }
   if (steps.includes('lose')) {
     await ev(`(() => { const g = __game; g.flags.add('sky:ribbon'); __go([66, 10]); __it('skyRaceStart').act(); })()`);
     await toBeat(1, 1500);
@@ -84,7 +91,9 @@ export default async ({ page, ev }) => {
     await ev(`(() => { const g = __game; g.flags.add('sky:ribbon'); __go([66, 10]); __it('skyRaceStart').act(); })()`);
     await endCut();
     await ev(`(() => { const R = __game.ch2.race; __fly([Object.assign(R.fallsAt.clone(), { after: 4 })]); })()`);
-    for (let i = 0; i < 200 && (await ev('__game.ch2.race.mode')); i++) { await run(500, false); await ev(`(() => { const R = __game.ch2.race; if (R.progress > R.course.length * 0.85) R.gust = true; })()`); if (i % 8 === 0 || (await ev('__game.ch2.race.progress')) > 240) console.log('wdbg', await ev(`(() => { const g = __game, pl = g.player, R = g.ch2.race; return JSON.stringify({ r: +(pl.pos.distanceTo(g.planets[1].center) - g.planets[1].R).toFixed(1), cr: +(R.course.at(R.progress).distanceTo(g.planets[1].center) - g.planets[1].R).toFixed(1), tgtI: R.passed.findIndex((x, k) => !x && !R.notes.includes(k)), notes: R.notes.join(''), fr: +(R.fallsAt.distanceTo(g.planets[1].center) - g.planets[1].R).toFixed(1), p: Math.round(R.progress), sp: pl.glider && +pl.glider.speed.toFixed(1), gr: pl.grounded, resc: !!g.skyMove.rescue, sc: R.shortcut, gu: R.gust, falls: +pl.pos.distanceTo(R.fallsAt).toFixed(1), alt: +(pl.pos.distanceTo(g.planets[1].center) - R.course.at(R.progress).distanceTo(g.planets[1].center)).toFixed(1), racers: R.racers.map(r => Math.round(r.s)) }); })()`)); }
+    let fallsShot = false;
+    for (let i = 0; i < 200 && (await ev('__game.ch2.race.mode')); i++) { await run(fallsShot ? 500 : 200, false); await ev(`(() => { const R = __game.ch2.race; if (R.progress > R.course.length * 0.85) R.gust = true; })()`);
+      if (!fallsShot && (await ev('__game.player.pos.distanceTo(__game.ch2.race.fallsAt)')) < 16) { fallsShot = true; await run(50); await snap('5b-waterfall'); } if (i % 8 === 0 || (await ev('__game.ch2.race.progress')) > 240) console.log('wdbg', await ev(`(() => { const g = __game, pl = g.player, R = g.ch2.race; return JSON.stringify({ r: +(pl.pos.distanceTo(g.planets[1].center) - g.planets[1].R).toFixed(1), cr: +(R.course.at(R.progress).distanceTo(g.planets[1].center) - g.planets[1].R).toFixed(1), tgtI: R.passed.findIndex((x, k) => !x && !R.notes.includes(k)), notes: R.notes.join(''), fr: +(R.fallsAt.distanceTo(g.planets[1].center) - g.planets[1].R).toFixed(1), p: Math.round(R.progress), sp: pl.glider && +pl.glider.speed.toFixed(1), gr: pl.grounded, resc: !!g.skyMove.rescue, sc: R.shortcut, gu: R.gust, falls: +pl.pos.distanceTo(R.fallsAt).toFixed(1), alt: +(pl.pos.distanceTo(g.planets[1].center) - R.course.at(R.progress).distanceTo(g.planets[1].center)).toFixed(1), racers: R.racers.map(r => Math.round(r.s)) }); })()`)); }
     console.log('win end', await ev('__game.ch2.race.endWhy'), await state());
     await ev('window.__pilot = null; __game.input.down.clear()');
     await toBeat(0, 2500);
@@ -93,6 +102,14 @@ export default async ({ page, ev }) => {
     await endCut();
     console.log('won', await state());
   }
+  if (steps.includes('map')) {
+    await ev(`(() => { const g = __game; g.mode = 'play'; g.cutCam = null; __go([66, 12]); })()`);
+    await run(500);
+    await ev(`__game.openTab('map')`);
+    await page.waitForTimeout(1500);
+    await snap('9-map');
+    await ev(`__game.closeOverlay()`);
+  }
   if (steps.includes('goodbye')) {
     await ev(`(() => { const g = __game; if (g.ch2.race.active) g.ch2.race.end(null); g.seq.running && (g.seq.running = false); g.mode = 'play'; g.cutCam = null; g.flags.add('sky:ribbon'); g.flags.add('sky:won'); g.ch2.finish.restore?.(); __go([159, 0]); g.player.placeAt(g.planets[1], g.ch2.finish.site().nilo); g.rig.snap(); })()`);
     for (let i = 0; i < 40 && (await ev('__game.mode')) !== 'cut'; i++) await run(200, false);
@@ -100,7 +117,9 @@ export default async ({ page, ev }) => {
     await snap('7-whale-rises');
     await toBeat(8, 1500);
     await snap('8-lark-scarf');
-    await toBeat(12, 2500);
+    await toBeat(11, 2500);
+    await snap('8b-farewell');
+    await toBeat(12, 3200);
     await snap('9-whale-dive');
     await endCut();
     await run(1500);

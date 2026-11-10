@@ -281,7 +281,12 @@ export class Game {
     this.skyWorld = (this.contents[FOX_WORLD]?.refs.skyWorld as SkyWorld | undefined) ?? null;
     const pS = this.planets[FOX_WORLD];
     if (this.skyWorld && pS.grassW) {
-      this.skyGrass = new Grass(pS, pS.grassW, 1.7, d => skyFlowers(pS, d));
+      // smaller, denser blades in the painted ground's own warm tones, kept well clear of the camera; daisies,
+      // lavender, pink and butter flowers (picture 2)
+      this.skyGrass = new Grass(pS, pS.grassW, 3.6, d => skyFlowers(pS, d) * 1.8, {
+        size: 0.55, near: [2.2, 5.5], warm: 1,
+        flowers: [[1, 1, 0.96], [1, 1, 0.96], [0.74, 0.62, 0.95], [0.98, 0.62, 0.78], [1, 0.88, 0.42], [0.62, 0.74, 1.0]],
+      });
       this.skyGrass.lush = 1; this.skyGrass.bloom = 1;
       this.skyGrass.group.visible = false;
       this.scene.add(this.skyGrass.group);
@@ -1919,6 +1924,10 @@ export class Game {
       if (a.sound === 'falls') this.sound.amb.edge = Math.max(this.sound.amb.edge, w);
       if (a.sound === 'goats' && w > 0.5 && this.mode === 'play' && (this.bleatT -= dt) < 0) { this.bleatT = 6 + Math.random() * 9; this.sound.sfxPlay('bleat'); }
     }
+    // World 2's layers (flute and chimes, gusting wind, the quicker race theme, kite cloth flapping in flight)
+    this.sound.sky.on = this.isSky() && this.mode !== 'title';
+    this.sound.sky.race = !!this.ch2?.race.active;
+    this.sound.sky.flap = this.sound.sky.on && this.player.glider?.open ? Math.min(1, 0.35 + this.player.glider.speed / 22) : 0;
     this.sound.update(riverK, flowArrivingAt(this.river, this.cur), windK);
     this.hud.setFrost(onPeaks && this.mode === 'play' ? clamp((1 - this.player.warmth) * 1.1) : 0);
     // hidden while the menu is open: the tab strip runs along the top where the goal line sits

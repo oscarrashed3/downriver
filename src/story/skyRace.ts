@@ -433,7 +433,7 @@ export class SkyRace {
     return [
       { line: { who: 'Gran Wren', text: W.start1 }, tick: k => { g.cutCam = ch.orbit(gate, 8, 3, 1.4 + k * 0.3); } },
       { line: { who: 'Zephy', text: W.start2 }, tick: k => { g.cutCam = ch.orbit(gate, 6, 2.2, 1.8 + k * 0.2); } },
-      { line: { text: W.go }, dur: 1.6, enter: () => { for (let i = 0; i < 3; i++) g.sound.tone(72, i * 0.4, 'bells', 0.5); g.sound.tone(84, 1.2, 'bells', 0.7); } },
+      { line: { text: W.go }, dur: 1.6, enter: () => { for (let i = 0; i < 3; i++) g.sound.tone(72, i * 0.4, 'bells', 0.5); g.sound.tone(84, 1.2, 'bells', 0.7); g.sound.cheer(0.8, 3); } },
     ];
   }
 
@@ -452,10 +452,27 @@ export class SkyRace {
       wren.lookAt = pl.pos.clone().addScaledVector(pl.up, 1.2);
       void w;
     };
+    // every frame: Nilo turned to face her (nothing left over from the flight turns him away)
+    const face = () => {
+      const w = wren.root.getWorldPosition(new THREE.Vector3());
+      const f = w.sub(pl.pos).projectOnPlane(pl.up);
+      if (f.lengthSq() > 1e-4) { pl.facing.copy(f.normalize()); pl.glidePose = 0; pl.sync(); }
+      return wren.root.getWorldPosition(new THREE.Vector3());
+    };
+    // past Gran Wren's shoulder onto Nilo's face (whichever side has no house in the way)
+    let fs = 0;
+    const faceCam = (dist: number, h: number) => {
+      const w = face(), up = pl.up.clone(), dir = w.clone().sub(pl.pos).projectOnPlane(up).normalize();
+      const side = new THREE.Vector3().crossVectors(up, dir).normalize();
+      const look = pl.pos.clone().lerp(w, 0.4).addScaledVector(up, 1.0);
+      const at = (sd: number) => w.clone().addScaledVector(dir, dist).addScaledVector(side, sd * 1.5).addScaledVector(up, h);
+      if (!fs) fs = ch.sightGap(at(1), look) >= ch.sightGap(at(-1), look) ? 1 : -1;
+      return { pos: at(fs), look, up };
+    };
     return [
-      { line: { text: W.lost }, dur: 3.5, enter: meet, tick: k => { g.cutCam = this.twoShot(wren.root.position, 7 - k * 1.5, 3 - k); } },
-      { line: { who: 'Gran Wren', text: W.wren1 }, enter: () => { wren.pose = { cheer: 1 } as Npc['pose']; }, tick: k => { g.cutCam = this.twoShot(wren.root.position, 3.8 - k * 0.3, 1.6); } },
-      { line: { who: 'Gran Wren', text: W.wren2 }, tick: () => { g.cutCam = this.twoShot(wren.root.position, 3.5, 1.6); }, exit: () => { wren.pose = {}; wren.lookAt = null; pl.lookAt = null; ch.sendHome(wren); g.hud.notify(W.again); } },
+      { line: { text: W.lost }, dur: 3.5, enter: meet, tick: k => { g.cutCam = this.twoShot(face(), 7 - k * 1.5, 3 - k); } },
+      { line: { who: 'Gran Wren', text: W.wren1 }, enter: () => { wren.pose = { cheer: 1 } as Npc['pose']; }, tick: k => { g.cutCam = faceCam(2.4 - k * 0.3, 1.5); } },
+      { line: { who: 'Gran Wren', text: W.wren2 }, tick: () => { g.cutCam = this.twoShot(face(), 3.6, 1.6); }, exit: () => { wren.pose = {}; wren.lookAt = null; pl.lookAt = null; ch.sendHome(wren); g.hud.notify(W.again); } },
     ];
   }
 }

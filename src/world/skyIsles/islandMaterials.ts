@@ -92,7 +92,7 @@ const ROCK_GLSL = /* glsl */ `#include <color_fragment>
     float f = fract(yy / (1.1 * s));
     float bedLine = aaStep(f * 1.1 * s, 0.035 * s) * step(0.5, pNoise(q * vec3(0.18, 1.0, 0.18) / s + 3.0));
     bedLine *= step(0.4 * s, vBand.x) * step(0.4 * s, vBand.y) * (1.0 - strip) * strat;
-    float arc = atan(q.z, q.x) * length(q.xz);
+    float arc = atan(q.z, q.x + 1e-5) * length(q.xz);
     rc *= 1.0 - bedLine * 0.07;
     // vertical water stains: soft streaks down the faces, a little deeper and cooler, crossing the beds
     float stn = pNoise(vec3(arc * 0.35 / s, q.y * 0.03 / s, 21.0)) * 0.7 + pNoise(vec3(arc * 1.1 / s, q.y * 0.08 / s, 5.0)) * 0.3;
@@ -660,7 +660,7 @@ export function rainbowMaterial(): THREE.ShaderMaterial {
         vec3 col = clamp(abs(fract(band * 0.82 + vec3(0.0, 0.66, 0.33)) * 6.0 - 3.0) - 1.0, 0.0, 1.0);
         col = mix(col, vec3(1.0), 0.15);
         float a = sin(band * 3.14159);
-        float ang = atan(p.y, p.x);
+        float ang = atan(p.y, p.x + 1e-5);
         // a short segment of the arc, low in the spray
         a *= smoothstep(0.45, 0.95, ang) * smoothstep(2.7, 2.0, ang);
         a *= smoothstep(0.05, 0.4, p.y) * (0.55 + 0.45 * pNoise(vec3(p * 2.5, uTime * 0.1))) * vBehind;

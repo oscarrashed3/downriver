@@ -93,7 +93,7 @@ const CLOTH_VERT = /* glsl */ `
   vec3 edge(float a, float sx) {
     vec3 tip = vec3(uTip.x * sx, uTip.y, uTip.z);
     vec3 b = mix(uTail, tip, a);
-    b.z += uConc * pow(sin(3.14159 * a), 0.8) * (1.0 - 0.25 * a);
+    b.z += uConc * pow(max(sin(3.14159 * a), 0.0), 0.8) * (1.0 - 0.25 * a);
     return b;
   }
   float tri(float x) { return 1.0 - abs(fract(x) * 2.0 - 1.0); }
@@ -128,7 +128,7 @@ const CLOTH_VERT = /* glsl */ `
     pf = p.xz;
     p.y += v * uCrease * zig(a);
     // belly: the sail fills between the keel and the leading edge, deepest two thirds of the way back
-    float fill = pow(sin(3.14159 * a), 0.9) * (1.0 - (1.0 - v) * (1.0 - v)) * (1.0 - 0.25 * v);
+    float fill = pow(max(sin(3.14159 * a), 0.0), 0.9) * (1.0 - (1.0 - v) * (1.0 - v)) * (1.0 - 0.25 * v);
     p.y += uBillow * fill * (0.85 + 0.15 * sin(uPhase * 0.21 + a * 3.0));
     // ripples running back through the cloth, and the trailing edge flutter
     float tr = smoothstep(0.5, 1.0, v);
