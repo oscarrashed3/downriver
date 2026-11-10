@@ -351,6 +351,11 @@ export class Game {
     this.composer = new EffectComposer(this.renderer, rt);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.2, 0.5, 0.96);
+    // A stray non-finite pixel (NaN or Inf from some degenerate triangle) would be smeared by the bloom's blur
+    // into a black screen; the bright pass drops such pixels (finite pixels are untouched, so the look is the same).
+    this.bloom.materialHighPassFilter.fragmentShader = this.bloom.materialHighPassFilter.fragmentShader.replace(
+      'vec4 texel = texture2D( tDiffuse, vUv );',
+      'vec4 texel = texture2D( tDiffuse, vUv ); if ( any( isnan( texel ) ) || any( isinf( texel ) ) ) texel = vec4( 0.0 );');
     this.composer.addPass(this.bloom);
     this.finish = new FinishPass(this.camera);
     this.composer.addPass(this.finish);

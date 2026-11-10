@@ -18,11 +18,11 @@ export default async ({ page, ev }) => {
     window.__pilot = null;
     window.__fly = (via) => { window.__pilot = () => { const R = g.ch2.race, pl = g.player; if (!R.mode || !pl.glider || !pl.glider.open || g.mode !== 'play') return;
       const c = R.course, i = R.passed.findIndex((x, k) => !x && !R.notes.includes(k)); if (i < 0) return; const gt = c.gates[i];
-      let tgt = gt.center.clone().addScaledVector(gt.normal, 1.5);
+      const nn = gt.normal.clone().multiplyScalar(Math.sign(gt.normal.dot(c.dir(c.gateS[i]))) || 1); let tgt = pl.pos.distanceTo(gt.center) < 4 ? gt.center.clone().addScaledVector(nn, 6) : gt.center.clone().addScaledVector(nn, -1.5);
       if (via && via.length && pl.pos.distanceTo(via[0]) < 4) via.shift();
       if (via && via.length && R.passed[via[0].after]) tgt = via[0].clone();
-      const up = pl.up; const h = tgt.clone().sub(pl.pos).projectOnPlane(up).normalize(); pl.glider.heading.lerp(h, 0.25).projectOnPlane(up).normalize();
-      const dh = tgt.distanceTo(g.planets[1].center) - pl.pos.distanceTo(g.planets[1].center); pl.pos.addScaledVector(up, Math.max(-0.25, Math.min(0.25, dh * 0.12)));
+      const up = pl.up; const h = tgt.clone().sub(pl.pos).projectOnPlane(up).normalize(); pl.glider.heading.lerp(h, 0.6).projectOnPlane(up).normalize();
+      const dh = tgt.distanceTo(g.planets[1].center) - pl.pos.distanceTo(g.planets[1].center); pl.pos.addScaledVector(up, Math.max(-0.4, Math.min(0.4, dh * 0.25)));
       g.input.down.add('Space'); }; }; })()`);
   const run = async (ms, draw = true) => { const n = Math.max(1, Math.round(ms / 50)); await ev(`(() => { const g = __game; for (let i = 0; i < ${n}; i++) { g.renderEvery = i === ${n} - 1 && ${draw} ? 1 : 100000; __noon(); window.__pilot?.(); g.frame(); } g.renderEvery = 1; })()`); };
   const beat = () => ev('__game.seq.running ? __game.seq.i : -1');
@@ -54,16 +54,13 @@ export default async ({ page, ev }) => {
       await ev(`(() => { const g = __game, R = g.renderer; window.__scan = () => { g.composer.render(); const rt = g.bloom.renderTargetBright, w = rt.width, h = rt.height, buf = new Uint16Array(w * h * 4); R.readRenderTargetPixels(rt, 0, 0, w, h, buf);
           let n = 0, x0 = 1, y0 = 1, x1 = 0, y1 = 0; for (let i = 0; i < w * h; i++) for (let c = 0; c < 3; c++) if ((buf[i * 4 + c] & 0x7C00) === 0x7C00) { n++; const x = (i % w) / w, y = Math.floor(i / w) / h; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); break; } return { n, box: [x0, y0, x1, y1].map(v => +v.toFixed(3)) }; }; })()`);
       console.log('NAN0', await ev('JSON.stringify(__scan())'));
-      const nm = await ev(`(() => { const set = new Set(); __game.scene.traverseVisible(o => { if (o.material) for (const m of [].concat(o.material)) set.add(m); }); window.__mats = [...set]; return __mats.length; })()`);
-      console.log('mats', nm);
-      for (let k = 0; k < nm; k += 8) console.log('m', k, await ev(`(() => { const ms = __mats.slice(${k}, ${k} + 8); ms.forEach(m => m.visible = false); const r = __scan(); ms.forEach(m => m.visible = true);
-        if (r.n) return r.n; const out = []; for (const m of ms) { m.visible = false; const q = __scan(); m.visible = true; if (!q.n) { let who = ''; __game.scene.traverse(o => { if (!who && o.material && [].concat(o.material).includes(m)) { let a = [], z = o; while (z && a.length < 5) { a.push(z.name || z.type); z = z.parent; } who = a.join('<'); } }); out.push(m.type + ':' + (m.name || '') + ' ' + who); } } return 'FOUND ' + JSON.stringify(out); })()`));
       return; }
 
     console.log(await ev(`(() => { const g = __game, pl = g.player, c = g.camera.position, o = g.rig.override; const P = v => v ? [v.x, v.y, v.z].map(x => x.toFixed(1)).join(',') : 'null';
       return JSON.stringify({ cam: P(c), pl: P(pl.pos), ov: o && P(o.pos), head: P(pl.glider?.heading), open: pl.glider?.open, mode: g.mode, fade: g.hud.fadeEl?.style?.opacity, z: P(g.ch2.npc('zephy').person.root.getWorldPosition(c.clone())) }); })()`));
     for (let i = 0; i < 40 && (await ev('__game.ch2.race.mode')); i++) await run(500, false);
     console.log('qual end', await state());
+    if ((await ev('__game.mode')) === 'cut') { await toBeat(1, 1500); await snap('3-ribbon'); }
     await endCut();
     await ev('window.__pilot = null; __game.input.down.clear()');
     console.log('qual', await state());
