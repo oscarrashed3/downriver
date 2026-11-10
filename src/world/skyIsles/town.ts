@@ -75,6 +75,8 @@ class Dresser {
     return obj;
   }
   solid(obj: THREE.Object3D, r: number, h: number, off?: [number, number]) { this.solids.push({ obj, r, h, off }); }
+  /** Something you bump into at (x, z) that has no object of its own (merged props: barrels, crates, poles). */
+  bump(x: number, z: number, r: number, h: number) { this.solid(this.put(new THREE.Object3D(), x, z), r, h); }
   /** Yaw that turns +Z from (x, z) toward (tx, tz). */
   face(x: number, z: number, tx: number, tz: number) { return Math.atan2(tx - x, tz - z); }
   /** Set everything on the planet. */
@@ -176,6 +178,7 @@ export function dressIsles(w: SkyWorld): Dressing {
       const m = T(s.x, d.ground(s.x, s.z), s.z, 0, kr() * 6, 0);
       if (s.kind === 0) addBarrel(k, m, kr);
       else if (s.kind === 1) addCrate(k, m, kr, 0.55, 0.4, 0.32, kr() > 0.5 ? '#d8443a' : undefined);
+      if (s.kind <= 1) d.bump(s.x, s.z, 0.32, 1);
       else if (s.kind === 2) addSack(k, m, kr, 0.5);
       else addPot(k, m, kr, 0.16, [pickOf(kr, ['#f07aa0', '#ffffff', '#f2d23d', '#e0473b', '#b48ae0'])]);
     }
@@ -311,6 +314,7 @@ export function dressIsles(w: SkyWorld): Dressing {
       g.position.set(q.x, Math.min(d.ground(q.x, q.z), d.ground(q2.x, q2.z)) - 0.04, q.z);
       g.rotation.y = Math.atan2(-(q2.z - q.z), q2.x - q.x);
       d.rigid.push(g); town.add(g);
+      d.bump(q.x, q.z, 0.14, 2.4); d.bump(q2.x, q2.z, 0.14, 2.4);
       d.claim((q.x + q2.x) / 2, (q.z + q2.z) / 2, 2.3);
       lines++;
     }
@@ -403,7 +407,7 @@ export function dressIsles(w: SkyWorld): Dressing {
       const pl = at(0.75, 0.55);
       if (laneDist(pl.x, pl.z) > 0.4) {
         const kinds: PlanterKind[] = ['hydrangea', 'lavender', 'roses', 'mixed'];
-        d.put(flowerPlanter(kinds[i % 4], 5 + i, { width: 0.9 }), pl.x, pl.z, yaw);
+        d.solid(d.put(flowerPlanter(kinds[i % 4], 5 + i, { width: 0.9 }), pl.x, pl.z, yaw), 0.42, 0.8);
       }
       for (const [da, kind] of [[-0.7, 0], [-0.9, 0], [-0.55, 3], [1.1, 1], [1.3, 3], [-1.15, 2]] as const) {
         if ((i + kind) % 3 === 2) continue;
@@ -501,6 +505,7 @@ export function dressIsles(w: SkyWorld): Dressing {
       const g = laundryLine(Math.hypot(x1 - x0, z1 - z0), 11 + n);
       g.position.set(x0, Math.min(d.ground(x0, z0), d.ground(x1, z1)) - 0.04, z0); g.rotation.y = Math.atan2(-(z1 - z0), x1 - x0);
       d.rigid.push(g); town.add(g);
+      d.bump(x0, z0, 0.14, 2.4); d.bump(x1, z1, 0.14, 2.4);
       d.claim((x0 + x1) / 2, (z0 + z1) / 2, 2.2);
       n++;
     }
@@ -670,6 +675,7 @@ export function dressIsles(w: SkyWorld): Dressing {
       const g = new THREE.Group(); bk.build(g, { inkWidth: 0.014 });
       const out = V(20, b);
       d.put(g, q.x, q.z, d.face(q.x, q.z, out.x, out.z));
+      d.solid(g, 0.4, 1, [0.45, 0]); d.solid(g, 0.4, 1, [-0.45, 0]);
       d.claim(q.x, q.z, 1);
     }
     for (const [a, b] of [[-2, 8], [-2, -8.5]] as const) {
