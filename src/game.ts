@@ -385,7 +385,7 @@ export class Game {
       id: 'fox', world: FOX_WORLD, get pos() { return game.fox.f.root.position; }, radius: 3.5, hold: 3,
       label: () => (game.flags.has('fox-joined') ? null : 'Hold E: untangle the kite string from the fox'),
       act: () => {
-        game.give('fox-joined'); game.sound.sfxPlay('chime');
+        game.give('fox-joined'); game.sound.sfxPlay('chime'); game.fox.free();
         game.hud.notify('Strand by strand, the kite string comes away. The fox shakes herself, sniffs your fingers, trots past you, and looks back. <i>She is coming.</i>');
         game.save();
       },
@@ -1178,6 +1178,7 @@ export class Game {
   updateFox(dt: number) {
     const fx = this.fox, joined = this.flags.has('fox-joined');
     fx.f.root.visible = joined ? !this.onRaft && this.mode !== 'ride' : this.cur === FOX_WORLD;
+    fx.f.tangle.visible = !joined;
     if (!fx.f.root.visible) return;
     const p = this.planet;
     if (joined && this.foxWorld !== this.cur) { this.foxWorld = this.cur; fx.place(p, this.player.up.clone()); }

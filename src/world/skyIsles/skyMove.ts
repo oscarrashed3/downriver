@@ -147,7 +147,7 @@ export class SkyMove {
 
   constructor(private g: Game, private world: SkyWorld, private idx: number) {
     const p = world.p;
-    this.see = new SeeThrough(g.scene, () => [world.root, ...(g.ch2 ? [g.ch2.root] : []), ...g.contents[idx].npcs.map(n => n.root), ...(g.fox ? [g.fox.f.root] : [])]);
+    this.see = new SeeThrough(g.scene, () => [world.root, ...(g.ch2 ? [g.ch2.root] : []), ...g.contents[idx].npcs.map(n => n.root)]);
     this.wingVis = new NiloWing(g.player);
     for (const u of UPDRAFTS) {
       const d = p.dirRiver(u.lat, u.off / (p.R * Math.PI / 180 * Math.sin(u.lat * Math.PI / 180)));
