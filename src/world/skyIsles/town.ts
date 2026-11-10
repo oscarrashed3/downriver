@@ -37,7 +37,7 @@ class Dresser {
   readonly rigid: THREE.Object3D[] = [];
   readonly flat = new THREE.Group();
   readonly placed: { x: number; z: number; r: number }[] = [];
-  readonly solids: { obj: THREE.Object3D; r: number; h: number }[] = [];
+  readonly solids: { obj: THREE.Object3D; r: number; h: number; off?: [number, number] }[] = [];
   constructor(readonly w: SkyWorld, readonly isle: Isle, readonly town: TownAnimator) {
     // the bridges' landings stay clear of props and flowers
     for (const q of w.bridgeSpots.get(isle.def.id) ?? []) this.placed.push({ x: q.x, z: q.z, r: q.r });
@@ -74,7 +74,7 @@ class Dresser {
     this.town.add(obj);
     return obj;
   }
-  solid(obj: THREE.Object3D, r: number, h: number) { this.solids.push({ obj, r, h }); }
+  solid(obj: THREE.Object3D, r: number, h: number, off?: [number, number]) { this.solids.push({ obj, r, h, off }); }
   /** Yaw that turns +Z from (x, z) toward (tx, tz). */
   face(x: number, z: number, tx: number, tz: number) { return Math.atan2(tx - x, tz - z); }
   /** Set everything on the planet. */
@@ -96,7 +96,7 @@ class Dresser {
       a.quaternion.copy(s.obj.quaternion);
       a.scale.copy(s.obj.scale);
       w.anchors.add(a);
-      p.solids.push({ obj: a, shape: { kind: 'circle', r: s.r }, h: s.h, id: 'sky' });
+      p.solids.push({ obj: a, shape: { kind: 'circle', r: s.r }, h: s.h, id: 'sky', off: s.off });
     }
   }
 }
@@ -157,7 +157,7 @@ export function dressIsles(w: SkyWorld): Dressing {
   const pennantPole = (seed: number, h = 4.6) => {
     const r = skyRng(seed);
     const kit = new Kit();
-    kit.add(new THREE.CylinderGeometry(0.05, 0.075, h, 7), 'wood', SAIL.weathered, T(0, h / 2, 0));
+    kit.add(new THREE.CylinderGeometry(0.05, 0.08, h + 0.8, 7), 'wood', SAIL.weathered, T(0, (h - 0.8) / 2, 0));
     kit.add(new THREE.SphereGeometry(0.09, 8, 6), 'brass', SAIL.brass, T(0, h + 0.06, 0));
     const c = new THREE.Color(pickOf(r, SAIL.festival)), c2 = new THREE.Color(pickOf(r, SAIL.festival));
     const L = 2.2 + r() * 1.4;
@@ -207,7 +207,11 @@ export function dressIsles(w: SkyWorld): Dressing {
   refs.rings = rings as unknown as THREE.Object3D;
   const ring = (d: Dresser, x: number, z: number, yaw: number, ringH: number, seed: number) => {
     const g = d.put(raceGate({ seed, height: ringH }), x, z, yaw, -0.05);
-    d.solid(g, 0.35, ringH + 3);
+    // the ring hangs from its pole's arm: the pole's foot is what stands on the ground (its plinth runs 1.4 m down,
+    // so on a slope it is buried, never on air), and the pole is what you bump into
+    const px = g.userData.poleX as number, fx = x + Math.cos(yaw) * px, fz = z - Math.sin(yaw) * px;
+    g.position.y = Math.min(d.ground(fx, fz), d.ground(x, z) + 0.6) - 0.08;
+    d.solid(g, 0.5, ringH + 4.5, [px, 0]);
     return g;
   };
 
@@ -304,7 +308,7 @@ export function dressIsles(w: SkyWorld): Dressing {
       const q = V(a, b), q2 = V(a + 4.5, b);
       if (!d.free(q.x, q.z, 0.6) || !d.free(q2.x, q2.z, 0.6) || !d.free((q.x + q2.x) / 2, (q.z + q2.z) / 2, 0.8)) continue;
       const g = laundryLine(4.5, 3 + lines * 4);
-      g.position.set(q.x, d.ground(q.x, q.z), q.z);
+      g.position.set(q.x, Math.min(d.ground(q.x, q.z), d.ground(q2.x, q2.z)) - 0.04, q.z);
       g.rotation.y = Math.atan2(-(q2.z - q.z), q2.x - q.x);
       d.rigid.push(g); town.add(g);
       d.claim((q.x + q2.x) / 2, (q.z + q2.z) / 2, 2.3);
@@ -495,7 +499,7 @@ export function dressIsles(w: SkyWorld): Dressing {
       const r = 4.6, x0 = Math.cos(a) * r, z0 = Math.sin(a) * r, x1 = Math.cos(a + 0.9) * r, z1 = Math.sin(a + 0.9) * r;
       if (!d.free(x0, z0, 0.5, 0, 1.2) || !d.free(x1, z1, 0.5, 0, 1.2) || !d.free((x0 + x1) / 2, (z0 + z1) / 2, 0.8, 0, 1)) continue;
       const g = laundryLine(Math.hypot(x1 - x0, z1 - z0), 11 + n);
-      g.position.set(x0, d.ground(x0, z0), z0); g.rotation.y = Math.atan2(-(z1 - z0), x1 - x0);
+      g.position.set(x0, Math.min(d.ground(x0, z0), d.ground(x1, z1)) - 0.04, z0); g.rotation.y = Math.atan2(-(z1 - z0), x1 - x0);
       d.rigid.push(g); town.add(g);
       d.claim((x0 + x1) / 2, (z0 + z1) / 2, 2.2);
       n++;
@@ -543,7 +547,7 @@ export function dressIsles(w: SkyWorld): Dressing {
         if (!d.free(x, z, 0.3, 6, 1.2)) continue;
         const post = new THREE.Group();
         const pk = new Kit();
-        pk.add(new THREE.CylinderGeometry(0.05, 0.07, 2.4, 6), 'wood', SAIL.weathered, T(0, 1.2, 0));
+        pk.add(new THREE.CylinderGeometry(0.05, 0.075, 3.0, 6), 'wood', SAIL.weathered, T(0, 0.9, 0));
         pk.add(boxM(0.7, 0.07, 0.07, WOOD_TILE), 'wood', SAIL.weathered, T(0.3, 2.35, 0));
         pk.build(post, { inkWidth: 0.014 });
         const ch = doorChimes({ seed: 100 + k, metal: k % 2 ? 'brass' : 'silver', size: 1.1 });
@@ -594,7 +598,7 @@ export function dressIsles(w: SkyWorld): Dressing {
     // the signpost by the arrival
     const sp = isle.at(SPOTS.signpost.lat, SPOTS.signpost.off);
     const sk = new Kit(), sr = skyRng(5);
-    sk.add(boxM(0.14, 2.4, 0.14, WOOD_TILE, true), 'wood', SAIL.weathered, T(0, 1.2, 0));
+    sk.add(boxM(0.14, 3.0, 0.14, WOOD_TILE, true), 'wood', SAIL.weathered, T(0, 0.9, 0));
     const boards: [number, number, string][] = [[2.0, 0.4, '#e9d2a6'], [1.65, -0.9, '#e2c896'], [1.3, 2.3, '#ecd8b0']];
     for (const [y, yaw, c] of boards) {
       sk.add(boxM(1.05, 0.22, 0.05, WOOD_TILE), 'wood', c, T(0.45 * Math.cos(yaw), y, -0.45 * Math.sin(yaw), 0, yaw, (sr() - 0.5) * 0.08));
@@ -662,7 +666,7 @@ export function dressIsles(w: SkyWorld): Dressing {
       const bk = new Kit();
       bk.add(boxM(1.6, 0.08, 0.42, WOOD_TILE), 'wood', SAIL.plank, T(0, 0.46, 0));
       bk.add(boxM(1.6, 0.36, 0.06, WOOD_TILE), 'wood', SAIL.plank, T(0, 0.75, -0.2, -0.15, 0, 0));
-      for (const x of [-0.65, 0.65]) bk.add(boxM(0.1, 0.46, 0.4, WOOD_TILE, true), 'wood', SAIL.weathered, T(x, 0.23, 0));
+      for (const x of [-0.65, 0.65]) bk.add(boxM(0.1, 0.86, 0.4, WOOD_TILE, true), 'wood', SAIL.weathered, T(x, 0.03, 0));
       const g = new THREE.Group(); bk.build(g, { inkWidth: 0.014 });
       const out = V(20, b);
       d.put(g, q.x, q.z, d.face(q.x, q.z, out.x, out.z));

@@ -1116,7 +1116,8 @@ export function laundryLine(length = 5, seed = 1): THREE.Group {
   const H = 2.3, sag = 0.16 + length * 0.055;
   for (const x of [0, length]) {
     const lean = (r() - 0.5) * 0.05;
-    kit.add(postGeo(0.055, 0.075, H + 0.15, 7), 'wood', SAIL.weathered, T(x, (H + 0.15) / 2 - 0.05, 0, lean, 0, (x ? 1 : -1) * 0.04));
+    // (the foot runs 0.9 m into the ground, so on a slope neither pole stands on air)
+    kit.add(postGeo(0.055, 0.075, H + 1.05, 7), 'wood', SAIL.weathered, T(x, (H + 1.05) / 2 - 0.95, 0, lean, 0, (x ? 1 : -1) * 0.04));
     for (const s of [-1, 1]) kit.add(postGeo(0.028, 0.034, 0.34, 5), 'wood', SAIL.weathered, T(x + s * 0.07, H + 0.2, 0, 0, 0, -s * 0.38));
     kit.add(new THREE.IcosahedronGeometry(0.16, 0), 'stone', SAIL.stoneDark, T(x + 0.12, 0.02, 0.08, 0, 0, 0, 1, 0.5, 1));
     // a guy rope pegged into the ground behind each pole
@@ -1317,8 +1318,9 @@ export function awningStall(opts: { seed?: number; width?: number; stripe?: stri
   const wood = new THREE.Color(SAIL.plank), dark = new THREE.Color(SAIL.timber);
   const backH = 2.6, frontH = 2.25;
   for (const sx of [-1, 1]) {
-    kit.add(boxM(0.1, backH, 0.1, WOOD_TILE, true), 'wood', dark, T(sx * W / 2, backH / 2, -D / 2));
-    kit.add(boxM(0.1, frontH, 0.1, WOOD_TILE, true), 'wood', dark, T(sx * W / 2, frontH / 2, D / 2));
+    // (the posts run 0.6 m into the ground)
+    kit.add(boxM(0.1, backH + 0.6, 0.1, WOOD_TILE, true), 'wood', dark, T(sx * W / 2, (backH - 0.6) / 2, -D / 2));
+    kit.add(boxM(0.1, frontH + 0.6, 0.1, WOOD_TILE, true), 'wood', dark, T(sx * W / 2, (frontH - 0.6) / 2, D / 2));
     kit.add(boxM(0.07, 0.07, D, WOOD_TILE), 'wood', dark, T(sx * W / 2, 0.92, 0));
     // little turned finials on the front posts
     kit.add(new THREE.SphereGeometry(0.07, 8, 6), 'wood', dark, T(sx * W / 2, frontH + 0.05, D / 2));
@@ -1920,7 +1922,7 @@ export function raceGate(opts: GateOpts = {}): THREE.Group {
 
   // the pole beside the ring: a stone plinth, a carved and turned shaft, brass collars
   const px = R + a + 1.05, poleTop = cy + R + 2.0, armY = cy + R + 0.62;
-  kit.add(wobble(lathe([[0.82, 0], [0.82, 0.26], [0.64, 0.3], [0.64, 0.55], [0.42, 0.58], [0.42, 0.74], [0.3, 0.76]], 18, STONE_TILE), 0.015, 3, seed), 'stone', SAIL.stone, T(px, 0, 0));
+  kit.add(wobble(lathe([[0.82, -1.4], [0.82, 0.26], [0.64, 0.3], [0.64, 0.55], [0.42, 0.58], [0.42, 0.74], [0.3, 0.76]], 18, STONE_TILE), 0.015, 3, seed), 'stone', SAIL.stone, T(px, 0, 0));
   const shaftR = (y: number) => 0.24 - 0.08 * ((y - 0.76) / (poleTop - 0.76));
   const pp: [number, number][] = [];
   for (let i = 0; i <= 60; i++) {
@@ -2047,6 +2049,8 @@ export function raceGate(opts: GateOpts = {}): THREE.Group {
   g.userData.update = (dt: number, t: number) => chime.update(dt, t);
   chime.update(0, 0);
   g.userData.center = new THREE.Vector3(0, cy, 0);
+  /** Where the pole stands (the ring itself hangs from its arm). */
+  g.userData.poleX = px;
   g.userData.radius = R - a;
   g.userData.tris = kit.tris + ck.tris;
   return g;
