@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { toon } from './props';
 import { addOutlines } from '../render/paint';
 import { orientTo } from './sphere';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Planet } from './planet';
 
 /**
@@ -84,9 +85,34 @@ export function makeFox(): FoxBody {
   const trail = new THREE.CatmullRomCurve3([new THREE.Vector3(0.18, 0.33, -0.1), new THREE.Vector3(0.38, 0.12, -0.25), new THREE.Vector3(0.55, 0.02, -0.1), new THREE.Vector3(0.8, 0.01, -0.35)]);
   tangle.add(new THREE.Mesh(new THREE.TubeGeometry(trail, 24, 0.008, 4), str));
   const bow = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.1, 3), toon('#d8443a')); bow.position.set(0.8, 0.03, -0.35); bow.rotation.set(0, 0, Math.PI / 2); tangle.add(bow);
+  // one mesh per colour per moving part (a few dozen draw calls fewer), then the ink
+  for (const part of [body, head, tangle, ...legs, ...ears, ...tailSegs]) mergeParts(part);
   root.userData.person = true;
   addOutlines(root, '#2e2230', 0.012);
   return { root, body, head, tail, ears, legs, tailSegs, tangle };
+}
+
+/** Merge a group's own meshes that share a material into one (their transforms baked in). */
+function mergeParts(g: THREE.Object3D) {
+  const by = new Map<THREE.Material, THREE.Mesh[]>();
+  for (const c of g.children) {
+    const m = c as THREE.Mesh;
+    if (!m.isMesh || m.children.length) continue;
+    const mat = m.material as THREE.Material;
+    if (!by.has(mat)) by.set(mat, []);
+    by.get(mat)!.push(m);
+  }
+  for (const [mat, ms] of by) {
+    if (ms.length < 2) continue;
+    const geos = ms.map(m => { m.updateMatrix(); return m.geometry.clone().applyMatrix4(m.matrix); });
+    const merged = mergeGeometries(geos);
+    if (!merged) continue;
+    const out = new THREE.Mesh(merged, mat);
+    out.castShadow = ms.some(m => m.castShadow);
+    for (const m of ms) { m.removeFromParent(); m.geometry.dispose(); }
+    for (const q of geos) q.dispose();
+    g.add(out);
+  }
 }
 
 /** The companion: follows, and speaks only with her body. */

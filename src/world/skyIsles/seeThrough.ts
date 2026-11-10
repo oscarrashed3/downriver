@@ -3,6 +3,8 @@
 // circle round him: only the parts nearer the camera than he is, so the ground under his feet and whatever stands
 // behind him stay solid. One set of shared uniforms drives every patched material.
 //
+// Small meshes are also taken out of the shadow pass (see visit).
+//
 // Materials only the Sky Isles use are patched in place; a material World 1 (or any other world) shares is cloned
 // for the sky's meshes first (a ShaderMaterial's clone keeps the very same uniforms object, so its animation still
 // runs), so the other worlds draw exactly as before.
@@ -103,6 +105,11 @@ export class SeeThrough {
     const mesh = o as THREE.Mesh;
     if (mesh.isMesh && !g && !this.done.has(o)) {
       this.done.add(o);
+      // (and the small things cast no shadow: a peg's or a flower's is a speck nobody sees, and a draw call each)
+      if (mesh.castShadow) {
+        if (!mesh.geometry.boundingSphere) mesh.geometry.computeBoundingSphere();
+        if (mesh.geometry.boundingSphere!.radius * o.getWorldScale(this.v).x < 0.6) mesh.castShadow = false;
+      }
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       const out = mats.map(m => this.use(m));
       mesh.material = Array.isArray(mesh.material) ? out : out[0];

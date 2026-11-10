@@ -131,7 +131,12 @@ export class SkyFinish {
     }
   }
 
-  restore() { this.atRest = false; if (this.has('sky:won') && !this.has('chapter2-complete')) this.gatherAtRest(); }
+  restore() {
+    this.atRest = false;
+    if (this.has('sky:won') && !this.has('chapter2-complete')) this.gatherAtRest();
+    // (a save from before the kite frame was kept: it is his all the same)
+    if (this.has('sky:won') && !this.has('item:kite')) this.g.give('item:kite');
+  }
 
   /** Over the line: every chime on every island rings, streamers fly, the crowd roars. */
   finishBeats(): Beat[] {
@@ -142,6 +147,8 @@ export class SkyFinish {
         line: { text: W.chimes }, dur: 5,
         enter: () => {
           g.flags.add('sky:won');
+          // the kite frame (and the glide) are his to keep: in the backpack and the journal from now on
+          g.give('item:kite');
           ch.land(ch.dir([66.5, 10.5])); pl.facing.copy(gate.clone().sub(pl.pos).projectOnPlane(pl.up).normalize()); pl.sync();
           pl.pose = { wave: 1 };
           this.throwStreamers(gate);

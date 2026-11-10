@@ -24,6 +24,7 @@ export const ITEMS: Record<string, ItemDef> = {
   'item:streamer': { id: 'item:streamer', name: 'Festival streamer', text: "Gran Wren's, from the year she won. Faded, and still bright.", icon: 'streamer' },
   'item:racer-ribbon': { id: 'item:racer-ribbon', name: "Racer's ribbon", text: 'Blue and gold. It says you may race in the Sky Races. Zephy tied it on, scowling.', icon: 'ribbon' },
   'item:scarf': { id: 'item:scarf', name: "Lark's yellow scarf", text: 'It still smells of wind and honey pastry. Kept from the Sky Isles.', icon: 'scarf' },
+  'item:kite': { id: 'item:kite', name: "Fold's kite frame", text: 'The light frame from the top of the big windmill. Fold folds round it into a paper glider whenever you jump off an edge and hold on. Kept from the Sky Isles.', icon: 'kite' },
   'item:frost': { id: 'item:frost', name: "Hollo's frost", text: 'A snowflake that does not melt. It fell from Hollo\'s cloud onto your hood. Kept from the Spring Peaks.', icon: 'frost' },
 };
 
@@ -40,7 +41,7 @@ export const TRADES: Trade[] = [
 /** What you keep from each world: one object, one skill, one friend. */
 export const KEPT: { world: string; flag: string; object: string; skill: string; friend: string }[] = [
   { world: 'The Spring Peaks', flag: 'peaks-healed', object: "Hollo's frost", skill: 'Skyreading', friend: 'Hollo, the cloud over the peaks' },
-  { world: 'The Sky Isles', flag: 'chapter2-complete', object: "Lark's yellow scarf", skill: 'Gliding', friend: 'Lark, who flies the yellow kite' },
+  { world: 'The Sky Isles', flag: 'chapter2-complete', object: "Lark's yellow scarf and Fold's kite frame", skill: 'Gliding', friend: 'Lark, who flies the yellow kite' },
 ];
 
 export interface SkillDef { flag: string; name: string; key: string; text: string }
@@ -128,6 +129,7 @@ const ICONS: Record<string, string> = {
   feather: '<path d="M12 40 Q14 18 36 8 Q34 30 12 40 Z" fill="#f4f2ec" stroke="#2e2230" stroke-width="2"/><path d="M12 40 L32 14" stroke="#9a948a" stroke-width="2"/>',
   chime: '<path d="M24 6 V12" stroke="#2e2230" stroke-width="2"/><rect x="18" y="12" width="12" height="4" rx="1" fill="#c8a050" stroke="#2e2230" stroke-width="2"/><path d="M20 16 V36 M24 16 V40 M28 16 V34" stroke="#d8b860" stroke-width="3" stroke-linecap="round"/>',
   streamer: '<path d="M10 10 V42" stroke="#7a5a34" stroke-width="3" stroke-linecap="round"/><path d="M11 12 Q24 8 26 16 Q28 24 40 20" fill="none" stroke="#f2c24a" stroke-width="4" stroke-linecap="round"/><path d="M11 20 Q22 18 24 26 Q26 34 38 32" fill="none" stroke="#4a7cc8" stroke-width="4" stroke-linecap="round"/>',
+  kite: '<path d="M24 6 L38 20 L24 40 L10 20 Z" fill="#f6efe0" stroke="#2e2230" stroke-width="2" stroke-linejoin="round"/><path d="M24 6 V40 M10 20 H38" stroke="#a8784a" stroke-width="2"/><path d="M24 40 Q20 44 26 46 Q32 47 28 42" fill="none" stroke="#c8443a" stroke-width="2.5" stroke-linecap="round"/>',
   frost: '<g stroke="#7ac8f0" stroke-width="3" stroke-linecap="round"><path d="M24 8 V40 M10 16 L38 32 M10 32 L38 16"/></g><circle cx="24" cy="24" r="4" fill="#e8f8ff" stroke="#7ac8f0" stroke-width="2"/>',
 };
 const icon = (k: string) => `<svg viewBox="0 0 48 48" width="48" height="48">${ICONS[k] ?? ''}</svg>`;

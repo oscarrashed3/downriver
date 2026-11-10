@@ -1900,7 +1900,7 @@ export function raceGate(opts: GateOpts = {}): THREE.Group {
   const brass = new THREE.Color('#e2b458'), deep = new THREE.Color('#b8893a'), bright = new THREE.Color('#f3d488');
   // the section: a rounded box with a bead on each corner and a groove either side of the engraved band
   const prof: [number, number][] = [];
-  const N = 40;
+  const N = 28;
   const band: number[] = [];
   for (let i = 0; i < N; i++) {
     const t = (i / N) * Math.PI * 2, c = Math.cos(t), s2 = Math.sin(t);
@@ -1915,10 +1915,10 @@ export function raceGate(opts: GateOpts = {}): THREE.Group {
     const onOuter = Math.abs(Math.atan2(s2, c)) < 0.5, onFace = Math.abs(Math.abs(Math.atan2(s2, c)) - Math.PI / 2) < 0.45;
     band.push(onOuter ? 0.5 + Math.atan2(s2, c) / 0.5 * 0.2 : onFace ? 0.5 + (Math.abs(Math.atan2(s2, c)) - Math.PI / 2) / 0.45 * 0.2 : 0.02);
   }
-  kit.add(ringLathe(R, prof, 120, i => band[i], brass), 'satin', null, T(0, cy, 0));
+  kit.add(ringLathe(R, prof, 84, i => band[i], brass), 'satin', null, T(0, cy, 0));
   // fine bright beading round both faces, and a darker fillet inside
-  for (const z of [b + 0.004, -b - 0.004]) kit.add(new THREE.TorusGeometry(R + a * 0.55, 0.011, 5, 120), 'brass', bright, T(0, cy, z));
-  kit.add(new THREE.TorusGeometry(R - a * 1.0, 0.014, 5, 120), 'brass', deep, T(0, cy, 0));
+  for (const z of [b + 0.004, -b - 0.004]) kit.add(new THREE.TorusGeometry(R + a * 0.55, 0.011, 4, 84), 'brass', bright, T(0, cy, z));
+  kit.add(new THREE.TorusGeometry(R - a * 1.0, 0.014, 4, 84), 'brass', deep, T(0, cy, 0));
 
   // the pole beside the ring: a stone plinth, a carved and turned shaft, brass collars
   const px = R + a + 1.05, poleTop = cy + R + 2.0, armY = cy + R + 0.62;

@@ -667,11 +667,12 @@ export class CloudSea {
     const inside = dCam < this.floorR;
     const thE = inside ? Math.PI : Math.acos(this.floorR / dCam);
     const L = this.seaLayer, th = this.theta;
-    this.seaLayer.refresh(camera, inside ? undefined : (i, cl) => {
+    // (re-sorted every other frame, with a little margin round the view so a quick turn shows no gap)
+    if (this.frame % 2 === 0) this.seaLayer.refresh(camera, inside ? undefined : (i, cl) => {
       const x = L.cx[i], y = L.cy[i], z = L.cz[i];
       const cosA = (x * cl.x + y * cl.y + z * cl.z) / (Math.hypot(x, y, z) * dCam);
       return cosA > Math.cos(Math.min(Math.PI, thE + th[i]));
-    });
+    }, 0.08);
     // far sea: drop heaps inside the horizon circle (the near sea covers them)
     if (this.ringLayer) {
       // the castle is drawn between the puffs behind it and those in front
@@ -687,10 +688,10 @@ export class CloudSea {
       // fade in just inside the sea's horizon circle (the near sea hides what is further in), out into the bands
       const inner = this.limb, T = this.tileLayer, ox = this.slide.x, oz = this.slide.z;
       this.tileMat.uniforms.uRing.value.set(inner * 0.72, inner * 0.98, MID0, MID1);
-      this.tileLayer.refresh(camera, i => {
+      if (this.frame % 2 === 0) this.tileLayer.refresh(camera, i => {
         const r = Math.hypot(T.cx[i] + ox, T.cz[i] + oz);
         return r > inner * 0.7 - T.rad[i] - 25 && r < MID1 + T.rad[i] + 25;
-      });
+      }, 0.08);
     }
   }
 

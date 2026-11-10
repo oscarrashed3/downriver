@@ -742,6 +742,27 @@ export class Game {
   /** Worlds whose story is written. The rest are a quiet bank to rest on, with the way home. */
   worldReady(i: number) { return i === 0 || (this.isSky(i) && !!this.ch2); }
   isSky(i = this.cur) { return WORLDS[i]?.id === 'sky'; }
+  private frozen: THREE.Object3D[] = [];
+  /**
+   * The Sky Isles: everything that belongs to the other worlds (far off, and nothing there moves while you are up
+   * here) stops recomputing its matrices every frame; leaving the sky puts it all back exactly as it was.
+   */
+  private freezeOtherWorlds(on: boolean) {
+    for (const o of this.frozen) o.matrixAutoUpdate = true;
+    this.frozen = [];
+    this.scene.matrixAutoUpdate = !on;
+    if (!on) { this.scene.updateMatrixWorld(true); return; }
+    const sky = this.planets[FOX_WORLD], w = new THREE.Vector3();
+    const keep = new Set<THREE.Object3D>([this.player.root, this.fold.root, this.fold.string, this.fox.f.root, this.beacon, this.sky.mesh, this.sky.clouds, this.cloudSea.group, this.motes.points, this.grass.group, this.blizzard.points]);
+    this.scene.updateMatrixWorld(true);
+    for (const c of this.scene.children) {
+      if (keep.has(c) || (c as THREE.Light).isLight || (c as THREE.Camera).isCamera) continue;
+      c.getWorldPosition(w);
+      if (w.distanceTo(sky.center) < 200) continue;
+      if (!this.planets.some((q, i) => i !== FOX_WORLD && w.distanceTo(q.center) < q.R + 60)) continue;
+      c.traverse(o => { if (o.matrixAutoUpdate) { o.matrixAutoUpdate = false; this.frozen.push(o); } });
+    }
+  }
   /** The Sky Isles' story is running here (after the arrival scene). */
   skyStory() { return this.isSky() && !!this.ch2 && this.flags.has('sky:arrived'); }
 
@@ -1887,10 +1908,11 @@ export class Game {
     this.sky.clouds.visible = far < 0.6;
 
     (this.contents[this.cur].refs.lifeNear as THREE.Vector3 | undefined)?.copy(this.player.pos);
-    for (const c of this.contents) c.animate.forEach(f => f(dt, this.time));
+    // (in the Sky Isles only the sky's own animators run: the other worlds are far off and still)
+    for (const [i, c] of this.contents.entries()) if (!this.isSky() || i === this.cur) c.animate.forEach(f => f(dt, this.time));
     if (this.skyWorld) {
       const inSky = this.cur === FOX_WORLD && this.mode !== 'title';
-      if (inSky !== this.skyWorld.isActive) this.skyWorld.setActive(inSky);
+      if (inSky !== this.skyWorld.isActive) { this.skyWorld.setActive(inSky); this.freezeOtherWorlds(inSky); }
       this.skyWorld.frame(dt, this.time, this.camera);
       this.skyMove?.setActive(inSky);
       if (inSky && this.skyMove) this.skyMove.frame(dt, this.time);
