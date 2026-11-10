@@ -29,7 +29,7 @@ export default async ({ page, ev }) => {
   if (process.env.ONLY === 'w1') { await w1(); return; }
 
   // ---- into World 2, standing where you arrive
-  await ev(`(() => { const g = __game, p = g.planets[1]; g.enterWorld(1, false); g.player.placeAt(p, g.arrivalDir(1)); g.meet = null; g.cutCam = null; g.rig.override = null; g.mode = "play"; })()`);
+  await ev(`(() => { const g = __game, p = g.planets[1]; g.enterWorld(1, false); g.player.placeAt(p, g.arrivalDir(1)); g.meet = null; g.cutCam = null; g.rig.override = null; g.mode = "play"; g.hud.setFade(0, "#fff8ee", true); })()`);
   // page helpers: S = the sky world; P(id, lat, off, h) = a world point h metres over that island's ground there
   await ev(`(() => {
     const g = __game, p = g.planets[1], S = g.contents[1].refs.skyWorld;

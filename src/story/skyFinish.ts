@@ -289,9 +289,9 @@ export class SkyFinish {
           // picture 4: from behind Lark at the fence, the whale whole beyond the lip with Nilo waving on its back,
           // her red kite overhead
           const lp = lark.root.position, ra = this.whale.rideAnchor.getWorldPosition(new THREE.Vector3());
-          const at = (sd: number) => lp.clone().addScaledVector(toWhale, -4.2 + k * 0.5).addScaledVector(along, sd * 3.2).addScaledVector(up, 2.0);
+          const at = (sd: number) => lp.clone().addScaledVector(toWhale, -5.6 + k * 0.5).addScaledVector(along, sd * 3.4).addScaledVector(up, 3.4);
           if (!waveSide) waveSide = ch.sightGap(at(1), ra) >= ch.sightGap(at(-1), ra) ? 1 : -1;
-          g.cutCam = { pos: at(waveSide), look: lp.clone().lerp(ra, 0.5).addScaledVector(up, 1.2), up };
+          g.cutCam = { pos: at(waveSide), look: lp.clone().lerp(ra, 0.5).addScaledVector(up, 2.2), up };
         },
       },
       // and down, through the clouds, to the green lands below

@@ -11,7 +11,7 @@ export default async ({ page, ev }) => {
   for (let i = 0; i < 200 && (await ev('__game.mode')) !== 'play'; i++) { await page.waitForTimeout(150); await ev(`(() => { const g = __game; g.input.pressed.add(g.mode === 'letter' ? 'KeyE' : 'Space'); })()`); }
   await ev(`(() => { const g = __game; g.give('read-letter'); g.meet = null; for (const n of g.contents[0].npcs) g.flags.add('met:' + n.id); })()`);
   for (let i = 0; i < 100 && (await ev('__game.mode')) !== 'play'; i++) { await page.waitForTimeout(200); await ev(`__game.input.pressed.add('Space')`); }
-  await ev(`(() => { const g = __game, p = g.planets[1]; g.enterWorld(1, false); g.player.placeAt(p, g.arrivalDir(1)); g.meet = null; g.cutCam = null; g.rig.override = null; g.mode = "play"; g.saveOff = true; })()`);
+  await ev(`(() => { const g = __game, p = g.planets[1]; g.enterWorld(1, false); g.player.placeAt(p, g.arrivalDir(1)); g.meet = null; g.cutCam = null; g.rig.override = null; g.mode = "play"; g.saveOff = true; g.hud.setFade(0, "#fff8ee", true); })()`);
   const only = process.env.ONLY ? process.env.ONLY.split(',') : null;
   const want = (n) => !only || only.includes(String(n));
   await ev(`(() => { const g = __game; g.fast = 1; g.seq.speed = 1; g.filming = true; g.fixedDt = 0.05; window.__noon = () => g.day.setLocal(g.player.up, 0.5); })()`);
