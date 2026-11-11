@@ -17,7 +17,8 @@ import { makeWindfolk, Crowd, type CrowdSpot } from '../world/skyIsles/windfolk'
 import { KiteParade } from '../world/skyIsles/kites';
 import { SkyWhale } from '../world/skyIsles/whale';
 import { SPOTS } from '../world/skyIsles/layout';
-import { onIsle, skySpotProblem } from '../world/skyIsles/terrain';
+import { onIsle, skySpotProblem, sky } from '../world/skyIsles/terrain';
+import { viewSpot } from '../world/skyIsles/world';
 import { safeSpot } from '../world/spots';
 import { makePostman, type Postman } from '../world/postman';
 import { letterPanel } from './panels';
@@ -110,13 +111,12 @@ export class SkyChapter {
     this.beam.frustumCulled = false; this.beam.renderOrder = 5;
     this.root.add(this.beam);
 
-    // the sketch easels
+    // the two hidden sketch spots: a little easel at an island's lip, nothing else to give them away
     for (const vp of SKY_VIEWPOINTS) {
       const e = easel();
-      const d = this.dir(vp.at);
-      if (!onIsle(p, d, 1)) console.warn(`easel ${vp.id} is off the island`);
-      p.surfacePoint(d, -0.05, e.position);
-      orientTo(e, d, this.at([vp.look[1], vp.look[2]]).sub(e.position).negate());
+      const v = this.view(vp);
+      p.surfacePoint(v.easelDir, -0.05, e.position);
+      orientTo(e, v.easelDir, v.dir.clone().negate());
       this.root.add(e);
       this.easels.push(e);
     }
@@ -205,8 +205,8 @@ export class SkyChapter {
     });
     SKY_VIEWPOINTS.forEach((vp, i) => add({
       id: vp.id, world, pos: this.easels[i].position.clone(), radius: 3.2,
-      walkTo: () => ({ spot: this.at(vp.at), face: this.at([vp.look[1], vp.look[2]]) }),
-      label: () => (g.sketches.some(sk => sk.id === vp.id) ? SKY_PROMPT.sketchAgain : SKY_PROMPT.sketch),
+      walkTo: () => { const v = this.view(vp); return { spot: v.seat, face: v.target }; },
+      label: () => (this.race.active ? null : g.sketches.some(sk => sk.id === vp.id) ? SKY_PROMPT.sketchAgain : SKY_PROMPT.sketch),
       act: () => g.cut(this.sketchBeats(vp)),
     }));
     // the qualifier's start, by the first golden ring; the race's, at the gate in Sailtown
@@ -546,50 +546,98 @@ export class SkyChapter {
     ];
   }
 
-  /** Sit at an easel: the camera settles on the view, and the sketch draws itself (as in World 1). */
+  /** A sketch spot's seat, its easel, and the view it looks at (world space). */
+  view(vp: typeof SKY_VIEWPOINTS[number]) {
+    const T = sky(this.p), isle = T.isle(vp.isle), c = this.p.center;
+    const q = viewSpot(isle, vp.ang, vp.inset);
+    const seatDir = isle.dirAt(q.x, q.z);
+    const seat = this.p.surfacePoint(seatDir, 0.02);
+    const up = seatDir.clone();
+    const tgtIsle = T.isle(vp.look);
+    const target = tgtIsle.toPlanet(0, vp.lookY, 0).add(c);
+    const dir = target.clone().sub(seat).projectOnPlane(up).normalize();
+    const right = new THREE.Vector3().crossVectors(dir, up).normalize();
+    // the easel stands beside him, a little back, on the side away from the view's middle
+    const ePos = seat.clone().addScaledVector(right, -0.95 * vp.side).addScaledVector(dir, -0.35);
+    const easelDir = ePos.sub(c).normalize();
+    // the framed shot: behind him and up, so he sits small on one third of the frame and the view fills the rest
+    // (the horizon on the upper third)
+    // (out to one side of him, so he sits on one third and the thing he is drawing stands near the other)
+    const shot = {
+      pos: seat.clone().addScaledVector(dir, -5).addScaledVector(up, 3).addScaledVector(right, 3.6 * vp.side),
+      look: seat.clone().addScaledVector(dir, 40).addScaledVector(up, -3).addScaledVector(right, -8.3 * vp.side),
+      up,
+    };
+    return { seat, seatDir, up, target, dir, right, easelDir, shot };
+  }
+
+  /**
+   * Sit at a hidden easel: Nilo sits down, the camera glides round to a composed shot of the view, holds there while
+   * the sketch draws itself over it, and glides back behind him.
+   */
   sketchBeats(vp: typeof SKY_VIEWPOINTS[number]): Beat[] {
     const g = this.g, pl = g.player;
-    const from = this.at(vp.at), up = from.clone().sub(this.p.center).normalize();
-    const target = this.at([vp.look[1], vp.look[2]]);
-    const dir = target.clone().sub(from).projectOnPlane(up).normalize();
-    const cam = { pos: from.clone().addScaledVector(up, 2.4).addScaledVector(dir, 0.6), look: target.clone().addScaledVector(up, 3), up };
-    const right = new THREE.Vector3().crossVectors(up, dir).normalize();
-    const settle = (k: number) => ({ pos: from.clone().addScaledVector(dir, -3.6 + k * 0.9).addScaledVector(right, 1.5).addScaledVector(up, 2.3 + k * 0.5),
-      look: from.clone().lerp(target, 0.35 + k * 0.1).addScaledVector(up, 2.2), up });
+    const v = this.view(vp);
     let sk: ReturnType<typeof makeSketch> | null = null;
-    let view: HTMLElement | null = null;
+    let sheet: HTMLElement | null = null;
+    let from: CamPose | null = null;
     const already = g.sketches.some(s => s.id === vp.id);
+    let foldWas = false;
+    const easel = this.easels[SKY_VIEWPOINTS.findIndex(o => o.id === vp.id)];
+    const ease = (k: number) => k * k * k * (k * (k * 6 - 15) + 10);
+    const blend = (k: number): CamPose => {
+      const e = ease(clamp(k));
+      return { pos: from!.pos.clone().lerp(v.shot.pos, e), look: from!.look.clone().lerp(v.shot.look, e), up: from!.up.clone().lerp(v.up, e).normalize() };
+    };
     return [
       {
-        dur: 3.4,
+        dur: 2.6,
         enter: () => {
-          pl.placeAt(this.p, this.dir(vp.at));
-          pl.facing.copy(dir); pl.pose = { sit: 1 }; pl.sync();
-          g.cutCam = settle(0);
+          const cp = g.camera.position.clone();
+          from = { pos: cp, look: cp.clone().add(g.camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(12)), up: g.camera.up.clone() };
+          pl.placeAt(this.p, v.seatDir);
+          pl.facing.copy(v.dir); pl.pose = { sit: 1 }; pl.sync();
           g.hud.setGoal(null);
+          g.cutCam = blend(0);
+          // (the easel that gave the spot away steps out of the picture)
+          if (easel) easel.visible = false;
+          // (and Fold keeps out of the picture too)
+          if (g.skyMove) { foldWas = g.skyMove.foldHidden; g.skyMove.foldHidden = true; }
+          g.fold.root.visible = false;
         },
-        tick: k => { g.cutCam = settle(k * k * (3 - 2 * k)); },
+        tick: k => { g.cutCam = blend(k); },
       },
       {
-        dur: 7, line: { text: vp.label },
+        dur: 7.5, line: { text: vp.label },
         enter: () => {
-          pl.root.visible = false; g.fold.root.visible = false;
-          g.cutCam = cam; g.camera.position.copy(cam.pos); g.camera.up.copy(cam.up); g.camera.lookAt(cam.look);
+          g.cutCam = v.shot;
+          g.camera.position.copy(v.shot.pos); g.camera.up.copy(v.shot.up); g.camera.lookAt(v.shot.look);
           g.composer.render();
           const c = g.renderer.domElement;
           sk = makeSketch(c, c.width, c.height);
-          view = document.createElement('div'); view.className = 'sketchview';
-          view.append(sk.canvas);
-          document.getElementById('ui')!.append(view);
+          sheet = document.createElement('div'); sheet.className = 'sketchview';
+          sheet.append(sk.canvas);
+          document.getElementById('ui')!.append(sheet);
           g.sound.sfxPlay('paper');
         },
-        tick: k => sk?.draw(Math.min(1, k * 1.25)),
+        tick: k => { g.cutCam = v.shot; sk?.draw(Math.min(1, k * 1.25)); },
         exit: () => {
-          if (sk && !already) { g.sketches.push({ id: vp.id, label: vp.label, img: sk.jpeg() }); g.hud.notify(NOTE.sketch); }
-          view?.remove(); view = null;
-          pl.pose = {}; pl.root.visible = true; g.fold.root.visible = true;
+          if (sk && !already) {
+            g.sketches.push({ id: vp.id, label: vp.label, img: sk.jpeg() });
+            const n = g.sketches.filter(s => s.id.startsWith('vp-sky-')).length;
+            g.hud.notify(SKY_NOTE.sketchFound(n, SKY_VIEWPOINTS.length));
+          }
+          sheet?.remove(); sheet = null;
+          pl.pose = {};
+          if (easel) easel.visible = true;
+          if (g.skyMove) g.skyMove.foldHidden = foldWas;
           g.save();
         },
+      },
+      {
+        // he gets up, and the camera glides back behind him
+        dur: 1.4,
+        enter: () => { g.rig.faceDir(pl.up, pl.facing); g.rig.snap(); g.cutCam = null; g.rig.override = null; g.rig.easeFromHere(1.4); },
       },
     ];
   }

@@ -45,6 +45,8 @@ export const SKY_METER = 'Sky Races';
 export const SKY_NOTE = {
   stall: 'The baker at the striped stall presses a warm honey pastry into your hands. <i>For luck!</i>',
   sketch: 'A new page in your sketchbook. <b>B</b>',
+  /** A hidden sketch spot found (n of all of them). */
+  sketchFound: (n: number, of: number) => `A sketch for the sketchbook (<b>K</b>). <i>Hidden views of the Sky Isles: ${n} of ${of}.</i>`,
 };
 
 export const SKY_PROMPT = {
@@ -53,11 +55,17 @@ export const SKY_PROMPT = {
   sketchAgain: 'Sit and sketch the view again',
 };
 
-/** Viewpoints with an easel: where Nilo sits and sketches (lat, off in metres on the islands). */
+/**
+ * The two hidden sketch spots: off every path, never on the compass or the goal line, each by a little easel at an
+ * island's lip with a view worth sitting down for. Place: on island `isle`, `ang` radians round its outline (its own
+ * frame), `inset` metres in from the lip. The view: toward island `look`'s centre, `lookY` metres above its top;
+ * `side` puts Nilo on the left (1) or right (-1) third of the frame.
+ */
 export const SKY_VIEWPOINTS = [
-  { id: 'vp-sky-parade', isle: 'landing', at: [22, 9], look: ['sailtown', 52, 6], label: 'Race day. Kites over every roof in Sailtown.' },
-  { id: 'vp-sky-chimes', isle: 'chime', at: [96, 8], look: ['chime', 110, -4], label: 'The golden rings of the Chime Garden, humming in the wind.' },
-  { id: 'vp-sky-whale', isle: 'whales', at: [168, 6], look: ['whales', 178, 18], label: "Whale's Rest, where the whales come up to watch." },
+  { id: 'vp-sky-mill', isle: 'sailtown', ang: 0.9, inset: 2.6, look: 'windmill', lookY: 5, side: 1,
+    label: 'The big windmill on its own little island, and the rope bridges stepping home across the clouds.' },
+  { id: 'vp-sky-rings', isle: 'mender', ang: -0.3, inset: 1.9, look: 'chime', lookY: 3, side: -1,
+    label: "The Chime Garden's golden rings, and a castle far out on the cloud sea." },
 ] as const;
 
 /** The keeper's letter in the Sky Isles: its first line answers what Nilo wrote back from the Spring Peaks. */

@@ -183,7 +183,10 @@ export class BackpackView {
         return `<div class="letterc"><div class="lf">${esc(l.from)}</div>${letterLines(l, c.sent).map(x => `<p>${esc(x)}</p>`).join('')}${l.id !== 'letter:0' ? `<p class="sig">${esc(l.sign ?? 'the one who keeps the light')}</p>` : ''}${reply}</div>`;
       }).join('') : '<p class="dim">No letters yet.</p>';
     } else {
-      body = c.sketches.length ? `<div class="sketches">${c.sketches.map(s => `<figure><img src="${s.img}" alt=""/><figcaption>${esc(s.label)}</figcaption></figure>`).join('')}</div>`
+      // (the Sky Isles' hidden views: counted once you have found one, so the others stay a secret to wander for)
+      const skyN = c.sketches.filter(s => s.id.startsWith('vp-sky-')).length;
+      const skyLine = skyN ? `<p class="dim">Hidden views of the Sky Isles: ${skyN} of 2</p>` : '';
+      body = c.sketches.length ? `${skyLine}<div class="sketches">${c.sketches.map(s => `<figure><img src="${s.img}" alt=""/><figcaption>${esc(s.label)}</figcaption></figure>`).join('')}</div>`
         : '<p class="dim">Find a viewpoint, sit down, and the view will draw itself here.</p>';
     }
     this.el.innerHTML = `<div class="sheet bagsheet"><div class="tabs">${tabs}</div><h2>${this.tab === 'bag' ? 'Backpack' : this.tab === 'letters' ? 'Letters' : 'Sketchbook'}</h2>${body}</div>`;

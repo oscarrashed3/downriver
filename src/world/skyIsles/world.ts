@@ -10,6 +10,7 @@ import type { Planet } from '../planet';
 import { buildFloatingIsland, floatingRock } from './island';
 import { sky, POOL_R, type Isle } from './terrain';
 import { BRIDGES, PADS, UPDRAFTS } from './layout';
+import { SKY_VIEWPOINTS } from '../../data/skyStory';
 import { bendGroup, placeRigid } from './bend';
 import { aqueduct } from './aqueduct';
 import { ropeBridge, bridgeFootprint } from './ropeBridge';
@@ -45,6 +46,7 @@ export class SkyWorld {
     this.isles = T.isles;
     planZones(this);
     this.planBridges();
+    this.planViews();
     this.buildIsles();
     this.buildRiver();
     this.buildBridges();
@@ -114,6 +116,26 @@ export class SkyWorld {
           this.bareGrass.push({ dir: f.isle.dirAt(q.x, q.z), cosIn: Math.cos(r / f.isle.Rt), cosOut: Math.cos((r + 1.2) / f.isle.Rt) });
         }
       }
+    }
+  }
+
+  /**
+   * The hidden sketch spots: nothing tall grows or stands there (no tree, house or prop between Nilo and his view),
+   * and the grass stays short where he sits.
+   */
+  private planViews() {
+    const T = sky(this.p);
+    for (const vp of SKY_VIEWPOINTS) {
+      const isle = T.isle(vp.isle), id = vp.isle;
+      const q = viewSpot(isle, vp.ang, vp.inset);
+      const pts = [q, { x: q.x * 0.82, z: q.z * 0.82 }];
+      const list = this.bridgeSpots.get(id) ?? [];
+      for (const p of pts) list.push({ x: p.x, z: p.z, r: 4.2 });
+      this.bridgeSpots.set(id, list);
+      const cz = this.clearZones.get(id) ?? [];
+      for (const p of pts) cz.push({ x: p.x, z: p.z, r: 5.5 });
+      this.clearZones.set(id, cz);
+      this.bareGrass.push({ dir: isle.dirAt(q.x, q.z), cosIn: Math.cos(1.6 / isle.Rt), cosOut: Math.cos(3 / isle.Rt) });
     }
   }
 
@@ -350,4 +372,10 @@ export class SkyWorld {
       w.whale.update(dt, t);
     }
   }
+}
+
+/** Where a sketch spot sits on its island (local x, z): `ang` round the outline, `inset` metres in from the lip. */
+export function viewSpot(isle: Isle, ang: number, inset: number) {
+  const r = isle.shape.outline(ang) - inset;
+  return { x: Math.cos(ang) * r, z: Math.sin(ang) * r };
 }
