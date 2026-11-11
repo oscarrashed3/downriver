@@ -107,6 +107,8 @@ class NiloWing {
 interface Rescue {
   phase: 'sink' | 'catch' | 'rise' | 'hop';
   t: number;
+  /** How fast he was falling when the cloud tops took him (so he sinks in softly instead of stopping dead). */
+  v0?: THREE.Vector3;
   whale: boolean;
   /** Path (world space) from under the cloud to beside the island's lip. */
   curve: THREE.Curve<THREE.Vector3>;
@@ -245,6 +247,18 @@ export class SkyMove {
   };
 
   private floor = (dir: THREE.Vector3, r: number) => this.world.p.groundBelow(dir, r);
+  /** Off a lip and falling below the ground the camera stands over: it holds up there and watches (camera.ts). */
+  private watching = false;
+  /** How far from the centre he last stood on something. */
+  private groundR = 0;
+  private watch = () => {
+    const g = this.g, pl = g.player, p = this.world.p;
+    if (this.rescue) return this.watching = this.watching && this.rescue.phase === 'sink';
+    if (pl.grounded || pl.onDeck || pl.glider?.open || this.climb || g.mode !== 'play') return this.watching = false;
+    // over open sky, falling, and well below where he last stood (a hop down onto a cloud pad is caught too, and let go softly as he lands)
+    if (!this.watching && pl.vel.dot(pl.up) < -1 && !isleAt(p, pl.up)) this.watching = pl.pos.distanceTo(p.center) < this.groundR - 0.8;
+    return this.watching;
+  };
 
   /** Called every frame (any mode): switch the World 2 rules on or off. */
   setActive(on: boolean) {
@@ -253,7 +267,7 @@ export class SkyMove {
     const pl = this.g.player;
     if (!on) {
       pl.glider = null; pl.liftAt = null; pl.collide = null; pl.diveHeld = false; pl.glideSteer = null;
-      this.g.rig.floor = null; this.g.rig.follow = null; this.g.rig.smoothBlock = false;
+      this.g.rig.floor = null; this.g.rig.follow = null; this.g.rig.smoothBlock = false; this.g.rig.watch = null; this.watching = false;
       this.see.off();
       this.wingVis.detach();
       this.g.fold.root.visible = true;
@@ -261,7 +275,7 @@ export class SkyMove {
       this.endRescue();
     } else {
       pl.liftAt = this.lift; pl.collide = this.collide;
-      this.g.rig.floor = this.floor; this.g.rig.smoothBlock = true;
+      this.g.rig.floor = this.floor; this.g.rig.smoothBlock = true; this.g.rig.watch = this.watch;
       this.scanT = 0;
     }
   }
@@ -292,6 +306,7 @@ export class SkyMove {
   afterMove() {
     const pl = this.g.player, p = this.world.p;
     const r = pl.pos.distanceTo(p.center);
+    if (pl.grounded) this.groundR = r;
     // remember the last good ground on an island, well in from its lip
     if (pl.grounded && !pl.onDeck && onIsle(p, pl.up, 2.2)) {
       this.safeT += 1 / 60;
@@ -376,7 +391,7 @@ export class SkyMove {
     const endUp = end.clone().sub(p.center).normalize();
     const curve = this.liftPath(is, a, s0, end, lipH);
     const dist = curve.getLength();
-    this.rescue = { phase: 'sink', t: 0, whale, curve, land, from, face: land.clone().sub(end).projectOnPlane(endUp).normalize(), dur: clamp(dist / 6.5, 4.2, 8) };
+    this.rescue = { phase: 'sink', t: 0, whale, curve, land, from, v0: pl.vel.clone(), face: land.clone().sub(end).projectOnPlane(endUp).normalize(), dur: clamp(dist / 6.5, 4.2, 8) };
     if (pl.glider) pl.glider.open = false;
     pl.vel.set(0, 0, 0);
     // the carrier comes up from under the cloud tops
@@ -454,7 +469,9 @@ export class SkyMove {
       // sinking softly into the cloud tops; the carrier comes up under him
       const e = sstep(0, 0.8, R.t);
       const goal = R.curve.getPointAt(0);
-      pl.pos.lerpVectors(R.from, goal, e);
+      // his fall carries on a little into the cloud, slowing, while he is drawn to where the carrier meets him
+      const drift = R.v0 ? _w.copy(R.v0).multiplyScalar((1 - Math.exp(-7 * R.t)) / 7) : _w.set(0, 0, 0);
+      pl.pos.copy(R.from).add(drift).lerp(goal, e);
       const below = goal.clone().addScaledVector(up, -6 + 6 * sstep(0.2, 0.85, R.t));
       this.placeCarrier(below, up, R.face);
       pl.grounded = false; pl.up.copy(up);

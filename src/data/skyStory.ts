@@ -65,7 +65,7 @@ export const SKY_VIEWPOINTS = [
   { id: 'vp-sky-mill', isle: 'sailtown', ang: 0.9, inset: 2.6, look: 'windmill', lookY: 5, side: 1,
     label: 'The big windmill on its own little island, and the rope bridges stepping home across the clouds.' },
   { id: 'vp-sky-rings', isle: 'mender', ang: -0.3, inset: 1.9, look: 'chime', lookY: 3, side: -1,
-    label: "The Chime Garden's golden rings, and a castle far out on the cloud sea." },
+    label: "The Chime Garden's golden rings, ringing softly over the cloud sea." },
 ] as const;
 
 /** The keeper's letter in the Sky Isles: its first line answers what Nilo wrote back from the Spring Peaks. */

@@ -707,7 +707,11 @@ export class Game {
     this.mode = 'cut';
     this.input.unlock();
     this.hud.setPrompt(null);
-    this.seq.run(beats, () => { this.cutCam = null; this.rig.override = null; if (this.mode === 'cut') this.mode = 'play'; done?.(); });
+    this.seq.run(beats, () => {
+      // the Sky Isles: a scene's last shot glides back behind Nilo instead of cutting (unless he is far from it)
+      if (this.isSky() && (this.cutCam || this.rig.override) && !this.rig.easing && this.camera.position.distanceTo(this.rig.pos) < 30) this.rig.easeFromHere(1);
+      this.cutCam = null; this.rig.override = null; if (this.mode === 'cut') this.mode = 'play'; done?.();
+    });
   }
 
   // ------------------------------------------------------------------ worlds
@@ -794,6 +798,20 @@ export class Game {
 
   /** Compile every material in view-independent order so a new world's first frame doesn't stall. */
   warmUp() { try { this.renderer.compile(this.scene, this.camera); } catch { /* ignore */ } }
+  /**
+   * The Sky Isles, once, on the way in: compile the shaders of everything there that is still hidden (the race
+   * rings, the whale at the end, the glider, the rescue pad...), so nothing stalls a frame the first time it shows.
+   */
+  private skyWarm = false;
+  private warmUpSky() {
+    if (this.skyWarm) return;
+    this.skyWarm = true;
+    const shown: THREE.Object3D[] = [];
+    const roots: THREE.Object3D[] = []; if (this.skyWorld) roots.push(this.skyWorld.root); if (this.ch2) roots.push(this.ch2.root);
+    for (const r of roots) r.traverse(o => { if (!o.visible) { o.visible = true; shown.push(o); } });
+    try { this.renderer.compile(this.scene, this.camera); } catch { /* ignore */ }
+    for (const o of shown) o.visible = false;
+  }
 
   visited(): Set<number> {
     const s = new Set<number>();
@@ -1266,15 +1284,21 @@ export class Game {
     if (this.meet) {
       const m = this.meet, up = this.player.up;
       m.t += dt;
-      if (m.npc.root.position.distanceTo(this.player.pos) > 12) m.t = Math.max(m.t, 1.8);
+      // (the Sky Isles turn a little slower, so it reads as a glance and not a whip)
+      const [tIn, tOut0, tEnd] = this.isSky() ? [0.75, 1.55, 2.3] : [0.45, 1.35, 1.8];
+      if (m.npc.root.position.distanceTo(this.player.pos) > 12) m.t = Math.max(m.t, tEnd);
       const head = m.npc.root.position.clone().addScaledVector(m.npc.up, 1.45);
       const across = m.npc.root.position.clone().sub(this.player.pos).projectOnPlane(up).normalize();
       const side = new THREE.Vector3().crossVectors(up, across).normalize();
       // a close, slightly low portrait of their face, from the side you are coming from
       const frame = { pos: head.clone().addScaledVector(across, -3.4).addScaledVector(side, 1.3).addScaledVector(up, 0.15), look: head.clone().addScaledVector(up, -0.15), up };
-      const k = smoothstep(0, 0.45, m.t) * (1 - smoothstep(1.35, 1.8, m.t));
+      const k = smoothstep(0, tIn, m.t) * (1 - smoothstep(tOut0, tEnd, m.t));
       this.cutCam = { pos: m.from.pos.clone().lerp(frame.pos, k), look: m.from.look.clone().lerp(frame.look, k), up };
-      if (m.t > 1.8) { this.meet = null; this.cutCam = null; this.rig.override = null; }
+      if (m.t > tEnd) {
+        // (the Sky Isles: if the follow camera moved meanwhile, glide to it instead of jumping)
+        if (this.isSky()) this.rig.easeFromHere(0.6);
+        this.meet = null; this.cutCam = null; this.rig.override = null;
+      }
       return;
     }
     if (this.cur === 0 ? !this.flags.has('read-letter') : !this.skyStory()) return;
@@ -1931,7 +1955,7 @@ export class Game {
     for (const [i, c] of this.contents.entries()) if (!this.isSky() || i === this.cur) c.animate.forEach(f => f(dt, this.time));
     if (this.skyWorld) {
       const inSky = this.cur === FOX_WORLD && this.mode !== 'title';
-      if (inSky !== this.skyWorld.isActive) { this.skyWorld.setActive(inSky); this.freezeOtherWorlds(inSky); }
+      if (inSky !== this.skyWorld.isActive) { this.skyWorld.setActive(inSky); this.freezeOtherWorlds(inSky); if (inSky) this.warmUpSky(); }
       this.skyWorld.frame(dt, this.time, this.camera);
       this.skyMove?.setActive(inSky);
       if (inSky && this.skyMove) this.skyMove.frame(dt, this.time);

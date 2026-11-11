@@ -101,8 +101,32 @@ export function ropeBridge(p: Planet, a: Isle, b: Isle, width: number, sag: numb
     else y = hung(x);
     xs.push(x); ys.push(y);
   }
-  // soften the landings (a plank walk does not follow every ripple of the meadow)
-  for (let pass = 0; pass < 2; pass++) for (let i = 1; i < ys.length - 1; i++) if (xs[i] < xa - 0.5 || xs[i] > xb + 0.5) ys[i] = (ys[i - 1] + ys[i] * 2 + ys[i + 1]) / 4;
+  // soften the whole walk like a rope laid over the ground: no kink where the landings meet the hung span, and a lip
+  // that rises a little at its edge lifts the planks over it in one soft swell instead of poking up through them
+  // (a kink or a step would throw you off the planks walking down)
+  const floorY = xs.map(x => {
+    const g = x < xa + 0.6 ? under(a, x, -Infinity) : x > xb - 0.6 ? under(b, x, -Infinity) : -Infinity;
+    return g + 0.05;
+  });
+  for (let pass = 0; pass < 40; pass++) {
+    for (let i = 1; i < ys.length - 1; i++) ys[i] = (ys[i - 1] + ys[i] * 2 + ys[i + 1]) / 4;
+    for (let i = 0; i < ys.length; i++) ys[i] = Math.max(ys[i], floorY[i]);
+  }
+  // (and a last few passes free, so the planks bend round a sharp lip instead of folding over it)
+  for (let pass = 0; pass < 14; pass++) for (let i = 1; i < ys.length - 1; i++) ys[i] = (ys[i - 1] + ys[i] * 2 + ys[i + 1]) / 4;
+  // and the last stretch of each landing ramps down to the grass along the middle, so stepping off is no step at all
+  for (let i = 0; i < ys.length; i++) {
+    const e = Math.min(xs[i] - x0, x1 - xs[i]);
+    if (e >= 0.8) continue;
+    // (the ground straight under the plank itself, not under the chord: they differ a little out at the ends)
+    const is = xs[i] < (x0 + x1) / 2 ? a : b;
+    _d.copy(base).addScaledVector(xAxis, xs[i]).addScaledVector(up, ys[i]).normalize();
+    const h = is.heightAt(_d);
+    if (h === null) continue;
+    const g = _g.copy(_d).multiplyScalar(p.R + h).sub(base).dot(up);
+    const k = 1 - e / 0.8, s = k * k * (3 - 2 * k);
+    ys[i] += (Math.min(ys[i], g + 0.02) - ys[i]) * s;
+  }
   const top = (x: number) => {
     const f = Math.max(0, Math.min(xs.length - 1.0001, (x - x0) / step));
     const i = Math.floor(f), k = f - i;

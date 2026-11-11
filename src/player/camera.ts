@@ -36,6 +36,13 @@ export class CameraRig {
   /** How strongly to follow (0..1). */
   followK = 0;
   private stillT = 0;
+  /**
+   * Sky Isles: true while Nilo drops off a lip below the ground the camera stands over. The camera stops following
+   * him down (it would go into the island's rock) and drifts out over him, watching from above. Null elsewhere.
+   */
+  watch: (() => boolean) | null = null;
+  private watchK = 0;
+  private watchAt: THREE.Vector3 | null = null;
   /** Blend from an earlier shot into whatever the camera is doing now. */
   private ease: { pos: THREE.Vector3; look: THREE.Vector3; up: THREE.Vector3; t: number; dur: number } | null = null;
   private shown = { pos: new THREE.Vector3(), look: new THREE.Vector3(), up: new THREE.Vector3(0, 1, 0) };
@@ -102,6 +109,22 @@ export class CameraRig {
     const gr = goal.distanceTo(planet.center);
     const minR = (this.floor ? this.floor(cdir, gr) : planet.surfaceRadius(cdir)) + 1.1;
     if (gr < minR) goal.copy(cdir.multiplyScalar(minR).add(planet.center));
+    if (this.watch) {
+      const on = this.watch();
+      if (on && !this.watchAt) this.watchAt = this.pos.clone();
+      this.watchK += ((on ? 1 : 0) - this.watchK) * (1 - Math.exp(-(on ? 10 : 2.5) * dt));
+      if (this.watchAt) {
+        if (on) {
+          // out over where he is falling, a little behind him, held up at the height of the lip he fell from (lower,
+          // and it would meet the cliff), looking down as the clouds catch him
+          const c = planet.center, hr = this.watchAt.distanceTo(c), pr = target.distanceTo(c);
+          const w = target.clone().sub(c).normalize().multiplyScalar(Math.max(hr, pr + 4)).add(c).addScaledVector(f, -2.5);
+          this.watchAt.lerp(w, 1 - Math.exp(-2.2 * dt));
+        }
+        goal.lerp(this.watchAt, this.watchK);
+        if (!on && this.watchK < 0.01) { this.watchAt = null; this.watchK = 0; }
+      }
+    }
     const lookGoal = target.clone().addScaledVector(this.smoothUp, 1.3);
     if (!this.init) { this.pos.copy(goal); this.look.copy(lookGoal); this.init = true; }
     this.pos.lerp(goal, 1 - Math.exp(-9 * dt));
@@ -112,7 +135,8 @@ export class CameraRig {
     // never inside a house or a rock: push in toward the look point
     if (this.block && (!this.override || this.blockOverride)) {
       let k = this.block(look, pos);
-      if (this.smoothBlock && !this.override) {
+      // (smoothed for a talk shot too: its push-in must not flicker frame to frame)
+      if (this.smoothBlock) {
         this.blockK += (k - this.blockK) * (1 - Math.exp(-(k < this.blockK ? 14 : 2.5) * dt));
         k = Math.min(1, this.blockK + 0.06);
       }
@@ -145,5 +169,5 @@ export class CameraRig {
   }
   get easing() { return !!this.ease; }
 
-  snap() { this.init = false; }
+  snap() { this.init = false; this.watchAt = null; this.watchK = 0; }
 }
