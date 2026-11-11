@@ -340,10 +340,7 @@ export class SkyMove {
     if (this.raft) this.raft.update(dt, t);
     if (this.whale && this.whale.root.visible) this.whale.update(dt, t);
     if (this.fade) this.updateFade(dt);
-    // trees, houses and windmills between the camera and Nilo melt away round him
-    if ((this.scanT -= dt) <= 0) { this.scanT = 4; this.see.scan(); }
-    const free = (this.g.mode === 'play' || this.g.mode === 'talk') && !this.g.rig.override;
-    this.see.update(dt, free, this.g.camera, _w.copy(pl.pos).addScaledVector(pl.up, 0.9), this.g.renderer);
+    // (no see-through melt: like World 1, the camera pushes in past houses and trees instead; Oscar 2026-11-11)
   }
 
   // ------------------------------------------------------------------ the soft fall
