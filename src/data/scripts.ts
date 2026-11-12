@@ -588,7 +588,7 @@ export const RETURN_LINES: Record<string, ReturnSet[]> = {
       'Lovely handwriting, your writer. Slanted, like they never stop walking.',
     ] },
     { when: ['visited:1'], lines: ['The Sky Isles. My umbrella loves it there. I mostly hold on.', 'Island mail. You throw it, and hope.'] },
-    { when: ['visited:2'], lines: ['That garden. A bee sat on my hat for an hour. A very polite bee.'] },
+    { when: ['visited:2'], lines: ['That walking town. I delivered to a chimney once. It was going the other way.'] },
     { when: ['visited:3'], lines: ['The sea. Every letter gets wet there. Nobody minds.'] },
     { when: ['visited:4'], lines: ['Desert mail is the worst. The sand reads everything first.', 'All those colours. I go the long way round, on purpose.'] },
     { when: ['visited:5'], lines: ['Lantern Town. The end of my route. Or the start. I forget which.'] },

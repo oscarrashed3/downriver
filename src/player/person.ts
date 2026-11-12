@@ -73,6 +73,8 @@ export interface PoseInput {
   shiver?: number;
   shield?: number;
   touchChest?: number;
+  /** The right hand held up over the head (holding an umbrella), 0..1. */
+  holdUp?: number;
   smile?: number;
   talking?: boolean;
   idle?: IdleKind;
@@ -578,6 +580,7 @@ export class Person {
         x = lerp(x, -0.3, wave); z = lerp(z, 2.6 + Math.sin(t * 9) * 0.25 * 0, wave); el = lerp(el, -0.6 + Math.sin(t * 9) * 0.45, wave);
         x = lerp(x, -2.3, shield); z = lerp(z, -0.35, shield); el = lerp(el, -1.9, shield);
         x = lerp(x, -0.8, chest); z = lerp(z, -0.6, chest); el = lerp(el, -1.85, chest);
+        if (p.holdUp) { x = lerp(x, -2.75, p.holdUp); z = lerp(z, -0.25, p.holdUp); el = lerp(el, -0.35, p.holdUp); }
       }
       x = lerp(x, -0.2, surprise); z = lerp(z, 0.7 * s, surprise); el = lerp(el, -0.6, surprise);
       // landing: arms swing out for balance; rolling: hug the knees

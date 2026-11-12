@@ -70,15 +70,17 @@ export const WORLDS: WorldConfig[] = [
     music: 'lyre', hour: { elev: 0.93 },
   },
   {
-    id: 'garden', name: 'The Overgrown Garden', subtitle: 'where small things grow tall', shape: 'garden',
-    center: placeAt(2), radius: 54, seed: 37, detail: 56, amplitude: 4,
-    riverStartLat: 4, meander: 26, meanderWaves: 3, riverWidth: 2.2, riverBed: 0.7, bankWidth: 3, waterDepth: 0.5,
+    // (the id stays 'garden' so saves from before keep their place; the world itself is the Walking Town)
+    id: 'garden', name: 'Walking Town', subtitle: 'where the village walks', shape: 'garden',
+    center: placeAt(2), radius: 120, seed: 37, detail: 120, amplitude: 9, ocean: 0.45, valleyWidth: 20,
+    riverStartLat: 4, meander: 14, meanderWaves: 2, riverWidth: 2.8, riverBed: 0.8, bankWidth: 4.5, waterDepth: 0.5,
     palette: {
-      low: '#6cc25e', mid: '#8fd66c', high: '#b4e070', rock: '#a89a86', bank: '#d8d0a0', dab: '#a8e88a', path: '#e2d2a8',
-      water: '#a6e8d8', waterDeep: '#3f9a8a',
-      light: '#ffe2a8', ambient: '#c0a8b8', fog: '#f6e2c8', skyTop: '#86b4e0', skyHorizon: '#ffe6c4',
+      // a golden meadow on green rolling hills, blue rock and snow on the far mountains (planet.ts)
+      low: '#d6b84e', mid: '#b4b450', high: '#7fa456', rock: '#8e98ae', bank: '#d9cc96', dab: '#e6cc62', path: '#e0cf9c',
+      snow: '#f4f6fb', water: '#8ccbe0', waterDeep: '#3f7fa8',
+      light: '#ffeac4', ambient: '#a6bcd8', fog: '#d6e4f0', skyTop: '#5c9ae6', skyHorizon: '#cfe4f6',
     },
-    music: 'marimba', hour: { elev: 0.45 },
+    music: 'marimba', hour: { elev: 0.62 },
   },
   {
     id: 'sea', name: 'The Endless Sea', subtitle: 'many shores, one river', shape: 'sea',

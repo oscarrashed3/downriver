@@ -9,9 +9,9 @@ import { PIECES } from '../src/systems/mapView';
 import { WORLD_TASKS } from '../src/data/story';
 
 describe('The six worlds', () => {
-  it('are the peaks, the sky isles, the garden, the sea, the desert and lantern town, in that order', () => {
+  it('are the peaks, the sky isles, the walking town, the sea, the desert and lantern town, in that order', () => {
     expect(WORLDS.map(w => w.id)).toEqual(['peaks', 'sky', 'garden', 'sea', 'desert', 'lantern']);
-    expect(WORLDS.map(w => w.name)).toEqual(['The Spring Peaks', 'The Sky Isles', 'The Overgrown Garden', 'The Endless Sea', 'The Painted Desert', 'Lantern Town']);
+    expect(WORLDS.map(w => w.name)).toEqual(['The Spring Peaks', 'The Sky Isles', 'Walking Town', 'The Endless Sea', 'The Painted Desert', 'Lantern Town']);
   });
   it('read as one day: each world after the first keeps an hour, ending at sunset and then night', () => {
     expect(WORLDS[0].hour).toBeUndefined();
@@ -34,8 +34,8 @@ describe('The six worlds', () => {
   it('hang one below the other, each lower than the last', () => {
     for (let i = 1; i < WORLDS.length; i++) expect(WORLDS[i].center.y).toBeLessThan(WORLDS[i - 1].center.y);
   });
-  it('only the sea has an ocean', () => {
-    expect(WORLDS.filter(w => w.ocean).map(w => w.id)).toEqual(['sea']);
+  it('only the Walking Town (its lake and coast) and the sea have an ocean', () => {
+    expect(WORLDS.filter(w => w.ocean).map(w => w.id)).toEqual(['garden', 'sea']);
   });
   it('nobody hands out a map of a world that no longer exists', () => {
     const ids = new Set(WORLDS.map(w => w.id));

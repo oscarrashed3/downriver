@@ -37,12 +37,13 @@ export default function (ctx: LabCtx): LabPiece {
   }
   const v = (p: THREE.Vector3): [number, number, number] => [p.x, p.y, p.z];
   // the walkway view: behind and above Nilo, looking along the walk to the front, houses uphill on the left
-  const wc = ring.P(iw + 4, 1.2).add(new THREE.Vector3(0, 3.0, 0));
-  const wl = ring.P(iw - 5, 0.0).add(new THREE.Vector3(0, 3.0, 0));
+  const at = (th: number) => ring.ths.findIndex(t => t > th);
+  const wc = ring.P(at(Number(params.get('wth') ?? 3.3)), 0.72).add(new THREE.Vector3(0, 1.9, 0));
+  const wl = ring.P(at(Number(params.get('wth2') ?? 2.55)), 0.2).add(new THREE.Vector3(0, 1.4, 0));
   // inside a walk-in house: from a back corner towards the door and the window
   const h = town.houses.find(x => x.walkIn && x.name === 'Bramble Cottage') ?? town.houses.find(x => x.walkIn)!;
   const loc = (lx: number, ly: number, lz: number) => { const c = Math.cos(h.rot), s = Math.sin(h.rot); return new THREE.Vector3(h.at.x + lx * c + lz * s, h.at.y + ly, h.at.z - lx * s + lz * c); };
-  const inPos = loc(-h.w / 2 + 0.75, 1.55, -h.d / 2 + 2.3), inLook = loc(h.w / 2 - 0.8, 1.0, h.d / 2 - 0.6);
+  const inPos = loc(h.w / 2 - 0.55, 1.65, h.d / 2 - 0.55), inLook = loc(-h.w / 2 + 1.1, 0.75, -h.d / 2 + 0.7);
   const F = FOOT_REST.FR, Hd = REST[BONE.head];
   const views: Record<string, LabView> = {
     threeq: { pos: [-74, 11, 58], look: [-1, 19, 3], fov: 46 },
@@ -50,6 +51,7 @@ export default function (ctx: LabCtx): LabPiece {
     walk: { pos: v(wc), look: v(wl), fov: 62 },
     inside: { pos: v(inPos), look: v(inLook), fov: 72 },
     legs: { pos: [F.x - 20, 3.5, F.z + 20], look: [F.x + 2, 7, F.z - 4], fov: 55 },
+    headclose: { pos: [Hd.x - 9.5, Hd.y + 1.2, Hd.z + 5.5], look: [Hd.x, Hd.y + 0.5, Hd.z + 1.2], fov: 40 },
     head: { pos: [Hd.x - 26, Hd.y + 3, Hd.z + 20], look: [Hd.x, Hd.y + 6, Hd.z - 1], fov: 50 },
     top: { pos: [-40, 66, 38], look: [0, 22, SHELL.cz], fov: 45 },
     back: { pos: [60, 30, -70], look: [0, 22, -4], fov: 45 },
@@ -58,7 +60,7 @@ export default function (ctx: LabCtx): LabPiece {
   return {
     update(dt, t) {
       piece.update(dt, t);
-      town.update(dt, t);
+      town.update(dt, t, ctx.camera);
       amble.root.updateMatrixWorld(true);
       cols.sync(amble.shellTop.matrixWorld, amble.neckRide.matrixWorld);
       if (nilo2) { nilo2.pose = {}; nilo2.animate(dt, 0, false); }

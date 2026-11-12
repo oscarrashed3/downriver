@@ -287,6 +287,20 @@ export function buildAmbleGrowth(body: AmbleBodyBuild, seed = 5) {
     flowers(cb, rng, headPoint(q.x, q.y, z), n, 0.32, wH);
   }
 
+  // moss tufts and little ferns over the forehead and the top of the head, and short vines down from them
+  for (let k = 0; k < 12; k++) {
+    const a = (rng() - 0.5) * 1.5, z = -0.9 + rng() * 2.6;
+    const q = headSurface(z, a);
+    const n = headDir(Math.sin(a) * 0.8, Math.cos(a), 0.1);
+    fern(cb, rng, headPoint(q.x, q.y - 0.05, z), n, 0.45 + rng() * 0.3, wH);
+  }
+  for (let k = 0; k < 8; k++) {
+    const side = k % 2 ? 1 : -1, z = -0.6 + rng() * 1.4;
+    const q = headSurface(z, side * (0.75 + rng() * 0.25));
+    const out = headDir(side, 0.1, 0); out.y = 0; out.normalize();
+    strand(cb, rng, headPoint(q.x, q.y, z), out, 0.5 + rng() * 0.6, null, wH, 0.35, null);
+  }
+
   // ---- legs: leafy sprays and short vines over the moss on the upper legs
   for (const l of LEGS) {
     const fr = body.legs[l];

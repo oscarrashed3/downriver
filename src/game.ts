@@ -59,6 +59,8 @@ import { Fox } from './world/fox';
 import type { SkyWorld } from './world/skyIsles/world';
 import { skyFlowers, onIsle, isleAt, rockClear } from './world/skyIsles/terrain';
 import { SkyMove } from './world/skyIsles/skyMove';
+import { TownMove } from './world/walkingTown/townMove';
+import { townGrassWeights, townFlowers, TOWN_FLOWERS } from './world/walkingTown/townGrass';
 import { SKY_MOVE } from './data/skyWords';
 import { CHAPTERS, MAIN_QUEST, NOT_YET, OPENING, WORLD_TASKS } from './data/story';
 import { ChapterOne } from './story/chapterOne';
@@ -117,6 +119,9 @@ export class Game {
   skyWorld: SkyWorld | null = null;
   /** World 2's movement rules: the glider, updrafts, cloud pads, the soft fall, the sail ride. */
   skyMove: SkyMove | null = null;
+  /** World 3, the Walking Town: walking on Old Amble, the ropes, the umbrella (null if the world has no Amble). */
+  townMove: TownMove | null = null;
+  townGrass: Grass | null = null;
   life: Life;
   quality = new QualityAuto();
   motes: Motes;
@@ -295,6 +300,16 @@ export class Game {
       this.skyGrass.group.visible = false;
       this.scene.add(this.skyGrass.group);
     }
+    // the Walking Town: long golden grass with daisies and lupins round Old Amble's meadow
+    {
+      const ti = WORLDS.findIndex(w => w.id === 'garden'), pT = this.planets[ti];
+      if (pT?.grassW && this.contents[ti]?.refs.amble) {
+        this.townGrass = new Grass(pT, townGrassWeights(pT), 3.2, d => townFlowers(pT, d), { size: 1.15, warm: 1, flowers: TOWN_FLOWERS });
+        this.townGrass.lush = 1; this.townGrass.bloom = 1;
+        this.townGrass.group.visible = false;
+        this.scene.add(this.townGrass.group);
+      }
+    }
     const R0 = this.contents[0].refs;
     this.life = new Life(this.scene, p0, PK.flowers, R0.chimneys, (R0.fire as THREE.Object3D).position, PK.fire);
 
@@ -394,6 +409,7 @@ export class Game {
     } as any);
     if (this.skyWorld) this.skyMove = new SkyMove(this, this.skyWorld, FOX_WORLD);
     if (this.skyWorld) this.ch2 = new SkyChapter(this, FOX_WORLD);
+    { const ti = WORLDS.findIndex(w => w.id === 'garden'); if (this.contents[ti]?.refs.town) this.townMove = new TownMove(this, ti); }
     this.registerTravel();
     this.applyRiver();
     this.enterWorld(0, false);
@@ -583,6 +599,7 @@ export class Game {
     this.composer.setSize(innerWidth, innerHeight);
     this.grass?.setQuality(pr.grass);
     this.skyGrass?.setQuality(pr.grass);
+    this.townGrass?.setQuality(pr.grass);
     this.bloom.enabled = pr.bloom;
     this.finish.mat.uniforms.uBrush.value = pr.brush;
     this.sunLight.castShadow = pr.shadows;
@@ -830,7 +847,7 @@ export class Game {
           if (!onIsle(p, d)) return p.groundBelow(d, this.player.pos.distanceTo(p.center)) > p.R + 2 ? 'stepStone' : 'stepSnow';
           return 'stepGrass';
         }
-        case 'garden': return 'stepGrass';
+        case 'garden': return this.player.onDeck ? 'stepWood' : this.townMove?.onAmble ? 'stepStone' : 'stepGrass';
         case 'desert': return 'stepSnow';
         case 'lantern': return 'stepStone';
         default: return 'step';
@@ -1697,7 +1714,7 @@ export class Game {
         this.sunLight.position.copy(this.player.pos).addScaledVector(this.day.sun, 120);
         this.sunLight.target.position.copy(this.player.pos); this.sunLight.target.updateMatrixWorld();
       },
-      hide: [this.sky.mesh, this.sky.clouds, ...this.streams, ...this.updrafts, this.beacon, this.cloudSea.group, this.grass.group, ...(this.skyGrass ? [this.skyGrass.group] : []),
+      hide: [this.sky.mesh, this.sky.clouds, ...this.streams, ...this.updrafts, this.beacon, this.cloudSea.group, this.grass.group, ...(this.skyGrass ? [this.skyGrass.group] : []), ...(this.townGrass ? [this.townGrass.group] : []),
         this.motes.points, this.rain.points, this.blizzard.points, this.player.root, this.fold.root, this.fold.string, ...this.skyView.silhouettes, this.skyView.marker],
       homePos: this.beaconPos,
     });
@@ -1961,6 +1978,11 @@ export class Game {
       this.skyMove?.setActive(inSky);
       if (inSky && this.skyMove) this.skyMove.frame(dt, this.time);
     }
+    if (this.townMove) {
+      const inTown = this.cur === WORLDS.findIndex(w => w.id === 'garden') && this.mode !== 'title';
+      this.townMove.setActive(inTown);
+      if (inTown) this.townMove.frame(dt, this.time);
+    }
     const npcWind = east.clone();
     for (const n of this.contents[this.cur].npcs) n.update(dt, this.mode === 'cut' ? null : this.player.pos, npcWind.clone().applyQuaternion(n.root.quaternion.clone().invert()));
     for (const pl of this.planets) pl.waterMat.uniforms.uTime.value = this.time;
@@ -1975,6 +1997,7 @@ export class Game {
     const onPeaks = this.cur === 0;
     this.grass.update(this.player.pos, this.camera.position, onPeaks && this.skyView.k < 0.6);
     this.skyGrass?.update(this.player.pos, this.camera.position, !!this.skyWorld?.isActive && this.skyView.k < 0.6);
+    this.townGrass?.update(this.player.pos, this.camera.position, !!this.townMove?.active && this.skyView.k < 0.6);
     const whistled = this.mode === 'play' && inp.hit('KeyF');
     this.life.update(dt, this.time, this.day.day, this.player.pos, whistled, onPeaks);
     if (onPeaks) this.ch1.update(dt, whistled);
@@ -2086,8 +2109,11 @@ export class Game {
     if (this.kneelT > 0) { this.kneelT -= dt; if (this.kneelT <= 0 || mv.lengthSq() > 0.01) { this.kneelT = 0; pl.pose = {}; } }
     const sky = this.skyMove?.active ? this.skyMove : null;
     if (sky?.takeOver(dt)) { this.hud.setPrompt(null); return; }
+    const town = this.townMove?.active ? this.townMove : null;
+    if (town?.takeOver(dt)) { this.hud.setPrompt(null); return; }
     pl.update(dt, p, mv, inp.hit('Space'), inp.key('KeyX') || inp.key('ShiftLeft') || inp.key('ShiftRight'), inp.key('Space'), inp.hit('KeyC') && !pl.glider?.open);
     sky?.afterMove();
+    town?.afterMove();
     this.softPush(dt);
     this.fold.kiteMode = pl.glider ? false : pl.gliding;
     if (inp.hit('KeyQ') && this.flags.has('power:skyreading')) { this.skyread.active = !this.skyread.active; this.sound.sfxPlay('soft'); }

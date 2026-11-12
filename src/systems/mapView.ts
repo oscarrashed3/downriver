@@ -15,7 +15,7 @@ export const PIECES: MapPiece[] = [
   { id: 'map:ridge', world: 'peaks', label: 'Kite Ridge', lat: [30, 70], lon: [20, 75] },
   { id: 'map:bridge', world: 'peaks', label: 'The old bridge and the way down to the edge', lat: [60, 180], lon: [-40, 40] },
   { id: 'map:sky', world: 'sky', label: 'The Sky Isles', lat: [0, 180], lon: [-70, 70] },
-  { id: 'map:garden', world: 'garden', label: 'The Overgrown Garden', lat: [0, 180], lon: [-70, 70] },
+  { id: 'map:garden', world: 'garden', label: 'Walking Town', lat: [0, 180], lon: [-70, 70] },
   { id: 'map:sea', world: 'sea', label: 'The Endless Sea', lat: [0, 180], lon: [-70, 70] },
   { id: 'map:desert', world: 'desert', label: 'The Painted Desert', lat: [0, 180], lon: [-70, 70] },
   { id: 'map:lantern', world: 'lantern', label: 'Lantern Town', lat: [0, 180], lon: [-70, 70] },

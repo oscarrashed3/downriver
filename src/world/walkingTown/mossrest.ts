@@ -4,7 +4,7 @@ import type { Solid, Deck } from '../collide';
 import { SHELL, REST, BONE, FOOT_REST, type Leg } from './ambleRig';
 import { outlinePoint, shellPolar, shellTopY, shellProfile, ledges } from './ambleShell';
 import {
-  PAL, pk, rnd, type R, barrel, vegTub, bench, crate, lantern, posy, card, ropeLadder, rope, laundry, bunting, tree,
+  PAL, pk, rnd, type R, barrel, vegTub, bench, crate, lantern, posy, ropeLadder, rope, laundry, bunting, tree, shrub, vine,
   FC, STONE_TILE, WOOD_TILE, T, boxM, taperTube, slab,
 } from './mossrestKit';
 import { house, windmill, type Box2, type DeckSpec, type MillOut, type HouseOut } from './mossrestHouse';
@@ -69,6 +69,8 @@ export class Mossrest {
   neckSolids: SolidSpec[] = [];
   neckDecks: PlacedDeck[] = [];
   mills: MillOut[] = [];
+  /** The ropes and rope ladders down beside the legs (creature space): the path top to bottom, the walkway spot. */
+  legLines: { kind: 'rope' | 'ladder'; pts: THREE.Vector3[]; out: THREE.Vector3; top: THREE.Vector3; leg: Leg }[] = [];
   houses: (HouseOut & { at: THREE.Vector3; rot: number; walkIn: boolean; name: string; w: number; d: number; doorLocal: THREE.Vector3 })[] = [];
   /** Where the step-2 wooden water channel will run (creature space, from the rain pools to the mouth). */
   channelRoute: THREE.Vector3[] = [];
@@ -76,6 +78,8 @@ export class Mossrest {
   perches: THREE.Vector3[] = [];
   stats = { triangles: 0, meshes: 0 };
   private kit = new Kit();
+  /** The walks and stairs (ground you stand on: the camera never melts it). */
+  private gk = new Kit();
   private nk = new Kit();
   private r: R;
   private sails: THREE.Group[] = [];
@@ -86,15 +90,20 @@ export class Mossrest {
     this.r = rnd(seed);
     this.group.name = 'Mossrest';
     this.neck.name = 'Mossrest lookout';
+    this.group.add(this.lamp);
     this.route();
     this.walkways();
     this.top();
-    this.middle();
     this.between();
+    this.middle();
+    this.greenery();
     this.dressing();
     this.legRopes();
     this.lookout();
     this.kit.build(this.group, { outline: false });
+    const ground = new THREE.Group(); ground.name = 'mossrestGround';
+    this.gk.build(ground, { outline: false });
+    this.group.add(ground);
     this.nk.build(this.neck, { outline: false });
     for (const s of this.sails) this.group.add(s);
     this.group.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) { this.stats.meshes++; this.stats.triangles += (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3; } });
@@ -109,7 +118,22 @@ export class Mossrest {
     neckRide.add(this.neck);
   }
 
-  update(_dt: number, t: number) {
+  /** A warm lamp light that goes into whichever lived-in house the camera is in (one light for the village). */
+  lamp = new THREE.PointLight('#ffc27a', 0, 7.5, 1.4);
+  private lampK = 0;
+  private _v = new THREE.Vector3();
+
+  update(_dt: number, t: number, camera?: THREE.Camera) {
+    if (camera) {
+      // the nearest lived-in house to the camera, in the village's own frame
+      const c = this.group.worldToLocal(this._v.setFromMatrixPosition(camera.matrixWorld));
+      let best: (typeof this.houses)[number] | null = null, bd = 1e9;
+      for (const h of this.houses) if (h.walkIn) { const d = Math.hypot(c.x - h.at.x, c.z - h.at.z); if (d < bd) { bd = d; best = h; } }
+      const inside = best && bd < Math.max(best.w, best.d) * 0.55 + 0.6 && c.y > best.at.y - 0.5 && c.y < best.at.y + 3.2;
+      this.lampK += ((inside ? 1 : 0) - this.lampK) * Math.min(1, _dt * 4);
+      if (best) this.lamp.position.set(best.at.x, best.at.y + 1.9, best.at.z);
+      this.lamp.intensity = 14 * this.lampK;
+    }
     // the working mill turns slowly; the broken one creaks a little in the gusts, but cannot turn
     this.mills.forEach((m, i) => {
       const s = this.sails[i];
@@ -147,7 +171,7 @@ export class Mossrest {
 
   /** The ring of walkways round the shoulder. */
   private walkways() {
-    const k = this.kit, r = this.r;
+    const k = this.gk, r = this.r;
     const TH0 = 2.08, TH1 = TAU + 0.98;
     const W = 2.6, RHO_IN = 0.815;
     // samples round the ring, about 2.4 m apart on the inner edge
@@ -162,6 +186,18 @@ export class Mossrest {
     const bridges = [[6, 9], [24, 27]].filter(([a, b]) => b < ths.length - 1);
     const inBridge = (i: number) => bridges.some(([a, b]) => i > a && i < b);
     const plankC = () => new THREE.Color(pk(r, PAL.timber)).multiplyScalar(0.88 + r() * 0.2);
+    // cottages on stilts out over the flanks, their doors onto the walk: never by a bridge or the ropes down a leg
+    const legThs = (['FL', 'FR', 'BL', 'BR'] as Leg[]).map(l => shellPolar(FOOT_REST[l].x, FOOT_REST[l].z).th);
+    const stilts: number[] = [];
+    for (let i = 3; i < ths.length - 4; i++) {
+      if (bridges.some(([a, b]) => i > a - 3 && i < b + 3)) continue;
+      if (legThs.some(t => Math.abs(Math.atan2(Math.sin(ths[i] - t), Math.cos(ths[i] - t))) < 0.32)) continue;
+      if (stilts.length && i - stilts[stilts.length - 1] < 4) continue;
+      if (Math.abs(Math.atan2(Math.sin(ths[i] - 3.0), Math.cos(ths[i] - 3.0))) < 0.35) continue; // the walk of picture 3 stays open
+      stilts.push(i);
+    }
+    this.stiltAt = stilts;
+    const nearStilt = (i: number) => stilts.some(j => i >= j - 1 && i <= j);
     for (let i = 0; i < ths.length - 1; i++) {
       const a = P(i, 0.5), b = P(i + 1, 0.5);
       const dir = b.clone().sub(a); const len = Math.hypot(dir.x, dir.z);
@@ -186,10 +222,12 @@ export class Mossrest {
           const p0 = mk(f, 0), p1 = mk(f, 1);
           k.add(boxM(p0.distanceTo(p1) + 0.3, 0.22, 0.18, WOOD_TILE), 'wood', pk(r, PAL.timberDark), T((p0.x + p1.x) / 2, (p0.y + p1.y) / 2 - 0.18, (p0.z + p1.z) / 2, 0, yaw, Math.atan2(p1.y - p0.y, p0.distanceTo(p1))));
         }
-        // the railing: chunky posts, a top rail and a middle rail along the outer edge
+        // the railing: chunky posts, a top rail and a middle rail along the outer edge (not where a cottage's door is)
         const o0 = mk(0.97, 0), o1 = mk(0.97, 1);
-        for (const [hgt, th] of [[1.02, 0.15], [0.55, 0.1]] as const) k.add(boxM(o0.distanceTo(o1) + 0.12, th, th, WOOD_TILE), 'wood', pk(r, PAL.timber), T((o0.x + o1.x) / 2, (o0.y + o1.y) / 2 + hgt, (o0.z + o1.z) / 2, 0, yaw, Math.atan2(o1.y - o0.y, o0.distanceTo(o1))));
-        this.solidSpecs.push({ x: (o0.x + o1.x) / 2, z: (o0.z + o1.z) / 2, hw: o0.distanceTo(o1) / 2 + 0.05, hd: 0.1, h: 1.1, rot: yaw, y0: Math.min(o0.y, o1.y) });
+        if (!nearStilt(i)) {
+          for (const [hgt, th] of [[1.02, 0.15], [0.55, 0.1]] as const) k.add(boxM(o0.distanceTo(o1) + 0.12, th, th, WOOD_TILE), 'wood', pk(r, PAL.timber), T((o0.x + o1.x) / 2, (o0.y + o1.y) / 2 + hgt, (o0.z + o1.z) / 2, 0, yaw, Math.atan2(o1.y - o0.y, o0.distanceTo(o1))));
+          this.solidSpecs.push({ x: (o0.x + o1.x) / 2, z: (o0.z + o1.z) / 2, hw: o0.distanceTo(o1) / 2 + 0.05, hd: 0.1, h: 1.1, rot: yaw, y0: Math.min(o0.y, o1.y) });
+        }
       } else {
         // the bridge's hand ropes on both sides and the hangers down to the planks
         for (const f of [0.05, 0.95]) {
@@ -218,8 +256,10 @@ export class Mossrest {
       // a big flat stone where the post meets the plates
       k.add(new THREE.DodecahedronGeometry(0.42, 0).scale(1, 0.45, 1), 'rough', pk(r, PAL.stone), T(o.x, yb + 0.12, o.z));
       // the railing post
-      k.add(slab(0.2, 1.22, 0.2, WOOD_TILE, true), 'wood', pk(r, PAL.timber), T(o.x, o.y - 0.05, o.z));
-      k.add(new THREE.ConeGeometry(0.15, 0.16, 4), 'wood', pk(r, PAL.timberDark), T(o.x, o.y + 1.25, o.z, 0, Math.PI / 4, 0));
+      if (!(nearStilt(i) && nearStilt(i - 1))) {
+        k.add(slab(0.2, 1.22, 0.2, WOOD_TILE, true), 'wood', pk(r, PAL.timber), T(o.x, o.y - 0.05, o.z));
+        k.add(new THREE.ConeGeometry(0.15, 0.16, 4), 'wood', pk(r, PAL.timberDark), T(o.x, o.y + 1.25, o.z, 0, Math.PI / 4, 0));
+      }
       // a brace from the post up under the middle of the deck
       if (o.y - yb > 1.6) k.add(taperTube([new THREE.Vector3(o.x, yb + (o.y - yb) * 0.45, o.z), new THREE.Vector3(m.x, m.y - 0.25, m.z)], 0.09, 0.09, 4, 2), 'wood', pk(r, PAL.timberDark));
       // the inner edge sits on short posts on the shell
@@ -243,11 +283,12 @@ export class Mossrest {
     this.ring = { ths, inner, outs, yd, W, P };
     for (let i = 0; i < ths.length; i++) { const c = P(i, 0.5); this.take(c.x, c.z, 1.5); }
   }
+  private stiltAt: number[] = [];
   ring!: { ths: number[]; inner: THREE.Vector3[]; outs: THREE.Vector3[]; yd: number[]; W: number; P: (i: number, f: number) => THREE.Vector3 };
 
   /** A straight flight of wide timber stairs from a (bottom) to b (top), with stringers, posts and a handrail. */
   private stairs(a0: THREE.Vector3, b0: THREE.Vector3, width: number, rail = true) {
-    const k = this.kit, r = this.r;
+    const k = this.gk, r = this.r;
     const lowFirst = a0.y <= b0.y;
     const a = lowFirst ? a0 : b0, b = lowFirst ? b0 : a0;
     const run = Math.hypot(b.x - a.x, b.z - a.z), rise = b.y - a.y;
@@ -270,9 +311,11 @@ export class Mossrest {
       for (const t of [0.0, 0.5, 1.0]) {
         const p = s0.clone().lerp(s1, t), g = groundAt(p.x, p.z);
         if (p.y - g > 0.25) k.add(slab(0.18, p.y - g + 0.3, 0.18, WOOD_TILE, true), 'wood', pk(r, PAL.timberDark), T(p.x, g - 0.3, p.z));
-        if (rail && (sd > 0 || width > 2.4)) k.add(slab(0.14, 1.05, 0.14, WOOD_TILE, true), 'wood', pk(r, PAL.timber), T(p.x, p.y, p.z));
+        if (rail) k.add(slab(0.14, 1.05, 0.14, WOOD_TILE, true), 'wood', pk(r, PAL.timber), T(p.x, p.y, p.z));
       }
-      if (rail && (sd > 0 || width > 2.4)) k.add(boxM(L + 0.15, 0.12, 0.12, WOOD_TILE), 'wood', pk(r, PAL.timber), T((s0.x + s1.x) / 2, (s0.y + s1.y) / 2 + 1.02, (s0.z + s1.z) / 2, 0, yaw, Math.atan2(rise, run)));
+      // balusters up the flight, and the handrail on them
+      if (rail) for (let q = 1; q < n; q += 2) { const p = s0.clone().lerp(s1, q / n); k.add(slab(0.07, 0.9, 0.07, WOOD_TILE, true), 'wood', pk(r, PAL.timberDark), T(p.x, p.y + 0.12, p.z)); }
+      if (rail) k.add(boxM(L + 0.15, 0.12, 0.12, WOOD_TILE), 'wood', pk(r, PAL.timber), T((s0.x + s1.x) / 2, (s0.y + s1.y) / 2 + 1.02, (s0.z + s1.z) / 2, 0, yaw, Math.atan2(rise, run)));
     }
     this.deckSpecs.push({ x: (a.x + b.x) / 2, z: (a.z + b.z) / 2, rot: yaw, span: run + 0.1, width, y0: a.y, y1: b.y, y: 0 });
     for (let t = 0; t <= 1; t += 0.25) { const p = a.clone().lerp(b, t); this.take(p.x, p.z, width / 2 + 0.3); }
@@ -295,8 +338,9 @@ export class Mossrest {
 
   // ---------------------------------------------------------------------------------------- the top
 
-  private placeHouse(name: string, th: number, rho: number, opts: { w: number; d: number; floors: number; walkIn: boolean; kind?: 'cottage' | 'bakery' | 'big'; balcony?: boolean; face?: number; seed: number }) {
+  private placeHouse(name: string, th: number, rho: number, opts: { w: number; d: number; floors: number; walkIn: boolean; kind?: 'cottage' | 'bakery' | 'big'; balcony?: boolean; face?: number; seed: number }, check = false) {
     const c = spot(th, rho);
+    if (check && (!this.free(c.x, c.z, Math.min(opts.w, opts.d) / 2 - 0.3) || this.houses.some(h => Math.hypot(h.at.x - c.x, h.at.z - c.z) < (Math.max(h.w, h.d) + Math.max(opts.w, opts.d)) / 2 + 0.5))) return null;
     // the door looks outward (down the slope), or as asked
     const o = outward(th);
     const rot = opts.face ?? Math.atan2(o.x, o.z);
@@ -311,7 +355,7 @@ export class Mossrest {
     const doorDrop = Math.max(0.2, floorY - groundAt(dp.x, dp.z));
     const at = new THREE.Vector3(c.x, floorY, c.z);
     this.kit.push(T(at.x, at.y, at.z, 0, rot, 0));
-    const out = house(this.kit, { ...opts, plinth: floorY - gMin + 0.5, doorDrop: Math.min(doorDrop, 2.4) });
+    const out = house(this.kit, { ...opts, plinth: floorY - gMin + 0.5, doorDrop: Math.min(doorDrop, 2.4), ground: (lx, lz) => { const q = L(lx, lz); return groundAt(q.x, q.z) - floorY; } });
     this.kit.pop();
     for (const s of out.solids) this.solid(s, at, rot);
     for (const d of out.decks) this.deck(d, at, rot);
@@ -329,15 +373,15 @@ export class Mossrest {
     // the big old house on the crown, its door to the open lawn at the front
     this.placeHouse('the big old house', -2.6, 0.12, { w: 7.6, d: 6.0, floors: 3, walkIn: true, kind: 'big', balcony: true, face: 0.25, seed: 101 });
     // the windmills at the back of the crown: the working one, and the broken one with a sail gone
-    for (const [th, rho, broken, seed] of [[-1.05, 0.3, false, 7], [-2.15, 0.28, true, 9]] as const) {
+    for (const [th, rho, broken, seed] of [[-1.2, 0.3, false, 7], [-2.0, 0.3, true, 9]] as const) {
       const c = spot(th, rho);
       let gMin = 1e9, gMax = -1e9;
-      for (let a = 0; a < TAU; a += TAU / 8) { const g = groundAt(c.x + Math.cos(a) * 2.6, c.z + Math.sin(a) * 2.6); gMin = Math.min(gMin, g); gMax = Math.max(gMax, g); }
+      for (let a = 0; a < TAU; a += TAU / 8) { const g = groundAt(c.x + Math.cos(a) * 3.6, c.z + Math.sin(a) * 3.6); gMin = Math.min(gMin, g); gMax = Math.max(gMax, g); }
       const o = outward(th);
       const rot = Math.atan2(o.x, o.z) + (broken ? 0.3 : -0.25);
       const at = new THREE.Vector3(c.x, gMax - 0.1, c.z);
       k.push(T(at.x, at.y, at.z, 0, rot, 0));
-      const m = windmill(k, seed, broken, gMax - gMin + 0.3);
+      const m = windmill(k, seed, broken, gMax - gMin + 0.3, 1.45);
       k.pop();
       m.sails.position.applyAxisAngle(new THREE.Vector3(0, 1, 0), rot).add(at);
       m.sails.rotation.set(-0.12, rot, 0, 'YXZ');
@@ -345,7 +389,7 @@ export class Mossrest {
       this.mills.push(m);
       this.solid(m.solid, at, rot);
       this.perches.push(m.top.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), rot).add(at));
-      this.take(c.x, c.z, 3.6);
+      this.take(c.x, c.z, 4.8);
     }
     // trees growing out of the shell
     for (const [th, rho, h, sp] of [[2.05, 0.22, 9.5, 1.2], [0.15, 0.3, 7.5, 1.0], [3.55, 0.7, 6.0, 0.9], [-0.25, 0.52, 6.5, 1.0], [1.25, 0.56, 5.0, 0.9], [-1.65, 0.62, 5.5, 0.9]] as const) {
@@ -393,22 +437,102 @@ export class Mossrest {
   // ---------------------------------------------------------------------------------------- the middle
 
   private middle() {
-    // the middle terrace: a ring of cottages, five of them walk-in (one the bakery), and the carpenter's yard
+    // the middle terrace: the five lived-in cottages (one the bakery) first, where the stairs arrive
     const mid: [string, number, number, number, number, boolean, ('cottage' | 'bakery')?][] = [
       // name, th, rho, w, d, walk-in, kind
       ['Bramble Cottage', 2.45, 0.47, 5.0, 4.4, true],
       ['the bakery', 3.12, 0.47, 5.4, 4.6, true, 'bakery'],
-      ['Thimble House', 3.8, 0.48, 4.6, 4.2, false],
       ['Fern Cottage', 5.15, 0.47, 5.0, 4.4, true],
-      ['Lantern House', 5.85, 0.47, 4.8, 4.2, false],
       ['Old Wren\'s', 0.4, 0.48, 5.0, 4.3, true],
-      ['Hollyhock', 1.1, 0.5, 4.6, 4.2, false],
     ];
-    mid.forEach(([name, th, rho, w, d, walkIn, kind], i) => this.placeHouse(name, th, rho, { w, d, floors: walkIn ? 2 : 2 + (i % 2), walkIn, kind, balcony: i % 3 === 1, seed: 200 + i * 17 }));
-    // smaller cottages on the shoulder, perched over the walkways
-    const sh: [string, number, number, number, number][] = [['Moss End', 2.95, 0.7, 4.2, 3.6], ['Tumble', 3.95, 0.71, 4.0, 3.6], ['Rookery', 5.5, 0.7, 4.2, 3.6], ['Pip\'s', 0.05, 0.71, 4.0, 3.6]];
-    sh.forEach(([name, th, rho, w, d], i) => this.placeHouse(name, th, rho, { w, d, floors: 1 + (i % 2), walkIn: false, seed: 400 + i * 13 }));
+    mid.forEach(([name, th, rho, w, d, walkIn, kind], i) => this.placeHouse(name, th, rho, { w, d, floors: 2, walkIn, kind, balcony: i % 3 === 1, seed: 200 + i * 17 }));
     this.yard(spot(4.48, 0.49), 4.48);
+    // the stilt cottages out over the flanks, doors onto the walk
+    for (const [n, i] of this.stiltAt.entries()) this.stiltHouse(i, 600 + n * 31, ['Edge House', 'the Lookout', 'Brink', 'Overhang', 'Dangle', 'Teetering', 'the Perch', 'Ledge End'][n % 8]);
+    // then the rest of the village, filling each tier right round the shell wherever there is room: tall
+    // houses on the middle terrace, lower cottages on the shoulder just above the walkways, a few on the crown
+    const r = this.r;
+    const NAMES = ['Thimble House', 'Lantern House', 'Hollyhock', 'Moss End', 'Tumble', 'Rookery', 'Pip\'s', 'Kettle House', 'Sorrel', 'the Leaning House', 'Quill Cottage', 'Burrow', 'High Gable', 'Thistledown', 'the Ropewalk', 'Honeysuckle', 'Saddle House', 'Nook', 'Clover', 'Larkspur', 'the Weaver\'s', 'Puddle End'];
+    let ni = 0, seed = 400;
+    const tiers: { rho: [number, number]; w: [number, number]; floors: [number, number]; gap: number }[] = [
+      { rho: [0.45, 0.52], w: [4.2, 5.2], floors: [2, 3], gap: 0.7 },
+      { rho: [0.67, 0.72], w: [3.8, 4.6], floors: [2, 3], gap: 0.6 },
+      { rho: [0.2, 0.27], w: [3.8, 4.4], floors: [2, 2], gap: 1.5 },
+    ];
+    for (const tier of tiers) {
+      const R0 = outlinePoint(1).length() * (tier.rho[0] + tier.rho[1]) / 2;
+      for (let th = r() * 0.3; th < TAU; ) {
+        const w = tier.w[0] + r() * (tier.w[1] - tier.w[0]), d = w * (0.8 + r() * 0.12);
+        const rho = tier.rho[0] + r() * (tier.rho[1] - tier.rho[0]);
+        const floors = tier.floors[0] + Math.floor(r() * (tier.floors[1] - tier.floors[0] + 1));
+        const h = this.placeHouse(NAMES[ni % NAMES.length], th, rho, { w, d, floors, walkIn: false, balcony: r() < 0.25, seed: seed += 13, face: Math.atan2(outward(th).x, outward(th).z) + (r() - 0.5) * 0.4 }, true);
+        if (h) { ni++; th += (w + tier.gap) / R0; } else th += 0.6 / R0;
+      }
+    }
+  }
+
+  /** A cottage at ring sample i, standing out past the walk's outer edge on posts down to the plates. */
+  private stiltHouse(i: number, seed: number, name: string) {
+    const ring = this.ring, r = this.r;
+    const o = ring.outs[i];
+    const w = 3.8 + r() * 0.8, d = 3.4 + r() * 0.4;
+    const edge = ring.P(i, 1.0);
+    const at = edge.clone().addScaledVector(o, d / 2 + 0.05);
+    at.y = ring.yd[i];
+    const rot = Math.atan2(-o.x, -o.z);
+    const cs = Math.cos(rot), sn = Math.sin(rot);
+    const L = (lx: number, lz: number) => new THREE.Vector3(at.x + lx * cs + lz * sn, 0, at.z - lx * sn + lz * cs);
+    // the flank under a point: where the plates bulge out to its radius
+    const flank = (x: number, z: number) => {
+      const { th, rho } = shellPolar(x, z);
+      const pr = shellProfile(th);
+      for (let q = pr.face[0]; q <= pr.face[1]; q++) if (pr.rho[q] >= rho - 0.004) return pr.y[q] - 0.2;
+      return pr.yLip;
+    };
+    this.kit.push(T(at.x, at.y, at.z, 0, rot, 0));
+    const out = house(this.kit, { w, d, floors: 1 + (r() < 0.5 ? 1 : 0), walkIn: false, seed, plinth: 3, doorDrop: 0.05, doorX: 0, balcony: false, ground: (lx, lz) => { const q = L(lx, lz); return Math.min(groundAt(q.x, q.z), flank(q.x, q.z)) - at.y; } });
+    this.kit.pop();
+    for (const s of out.solids) this.solid(s, at, rot);
+    const world = (v: THREE.Vector3) => { const q = L(v.x, v.z); q.y = at.y + v.y; return q; };
+    for (const p of [...out.chimney, ...out.ridge]) this.perches.push(world(p));
+    this.houses.push({ ...out, at, rot, walkIn: false, name, w, d, doorLocal: out.door.clone(), door: world(out.door), chimney: out.chimney.map(world), ridge: out.ridge.map(world) });
+    this.take(at.x, at.z, Math.hypot(w, d) / 2 + 0.3);
+  }
+
+  // ---------------------------------------------------------------------------------------- greenery
+
+  /** Trees between the houses, bushes, flower beds, and ivy hanging over the rocky risers. */
+  private greenery() {
+    const k = this.kit, r = this.r;
+    let trees = 0, bushes = 0;
+    for (let q = 0; q < 1400 && (trees < 16 || bushes < 70); q++) {
+      const th = r() * TAU, rho = 0.08 + r() * 0.72;
+      const L = ledges(th);
+      if (L.some(l => Math.abs(rho - l.e) < l.w * 1.3)) continue;
+      const p = spot(th, rho);
+      if (trees < 16 && this.free(p.x, p.z, 1.4)) {
+        const h = 4.5 + r() * 3.5;
+        tree(k, T(p.x, p.y, p.z, 0, r() * TAU, 0), r, h, 0.8 + r() * 0.3);
+        this.solidSpecs.push({ x: p.x, z: p.z, hw: 0.4, hd: 0.4, h, rot: 0, y0: p.y });
+        this.take(p.x, p.z, 1.6); trees++;
+      } else if (bushes < 70 && this.free(p.x, p.z, 0.5)) {
+        shrub(k, T(p.x, p.y - 0.15, p.z, 0, r() * TAU, 0), r, 0.6 + r() * 0.6);
+        // a flower bed round some of them
+        if (r() < 0.5) for (let f = 0; f < 4; f++) { const a = r() * TAU; posy(k, T(p.x + Math.cos(a) * 1.0, p.y - 0.05, p.z + Math.sin(a) * 1.0, 0, r() * 3, 0), 0.55, r); }
+        this.take(p.x, p.z, 1.0); bushes++;
+      }
+    }
+    // ivy hanging over the rocky risers between the tiers
+    for (let th = 0; th < TAU; th += 0.07) {
+      if (r() < 0.35) continue;
+      for (const l of ledges(th)) {
+        const a = spot(th, l.e - l.w * 1.3), b = spot(th, l.e + l.w * 1.6);
+        if (!this.free((a.x + b.x) / 2, (a.z + b.z) / 2, 0.3) || a.y - b.y < 0.8) continue;
+        const o = outward(th);
+        const m = a.clone().lerp(b, 0.5).addScaledVector(o, 0.25); m.y = (a.y + b.y) / 2 + 0.2;
+        vine(k, [a.clone().add(new THREE.Vector3(0, 0.15, 0)), m, b.clone().addScaledVector(o, 0.1).add(new THREE.Vector3(0, 0.3 + r() * 0.5, 0))], o.clone().setY(0.4).normalize(), r, 0.45);
+      }
+    }
   }
 
   /** The carpenter's yard: stacks of planks, a log pile, a sawhorse, a workbench, and a new sail frame in the making. */
@@ -495,13 +619,19 @@ export class Mossrest {
       const lx = side * 2.2, lz = 1.6;
       return new THREE.Vector3(p.x + lx * c + lz * s, p.y + Math.min(h.eave, 4.6) - 0.3, p.z - lx * s + lz * c);
     };
-    const pairs: [number, number, 'l' | 'b'][] = [[0, 1, 'l'], [1, 2, 'b'], [3, 4, 'l'], [4, 5, 'b'], [5, 6, 'l'], [2, 3, 'b'], [7, 8, 'l'], [0, 6, 'b'], [9, 10, 'l']];
-    for (const [i, j, kind] of pairs) {
-      if (!H[i] || !H[j]) continue;
-      const a = eaveAt(H[i], 1), b = eaveAt(H[j], -1);
-      if (a.distanceTo(b) > 16 || a.distanceTo(b) < 2) continue;
-      if (kind === 'l') laundry(k, a, b, r, 0.3 + a.distanceTo(b) * 0.02); else bunting(k, a.add(new THREE.Vector3(0, 0.9, 0)), b.add(new THREE.Vector3(0, 0.9, 0)), r, 0.5);
-    }
+    // each house strings a line to its nearest neighbour across the lane (washing, or bunting higher up)
+    const done = new Set<string>();
+    H.forEach((h, i) => {
+      let bj = -1, bd = 1e9;
+      H.forEach((g, j) => { if (j === i) return; const dd = h.at.distanceTo(g.at); if (dd < bd && Math.abs(h.at.y - g.at.y) < 3) { bd = dd; bj = j; } });
+      const key = [Math.min(i, bj), Math.max(i, bj)].join();
+      if (bj < 0 || done.has(key) || bd > 11) return;
+      done.add(key);
+      const g = H[bj];
+      const a = eaveAt(h, Math.sign((g.at.x - h.at.x) * Math.cos(h.rot) - (g.at.z - h.at.z) * Math.sin(h.rot)) || 1), b = eaveAt(g, Math.sign((h.at.x - g.at.x) * Math.cos(g.rot) - (h.at.z - g.at.z) * Math.sin(g.rot)) || 1);
+      if (a.distanceTo(b) > 12 || a.distanceTo(b) < 2) return;
+      if (r() < 0.55) laundry(k, a, b, r, 0.3 + a.distanceTo(b) * 0.02); else bunting(k, a.add(new THREE.Vector3(0, 0.9, 0)), b.add(new THREE.Vector3(0, 0.9, 0)), r, 0.5);
+    });
     // bunting from the big house's ridge to the mills, and across the crown
     const big = H[0];
     for (const m of this.perches.slice(0, 0)) void m;
@@ -566,28 +696,45 @@ export class Mossrest {
         ring.ths.forEach((t, i) => { const d = Math.abs(Math.atan2(Math.sin(t - th), Math.cos(t - th))); if (d < bd) { bd = d; bi = i; } });
         if (bi < 0 || bd > 0.12) continue;
         const o = ring.outs[bi];
-        const top = ring.P(bi, 0.99).add(new THREE.Vector3(0, 0.6, 0));
+        const rail = ring.P(bi, 0.97);
+        // the anchor: a stout beam bolted across the railing posts and run out over the edge on a knee brace,
+        // with a pulley block at its end that the rope runs over and down
+        const beamEnd = rail.clone().addScaledVector(o, 1.1).add(new THREE.Vector3(0, 1.25, 0));
+        const beamIn = rail.clone().addScaledVector(o, -1.6).add(new THREE.Vector3(0, 0.35, 0));
+        k.add(taperTube([beamIn, beamEnd], 0.14, 0.13, 6, 1), 'wood', pk(r, PAL.timberDark));
+        k.add(taperTube([rail.clone().addScaledVector(o, 0.15).add(new THREE.Vector3(0, -0.9, 0)), rail.clone().addScaledVector(o, 0.75).add(new THREE.Vector3(0, 1.05, 0))], 0.1, 0.1, 5, 1), 'wood', pk(r, PAL.timberDark));
+        k.add(slab(0.45, 0.25, 0.45, WOOD_TILE), 'wood', pk(r, PAL.timberDark), T(beamIn.x, beamIn.y - 0.45, beamIn.z));
+        const side = new THREE.Vector3(-o.z, 0, o.x);
+        const pul = beamEnd.clone().add(new THREE.Vector3(0, -0.32, 0));
+        k.add(new THREE.CylinderGeometry(0.26, 0.26, 0.14, 12).rotateZ(Math.PI / 2), 'wood', pk(r, PAL.timber), new THREE.Matrix4().makeBasis(side, new THREE.Vector3(0, 1, 0), o).setPosition(pul));
+        for (const sd of [-1, 1]) k.add(boxM(0.06, 0.6, 0.36, WOOD_TILE, true), 'plain', PAL.iron, new THREE.Matrix4().makeBasis(side, new THREE.Vector3(0, 1, 0), o).setPosition(pul.clone().addScaledVector(side, sd * 0.1).add(new THREE.Vector3(0, 0.12, 0))));
+        // the rope over the pulley back to a cleat on the walk
+        rope(k, [beamIn.clone().add(new THREE.Vector3(0, 0.15, 0)), beamIn.clone().lerp(pul, 0.5).add(new THREE.Vector3(0, 0.12, 0)), pul.clone().add(new THREE.Vector3(0, 0.27, 0))], 0.07);
+        const top = pul.clone().addScaledVector(o, 0.26);
         // down over the plates, a hand's breadth off them, then free past the lip to the meadow
         const pr = shellProfile(ring.ths[bi]);
         const E = pr.E, R = Math.hypot(E.x, E.z);
-        const pts: THREE.Vector3[] = [top.clone().addScaledVector(o, 0.2)];
+        const pts: THREE.Vector3[] = [top.clone()];
         let maxOut = shellPolar(top.x, top.z).rho;
         for (let q = pr.face[0]; q <= pr.face[1]; q += 4) {
-          if (pr.y[q] > top.y - 0.6) continue;
-          maxOut = Math.max(maxOut, pr.rho[q] + 0.6 / R);
+          if (pr.y[q] > top.y - 1.2) continue;
+          maxOut = Math.max(maxOut, pr.rho[q] + 0.7 / R);
           pts.push(new THREE.Vector3(E.x * maxOut, pr.y[q], SHELL.cz + E.z * maxOut));
         }
         const last = pts[pts.length - 1];
-        pts.push(new THREE.Vector3(last.x, 4.5, last.z), new THREE.Vector3(last.x + (r() - 0.5) * 0.3, 0.35, last.z + (r() - 0.5) * 0.3));
-        if (kind === 'ladder') ropeLadder(k, pts, o, 0.32, r);
+        const foot = new THREE.Vector3(last.x + (r() - 0.5) * 0.3, 0.12, last.z + (r() - 0.5) * 0.3);
+        pts.push(new THREE.Vector3(last.x, 4.5, last.z), foot);
+        if (kind === 'ladder') ropeLadder(k, pts, o, 0.34, r);
         else {
-          rope(k, pts, 0.07);
-          // knots to climb by
+          rope(k, pts, 0.12);
+          // big knots to climb by
           const c = new THREE.CatmullRomCurve3(pts);
-          for (let t = 0.45; t < 0.98; t += 0.06) k.add(new THREE.SphereGeometry(0.13, 6, 4), 'plain', '#a88d60', T(...c.getPointAt(t).toArray()));
+          for (let t = 0.3; t < 0.97; t += 0.045) k.add(new THREE.SphereGeometry(0.2, 8, 5).scale(1, 0.75, 1), 'plain', '#a88d60', T(...c.getPointAt(t).toArray()));
         }
-        // tied off round the railing post
-        k.add(new THREE.TorusGeometry(0.2, 0.06, 4, 10), 'plain', '#b39668', T(top.x, top.y - 0.1, top.z, Math.PI / 2));
+        // the end resting on the meadow: a loose coil of spare rope, a flat stone holding it
+        for (let q = 0; q < 3; q++) k.add(new THREE.TorusGeometry(0.42 - q * 0.08, 0.1, 5, 14), 'plain', '#b39668', T(foot.x + 0.35, 0.1 + q * 0.12, foot.z, Math.PI / 2, 0, 0));
+        k.add(new THREE.DodecahedronGeometry(0.4, 0).scale(1.3, 0.5, 1), 'rough', pk(r, PAL.stone), T(foot.x - 0.5, 0.12, foot.z + 0.3));
+        this.legLines.push({ kind, pts, out: o.clone(), top: rail.clone().addScaledVector(o, -0.4), leg: l });
       }
     }
   }

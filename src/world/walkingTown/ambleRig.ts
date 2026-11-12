@@ -178,7 +178,7 @@ export class AmbleRig {
   private gaitPhase = 0;
   /** Idle inputs set by Amble each frame. */
   breath = 0; shellBreath = 0;
-  idle = { headYaw: 0, headPitch: 0, earL: 0, earR: 0, earFlickL: 0, earFlickR: 0, lookX: 0, lookY: 0, blink: 0, lid: 0.58, tail: 0 };
+  idle = { headYaw: 0, headPitch: 0, earL: 0, earR: 0, earFlickL: 0, earFlickR: 0, lookX: 0, lookY: 0, blink: 0, lid: 0.22, tail: 0 };
   /** The ground under each foot when standing (creature space y); the game can set it to follow the planet. */
   groundY: Record<Leg, number> = { FL: 0, FR: 0, BL: 0, BR: 0 };
 

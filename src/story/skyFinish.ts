@@ -1,6 +1,6 @@
 // World 2, Phase 7: the finish. Every chime on every island rings and streamers fly; then, in the golden late
 // afternoon at Whale's Rest, the goodbyes (Zephy's grudging handshake, Gran Wren's tip, Lark's yellow scarf), and
-// Nilo rides a whale down through the clouds to the Overgrown Garden (a cream fade, never a black flash).
+// Nilo rides a whale down through the clouds to the Walking Town (a cream fade, never a black flash).
 import * as THREE from 'three';
 import type { Game } from '../game';
 import type { Beat } from './sequencer';

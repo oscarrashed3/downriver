@@ -8,10 +8,41 @@ import { makeWaterMaterial } from './water';
 import { paint, softRamp } from '../render/paint';
 import { skyHeight, skyRecolor, groundBelow } from './skyIsles/terrain';
 import { buildSkyRiver } from './skyIsles/river';
+import { townDir, PLACES } from './walkingTown/meadow';
 
 export interface Flatten { dir: THREE.Vector3; radius: number; height: number; blend: number }
 
 const tmpV = new THREE.Vector3();
+
+/**
+ * World 3, the Walking Town: a golden meadow over soft rolling hills; a range of snowy mountains across the river;
+ * the Sea filling the low lands of the far south-east (its coast is where the town says goodbye); a lake in a dip
+ * of the meadow. Regions are placed relative to the river (cached on the planet).
+ */
+function townHeight(p: Planet, d: THREE.Vector3): number {
+  const n = p.noise, A = p.cfg.amplitude;
+  const reg = (p.extras.townRegions ??= {
+    mts: townDir(p, ...PLACES.mts), sea: townDir(p, ...PLACES.sea), lake: townDir(p, ...PLACES.lake), hill: townDir(p, ...PLACES.hill),
+  }) as Record<string, THREE.Vector3>;
+  const x = d.x, y = d.y, z = d.z;
+  // rolling hills, gentle near Amble's meadow and rounder further off
+  let h = A * (0.6 * (n.fbm(x * 2.0, y * 2.0, z * 2.0, 3) * 0.5 + 0.5) + 0.22 * (n.fbm(x * 5 + 5, y * 5, z * 5, 2) * 0.5 + 0.5)) + 0.8;
+  // the mountains: a long ridged range, snow above ~28 m
+  const m = smoothstep(Math.cos(0.95), Math.cos(0.55), d.dot(reg.mts));
+  if (m > 0) {
+    const r = n.ridged(x * 2.6 + 3, y * 2.6, z * 2.6, 4);
+    h += m * (6 + 46 * Math.pow(r, 2.2) * smoothstep(Math.cos(0.9), Math.cos(0.4), d.dot(reg.mts)));
+  }
+  // the hill the far town stands on
+  h += 11 * smoothstep(Math.cos(0.19), Math.cos(0.08), d.dot(reg.hill));
+  // the Sea: the land falls away under the water to a deep, soft floor
+  const sk = smoothstep(Math.cos(0.78), Math.cos(0.55), d.dot(reg.sea)) * (0.85 + 0.3 * n.fbm(x * 3 - 2, y * 3, z * 3, 2));
+  if (sk > 0) h = lerp(h, -5 + 1.5 * n.fbm(x * 6, y * 6, z * 6, 2), clamp(sk));
+  // the lake in a dip of the meadow
+  const lk = smoothstep(Math.cos(0.2), Math.cos(0.12), d.dot(reg.lake));
+  if (lk > 0) h = lerp(h, -1.6, lk);
+  return h;
+}
 
 /** A small round world you can walk all the way around. Gravity points to its center. */
 export class Planet {
@@ -120,9 +151,7 @@ export class Planet {
         const top = base + 1.0 + 1.6 * (n.fbm(x * 0.9 - 4, y * 0.9, z * 0.9, 2) * 0.5 + 0.5) + n.n3(x * 9, y * 9, z * 9) * 0.25;
         return lerp(cloud, top, k);
       }
-      case 'garden':
-        // A gentle rolling lawn: Nilo is tiny here, so even small swells read as hills.
-        return A * (n.fbm(x * 2.2, y * 2.2, z * 2.2, 3) * 0.5 + 0.5) + A * 0.25 * (n.fbm(x * 6 + 5, y * 6, z * 6, 2) * 0.5 + 0.5);
+      case 'garden': return townHeight(this, d);
       case 'desert': {
         // Dunes, and flat-topped mesas standing out of them in layered bands.
         const warp = n.fbm(x * 1.5, y * 1.5, z * 1.5, 2) * 2;
@@ -348,6 +377,11 @@ export class Planet {
       c.lerp(path, pathK * 0.85);
       gc[i * 3] = c.r; gc[i * 3 + 1] = c.g; gc[i * 3 + 2] = c.b; // what the grass grows out of, before any snow
       let snowAmt = 0;
+      if (shape === 'garden') {
+        // the far mountains: blue-grey rock, snow on their heads
+        snowAmt = smoothstep(26, 32, heights[i] + jitter * 20) * smoothstep(0.35, 0.6, flat);
+        c.lerp(snow, snowAmt);
+      }
       if (peaks) {
         snowAmt = smoothstep(this.colorParams.snowline - 0.04, this.colorParams.snowline + 0.06, h + jitter * 2) * smoothstep(0.45, 0.75, flat);
         snowAmt = Math.max(snowAmt, winter * smoothstep(0.4, 0.7, flat));

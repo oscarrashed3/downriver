@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { Kit } from '../skyIsles/sailtownKit';
 import {
-  PAL, pk, rnd, type R, type Opening, wallPanel, windowIn, flowerBox, barrel, crate, lantern, card, posy, slab,
-  FC, WALL_TILE, STONE_TILE, WOOD_TILE, T, boxM, taperTube,
+  PAL, pk, rnd, type R, type Opening, wallPanel, windowIn, flowerBox, barrel, crate, lantern, posy, slab, vine, shrub,
+  WALL_TILE, STONE_TILE, WOOD_TILE, T, boxM, taperTube,
 } from './mossrestKit';
 
 // Mossrest's houses and windmills, each built in its own frame (the origin at the floor's centre, the door on the
@@ -24,6 +24,8 @@ export interface HouseOpts {
   /** Door offset along x (from the centre). */
   doorX?: number;
   balcony?: boolean;
+  /** The shell's height under a local point (x, z), relative to the floor (negative below it). */
+  ground?: (x: number, z: number) => number;
 }
 export interface Box2 { x: number; z: number; hw: number; hd: number; h: number; rot: number; y0?: number }
 export interface DeckSpec { x: number; z: number; rot: number; span: number; width: number; y0: number; y1: number }
@@ -155,14 +157,26 @@ function framing(kit: Kit, L: number, H: number, open: Opening[], r: R) {
 
 /** The furniture of a lived-in ground floor (local: the room's floor at y = 0, inner size iw x id, door at +z). */
 function interior(kit: Kit, iw: number, id: number, r: R, kind: HouseOpts['kind'], doorX: number) {
-  const wd = pk(r, PAL.timber), dk = pk(r, PAL.timberDark);
-  // floorboards, and a beamed ceiling
-  for (let k = 0; k < Math.floor(iw / 0.3); k++) kit.add(boxM(0.29, 0.06, id, WOOD_TILE), 'wood', shadeC(wd, 0.85 + r() * 0.2), T(-iw / 2 + 0.15 + k * 0.3, 0.03, 0));
-  kit.add(boxM(iw, 0.08, id, WOOD_TILE), 'wood', shadeC(wd, 0.9), T(0, H1 - 0.04, 0));
+  const wd = pk(r, PAL.timber), dk = pk(r, PAL.timberDark), pale = pk(r, PAL.timberPale);
+  // honey floorboards, and a beamed ceiling of pale boards
+  for (let k = 0; k < Math.floor(iw / 0.3); k++) kit.add(boxM(0.29, 0.06, id, WOOD_TILE), 'wood', shadeC(pale, 0.9 + r() * 0.16), T(-iw / 2 + 0.15 + k * 0.3, 0.03, 0));
+  kit.add(boxM(iw, 0.08, id, WOOD_TILE), 'wood', shadeC(pale, 1.0), T(0, H1 - 0.04, 0));
+  // sunlight through the front window, lying on the floor
+  kit.add(new THREE.PlaneGeometry(0.9, 1.3).rotateX(-Math.PI / 2), 'bloom', '#fff1c4', T(doorX > 0 ? -iw * 0.22 : iw * 0.22, 0.075, id / 2 - 0.9, 0, 0.25, 0));
+  // the hearth: a chimney breast of small stones behind the stove, the fire glowing in its mouth
+  kit.push(T(iw / 2 - 0.65, 0, -id / 2 + 0.12));
+  kit.add(slab(1.35, H1, 0.26, SMALL_STONE), 'stone', pk(r, PAL.stone), T());
+  kit.add(boxM(1.5, 0.16, 0.42, WOOD_TILE), 'wood', dk, T(0, 1.55, 0.12));
+  kit.add(slab(0.5, 0.32, 0.06), 'bloom', '#ffb35c', T(0, 0.14, 0.85));
+  kit.add(new THREE.ConeGeometry(0.12, 0.3, 5), 'bloom', '#ffd27a', T(-0.05, 0.3, 0.86));
+  for (let k = 0; k < 3; k++) kit.add(new THREE.CylinderGeometry(0.05, 0.05, 0.4, 6), 'wood', '#6a4a30', T(0, 1.68, 0.1 + k * 0.1 - 0.1, 0, 0, Math.PI / 2));
+  kit.add(new THREE.CylinderGeometry(0.1, 0.12, 0.22, 10), 'plain', '#c9a26a', T(0.45, 1.74, 0.15));
+  kit.pop();
   for (let k = 1; k < Math.floor(iw / 1.1) + 1; k++) kit.add(boxM(0.18, 0.2, id, WOOD_TILE), 'wood', dk, T(-iw / 2 + k * (iw / (Math.floor(iw / 1.1) + 1)), H1 - 0.18, 0));
   // a rug in the middle of the room
-  kit.add(boxM(iw * 0.4, 0.02, id * 0.38, 1), 'plain', pk(r, ['#a65a46', '#6e7fa4', '#8f9a5a', '#b7804a']), T(0.2, 0.07, 0.1));
-  kit.add(boxM(iw * 0.34, 0.022, id * 0.3, 1), 'plain', pk(r, ['#e8d6a8', '#d9b77a', '#efe2c4']), T(0.2, 0.075, 0.1));
+  kit.add(new THREE.CircleGeometry(1.0, 24).scale(iw * 0.26, id * 0.24, 1).rotateX(-Math.PI / 2), 'plain', pk(r, ['#b0503c', '#6e7fa4', '#8f9a5a', '#c07a3e']), T(0.2, 0.07, 0.1));
+  kit.add(new THREE.CircleGeometry(1.0, 24).scale(iw * 0.2, id * 0.18, 1).rotateX(-Math.PI / 2), 'plain', pk(r, ['#ecd9a8', '#e0bd7a', '#f1e4c6']), T(0.2, 0.075, 0.1));
+  kit.add(new THREE.CircleGeometry(1.0, 24).scale(iw * 0.12, id * 0.1, 1).rotateX(-Math.PI / 2), 'plain', pk(r, ['#b0503c', '#7d9a5a']), T(0.2, 0.08, 0.1));
   // the bed in the back left corner: frame, mattress, patchwork quilt and pillows
   kit.push(T(-iw / 2 + 0.75, 0, -id / 2 + 1.05));
   kit.add(slab(1.3, 0.35, 2.0), 'wood', wd, T());
@@ -178,7 +192,6 @@ function interior(kit: Kit, iw: number, id: number, r: R, kind: HouseOpts['kind'
   kit.push(T(iw / 2 - 0.65, 0, -id / 2 + 0.55));
   kit.add(slab(1.0, 0.85, 0.8, STONE_TILE), 'rough', pk(r, PAL.stone), T());
   kit.add(slab(1.04, 0.06, 0.84), 'plain', PAL.iron, T(0, 0.85, 0));
-  kit.add(slab(0.4, 0.3, 0.05), 'plain', '#2a2420', T(0, 0.2, 0.41));
   kit.add(new THREE.CylinderGeometry(0.1, 0.1, H1 - 0.9, 8), 'plain', PAL.iron, T(0.25, 0.91 + (H1 - 0.9) / 2, -0.2));
   kit.add(new THREE.CylinderGeometry(0.2, 0.17, 0.2, 10), 'plain', '#4a4642', T(-0.2, 0.98, 0.05));
   kit.add(new THREE.CylinderGeometry(0.15, 0.12, 0.15, 10), 'brass', '#b88a4a', T(0.12, 0.96, 0.15));
@@ -226,6 +239,78 @@ function interior(kit: Kit, iw: number, id: number, r: R, kind: HouseOpts['kind'
   }
 }
 
+/** Dry stone that reads at a cottage's scale: small courses. */
+const SMALL_STONE = 0.8;
+
+/**
+ * The footing under a house (local: floor at y = 0, ground(x, z) the shell's height there). A low stone course
+ * runs under the walls; where the shell drops away below it, each stretch of the edge gets a dry-stone retaining
+ * wall if it is shallow, or a stout timber post on a flat stone with knee braces up to a sill beam if it is deep.
+ */
+function footing(kit: Kit, w: number, d: number, ground: (x: number, z: number) => number, r: R, stoneC: THREE.ColorRepresentation) {
+  const base = 0.45;
+  kit.add(slab(w + 0.3, base, d + 0.3, SMALL_STONE), 'stone', shadeC(stoneC, 0.9), T(0, -base, 0));
+  const dk = pk(r, PAL.timberDark);
+  const edges: [number, number, number, number][] = [[-w / 2, d / 2, w / 2, d / 2], [w / 2, d / 2, w / 2, -d / 2], [w / 2, -d / 2, -w / 2, -d / 2], [-w / 2, -d / 2, -w / 2, d / 2]];
+  const posts: THREE.Vector3[] = [];
+  for (const [x0, z0, x1, z1] of edges) {
+    const L = Math.hypot(x1 - x0, z1 - z0), n = Math.max(2, Math.ceil(L / 1.5));
+    const yaw = Math.atan2(-(z1 - z0), x1 - x0);
+    for (let k = 0; k < n; k++) {
+      const t0 = k / n, t1 = (k + 1) / n, tm = (t0 + t1) / 2;
+      const x = x0 + (x1 - x0) * tm, z = z0 + (z1 - z0) * tm;
+      const g = Math.min(ground(x0 + (x1 - x0) * t0, z0 + (z1 - z0) * t0), ground(x0 + (x1 - x0) * t1, z0 + (z1 - z0) * t1), ground(x, z));
+      const depth = -base - g;
+      if (depth < 0.05) continue;
+      if (depth < 1.5) {
+        // a retaining wall of dry stone, battered a little, its top course of bigger flat stones
+        kit.add(slab(L / n + 0.12, depth + 0.35, 0.55, SMALL_STONE), 'stone', shadeC(stoneC, 0.82 + r() * 0.12), T(x, g - 0.3, z, 0, yaw, 0));
+        kit.add(boxM(L / n + 0.2, 0.14, 0.66, SMALL_STONE), 'rough', shadeC(stoneC, 0.95), T(x, -base + 0.02, z, 0, yaw, 0));
+      } else {
+        // a timber post down to a flat stone, braced to the sill beam both ways along the edge
+        posts.push(new THREE.Vector3(x0 + (x1 - x0) * t0, g, z0 + (z1 - z0) * t0));
+        if (k === n - 1) posts.push(new THREE.Vector3(x1, ground(x1, z1), z1));
+        kit.add(boxM(L / n + 0.3, 0.3, 0.3, WOOD_TILE), 'wood', dk, T(x, -base - 0.15, z, 0, yaw, 0));
+      }
+    }
+  }
+  for (const p of posts) {
+    const top = -base - 0.3, len = top - p.y + 0.2;
+    if (len < 0.2) continue;
+    kit.add(slab(0.3, len, 0.3, WOOD_TILE, true), 'wood', dk, T(p.x, p.y - 0.2, p.z));
+    kit.add(new THREE.DodecahedronGeometry(0.42, 0).scale(1, 0.4, 1), 'rough', pk(r, PAL.stone), T(p.x, p.y + 0.05, p.z));
+    // knee braces in towards the house
+    const inX = -Math.sign(p.x) * 0.9, inZ = -Math.sign(p.z) * 0.9;
+    for (const [bx, bz] of [[inX, 0], [0, inZ]]) {
+      const a = new THREE.Vector3(p.x, top - Math.min(1.1, len * 0.45), p.z), b = new THREE.Vector3(p.x + bx, top + 0.05, p.z + bz);
+      kit.add(taperTube([a, b], 0.08, 0.08, 4, 1), 'wood', dk);
+    }
+  }
+}
+
+/** The way up to a front door: one big stone step if it is low, else a little timber stair with a handrail. */
+function doorSteps(kit: Kit, doorX: number, dz: number, drop: number, n: number, r: R, stoneC: THREE.ColorRepresentation) {
+  if (drop < 0.4) {
+    kit.add(slab(1.5, drop + 0.15, 0.6, SMALL_STONE), 'rough', shadeC(stoneC, 0.95), T(doorX, -drop - 0.15, dz + 0.3));
+    return;
+  }
+  const run = 0.36, rise = drop / n, wd = pk(r, PAL.timber), dk = pk(r, PAL.timberDark);
+  const len = run * n;
+  for (let k = 0; k < n; k++) {
+    // treads with a little nosing, open between them
+    const y = -rise * (k + 1) + rise, z = dz + 0.18 + k * run;
+    kit.add(boxM(1.3, 0.07, run + 0.06, WOOD_TILE), 'wood', shadeC(wd, 0.88 + r() * 0.2), T(doorX, y - 0.035, z));
+  }
+  // the stringers either side, notched to the treads, and a post and handrail on the open side
+  const ang = Math.atan2(drop, len);
+  for (const sx of [-1, 1]) {
+    kit.add(boxM(Math.hypot(len, drop) + 0.2, 0.26, 0.09, WOOD_TILE), 'wood', dk, T(doorX + sx * 0.69, -drop / 2 - 0.12, dz + len / 2, 0, Math.PI / 2, ang));
+    kit.add(slab(0.12, 1.05 + drop, 0.12, WOOD_TILE, true), 'wood', dk, T(doorX + sx * 0.69, -drop - 0.1, dz + len + 0.05));
+    kit.add(boxM(Math.hypot(len, drop) + 0.1, 0.09, 0.09, WOOD_TILE), 'wood', wd, T(doorX + sx * 0.69, -drop / 2 + 0.95, dz + len / 2, 0, Math.PI / 2, ang));
+  }
+  kit.add(new THREE.DodecahedronGeometry(0.5, 0).scale(1.6, 0.35, 1), 'rough', pk(r, PAL.stone), T(doorX, -drop - 0.05, dz + len + 0.25));
+}
+
 /** A house, built into `kit` under its current transform. */
 export function house(kit: Kit, o: HouseOpts): HouseOut {
   const r = rnd(o.seed);
@@ -235,8 +320,9 @@ export function house(kit: Kit, o: HouseOpts): HouseOut {
   const doorX = o.doorX ?? (r() - 0.5) * w * 0.3;
   const stoneC = pk(r, PAL.stone);
   const solids: Box2[] = [], decks: DeckSpec[] = [];
-  // ---- the footing, down to the shell
-  kit.add(slab(w + 0.3, o.plinth + 0.06, d + 0.3, STONE_TILE), 'rough', shadeC(stoneC, 0.9), T(0, -o.plinth - 0.04, 0));
+  // ---- the footing: a low course of stone under the walls; below it, where the shell falls away, dry-stone
+  // retaining walls where it is shallow and stout timber posts with knee braces on flat stones where it is deep
+  footing(kit, w, d, o.ground ?? (() => -o.plinth), r, stoneC);
   // ---- the ground floor: stone walls with the door, round and square windows
   const dOpen: Opening = { kind: 'door', x: doorX, y: 0, w: 1.05, h: 2.05 };
   const frontWin: Opening[] = [];
@@ -256,6 +342,17 @@ export function house(kit: Kit, o: HouseOpts): HouseOut {
   for (const [x, z, ry, L, op] of walls) {
     kit.push(T(x, 0, z, 0, ry, 0));
     kit.add(wallPanel(L, H1, TS, op, STONE_TILE), 'stone', stoneC);
+    if (o.walkIn) {
+      // inside: warm limewashed plaster over a low dado of small stones, timber posts and a wall plate
+      const Li = ry === 0 || ry === Math.PI ? w - TS * 2 : L;
+      kit.push(T(0, 0, -TS / 2 - 0.025, 0, Math.PI, 0));
+      kit.add(wallPanel(Li, H1, 0.05, op.map(q => ({ ...q, x: -q.x })), WALL_TILE * 0.8), 'wall', pk(r, ['#f3e6c8', '#f6ead0', '#f0e0bd']));
+      kit.add(wallPanel(Li, 0.62, 0.05, op.filter(q => q.kind === 'door').map(q => ({ ...q, x: -q.x })), 0.55), 'stone', shadeC(stoneC, 1.05), T(0, 0, 0.04));
+      kit.add(boxM(Li, 0.07, 0.1, WOOD_TILE), 'wood', pk(r, PAL.timberDark), T(0, 0.65, 0.07));
+      kit.add(boxM(Li, 0.2, 0.16, WOOD_TILE), 'wood', pk(r, PAL.timberDark), T(0, H1 - 0.3, 0.1));
+      for (const px of [-Li / 2 + 0.1, Li / 2 - 0.1]) kit.add(boxM(0.18, H1 - 0.3, 0.14, WOOD_TILE, true), 'wood', pk(r, PAL.timberDark), T(px, (H1 - 0.3) / 2, 0.09));
+      kit.pop();
+    }
     kit.push(T(0, 0, TS / 2));
     for (const q of op) if (q.kind !== 'door') windowIn(kit, q, r, { glass, shutters: q.kind === 'rect' && r() < 0.7, box: r() < 0.75, depth: TS });
     if (op.includes(dOpen)) door(kit, dOpen, r, o.walkIn ? 1.75 : 0);
@@ -303,7 +400,7 @@ export function house(kit: Kit, o: HouseOpts): HouseOut {
   // ---- the roof
   const pitch = o.kind === 'big' ? 0.86 : 0.78 + r() * 0.1;
   const eave = y;
-  const ridge = roof(kit, upW, floors > 1 ? upD : d, y, r, pitch, 0.45);
+  const ridge = roof(kit, upW, floors > 1 ? upD : d, y, r, pitch, 0.62);
   // ---- the chimney (a stack from the footing up through the roof); the bakery's is big
   const chim: THREE.Vector3[] = [];
   const cw = o.kind === 'bakery' ? 1.1 : 0.75;
@@ -319,13 +416,19 @@ export function house(kit: Kit, o: HouseOpts): HouseOut {
   // ---- the step(s) down from the door, a lantern by it, a doorstep
   const dz = d / 2;
   const nSteps = Math.max(1, Math.round(o.doorDrop / 0.22));
-  const rise = o.doorDrop / nSteps;
-  for (let k = 0; k < nSteps; k++) kit.add(slab(1.5 - k * 0.04, rise * (k + 1) + 0.15, 0.42, STONE_TILE), 'rough', shadeC(stoneC, 0.92 + r() * 0.12), T(doorX, -o.doorDrop - 0.15, dz + 0.21 + (nSteps - 1 - k) * 0.42));
+  doorSteps(kit, doorX, dz, o.doorDrop, nSteps, r, stoneC);
   lantern(kit, T(doorX + 0.95, 2.2, dz + 0.3));
   kit.add(boxM(0.06, 0.06, 0.32, 1), 'plain', PAL.iron, T(doorX + 0.95, 2.22, dz + 0.16));
   // ivy climbing the front corners, flowers at the foot of the walls
-  for (const sx of [-1, 1]) if (r() < 0.6) for (let k = 0; k < 4; k++) card(kit, FC.ivy, '#ffffff', T(sx * (w / 2 - 0.1 - r() * 0.5), k * 0.75, dz + 0.04), 0.9, 1.0);
-  for (let k = 0; k < 3; k++) posy(kit, T((r() - 0.5) * w * 0.9, 0, dz + 0.3 + r() * 0.2, 0, r() * 3, 0), 0.45, r);
+  for (const sx of [-1, 1]) if (r() < 0.75) {
+    // up the front corner from the ground to the eaves, and spreading along under them
+    const x0 = sx * (w / 2 - 0.15), top = Math.min(eave, H1 + 1.8) - 0.2;
+    vine(kit, [new THREE.Vector3(x0, -0.3, dz + 0.02), new THREE.Vector3(x0 - sx * 0.2, top * 0.5, dz + 0.04), new THREE.Vector3(x0 - sx * 0.1, top, dz + 0.3), new THREE.Vector3(x0 - sx * (0.8 + r()), top + 0.2, dz + 0.4)], new THREE.Vector3(0, 0, 1), r, 0.4);
+    if (r() < 0.6) vine(kit, [new THREE.Vector3(sx * (w / 2 + 0.02), top, dz - 0.2), new THREE.Vector3(sx * (w / 2 + 0.05), top * 0.55, -0.3 + r()), new THREE.Vector3(sx * (w / 2 + 0.04), 0.2, -d * 0.3)], new THREE.Vector3(sx, 0, 0), r, 0.36);
+  }
+  // a bush by the wall, flowers at the foot of it
+  if (r() < 0.7) shrub(kit, T(doorX > 0 ? -w / 2 + 0.3 : w / 2 - 0.3, -0.2, dz + 0.5), r, 0.7 + r() * 0.3);
+  for (let k = 0; k < 3; k++) posy(kit, T((r() - 0.5) * w * 0.9, -0.05, dz + 0.3 + r() * 0.2, 0, r() * 3, 0), 0.5, r);
   if (r() < 0.7) barrel(kit, T(doorX > 0 ? -w / 2 - 0.1 : w / 2 + 0.1, 0, dz + 0.35), r);
   if (r() < 0.4) crate(kit, T(doorX > 0 ? -w / 2 + 0.6 : w / 2 - 0.6, 0, dz + 0.5, 0, r(), 0), r);
   // ---- inside
@@ -345,7 +448,7 @@ export function house(kit: Kit, o: HouseOpts): HouseOut {
   } else {
     solids.push({ x: 0, z: 0, hw: w / 2 + 0.15, hd: d / 2 + 0.15, h: eave + 1, rot: 0 });
   }
-  decks.push({ x: doorX, z: dz + 0.21 * nSteps + 0.1, rot: Math.PI / 2, span: 0.42 * nSteps + 0.3, width: 1.4, y0: -o.doorDrop, y1: 0 });
+  decks.push({ x: doorX, z: dz + (o.doorDrop < 0.4 ? 0.3 : 0.18 * nSteps + 0.1), rot: Math.PI / 2, span: (o.doorDrop < 0.4 ? 0.6 : 0.36 * nSteps) + 0.3, width: 1.4, y0: -o.doorDrop, y1: 0 });
   return { solids, decks, chimney: chim, door: new THREE.Vector3(doorX, 0, dz), ridge: [new THREE.Vector3(-upW / 2, ridge + 0.15, 0), new THREE.Vector3(upW / 2, ridge + 0.15, 0)], eave, top: ridge };
 }
 
@@ -359,8 +462,10 @@ export interface MillOut { sails: THREE.Group; hub: THREE.Vector3; top: THREE.Ve
  * The broken one has lost a sail (a splintered stub is left) and another's linen is torn and furled: the sails
  * are their own group, so the working mill can turn them.
  */
-export function windmill(kit: Kit, seed: number, broken: boolean, plinth: number): MillOut {
+export function windmill(kit: Kit, seed: number, broken: boolean, plinth0: number, S = 1): MillOut {
   const r = rnd(seed);
+  const plinth = plinth0 / S;
+  kit.push(T(0, 0, 0, 0, 0, 0, S));
   const H = 7.6, rb = 2.3, rt = 1.55;
   kit.add(new THREE.CylinderGeometry(rb + 0.35, rb + 0.5, plinth + 1.0, 12), 'rough', pk(r, PAL.stone), T(0, (1.0 - plinth) / 2, 0));
   const tower = new THREE.CylinderGeometry(rt, rb, H, 12, 6);
@@ -412,6 +517,7 @@ export function windmill(kit: Kit, seed: number, broken: boolean, plinth: number
   // the tail pole down the back
   kit.add(taperTube([new THREE.Vector3(0, 0.5, -rt), new THREE.Vector3(0, -H * 0.55, -rb - 2.4)], 0.12, 0.1, 5, 3), 'wood', pk(r, PAL.timberDark));
   kit.pop();
+  kit.pop();
   // ---- the sails, in their own kit (they turn about local z)
   const sk = new Kit();
   const hub = new THREE.Vector3(0, capY + 0.9 + 0.18, rt + 1.25);
@@ -450,7 +556,9 @@ export function windmill(kit: Kit, seed: number, broken: boolean, plinth: number
     sk.pop();
   }
   const sails = sk.build(new THREE.Group(), { outline: false });
+  hub.multiplyScalar(S);
   sails.position.copy(hub);
+  sails.scale.setScalar(S);
   sails.rotation.x = -0.12;
-  return { sails, hub, top: new THREE.Vector3(0, capY + 2.5, 0), solid: { x: 0, z: 0, hw: rb + 0.3, hd: rb + 0.3, h: capY, rot: 0 }, broken };
+  return { sails, hub, top: new THREE.Vector3(0, (capY + 2.5) * S, 0), solid: { x: 0, z: 0, hw: (rb + 0.3) * S, hd: (rb + 0.3) * S, h: capY * S, rot: 0 }, broken };
 }

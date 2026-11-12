@@ -5,7 +5,7 @@ import * as P from './props';
 import { preparePeaks, populatePeaks } from './peaks';
 import { orientTo } from './sphere';
 import { prepareSky, populateSky } from './w_sky';
-import { prepareGarden, populateGarden } from './w_garden';
+import { prepareTown, populateTown } from './walkingTown/w_town';
 import { prepareDesert, populateDesert } from './w_desert';
 import { prepareLantern, populateLantern } from './w_lantern';
 import { Npc, LOOKS } from '../systems/npc';
@@ -54,7 +54,7 @@ export function prepare(p: Planet) {
   switch (p.cfg.id) {
     case 'peaks': preparePeaks(p); break;
     case 'sky': prepareSky(p, f); break;
-    case 'garden': prepareGarden(p, f); break;
+    case 'garden': prepareTown(p, f); break;
     // The edge pad stands above the ocean (1.6), so the lip where the river falls on stays dry.
     case 'sea': f(176, 0, 9, 3.0, 6); break;
     case 'desert': prepareDesert(p, f); break;
@@ -132,7 +132,7 @@ export function populate(p: Planet, scene: THREE.Scene, index: number): WorldCon
   switch (p.cfg.id) {
     case 'peaks': populatePeaks(p, scene, c, put, npc, lm); break;
     case 'sky': populateSky(kit); break;
-    case 'garden': populateGarden(kit); break;
+    case 'garden': populateTown(kit); break;
     case 'desert': populateDesert(kit); break;
     case 'lantern': populateLantern(kit); break;
     case 'sea': {

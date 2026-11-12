@@ -6,7 +6,7 @@ export const LETTER = 'Nilo. Follow the water. It always finds its way home. But
 export const CHAPTERS = [
   { n: 'Chapter One', title: 'Where the Water Begins' },
   { n: 'Chapter Two', title: 'The Sky Isles' },
-  { n: 'Chapter Three', title: 'The Overgrown Garden' },
+  { n: 'Chapter Three', title: 'Walking Town' },
   { n: 'Chapter Four', title: 'The Endless Sea' },
   { n: 'Chapter Five', title: 'The Painted Desert' },
   { n: 'Chapter Six', title: 'Lantern Town' },
@@ -18,7 +18,7 @@ export const CHAPTERS = [
  */
 export const WORLD_TASKS: Record<string, string> = {
   sky: 'Find the Wind Keeper in Sailtown, on the second island.',
-  garden: 'Find the gardener by the fallen watering can.',
+  garden: 'Explore Mossrest, the village on Old Amble\'s back.',
   sea: 'Find Maren, the Salt Keeper, among the stilt houses.',
   desert: 'Find Sefa in Sahra, the wandering town, across the river.',
   lantern: 'Follow the canals down to the harbour, and the lighthouse.',

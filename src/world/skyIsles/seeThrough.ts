@@ -62,7 +62,7 @@ function patch(m: THREE.Material) {
 }
 
 /** Names of groups whose meshes are ground you walk on (never melted: it would open holes under his feet). */
-const GROUND = new Set(['islandBody', 'aqueduct', 'ropeBridge', 'pavedPath', 'footBridge', 'stoneSteps']);
+const GROUND = new Set(['islandBody', 'aqueduct', 'ropeBridge', 'pavedPath', 'footBridge', 'stoneSteps', 'mossrestGround']);
 
 export class SeeThrough {
   private clones = new Map<THREE.Material, THREE.Material>();
@@ -72,7 +72,12 @@ export class SeeThrough {
   private v = new THREE.Vector3();
   private size = new THREE.Vector2();
 
-  constructor(private scene: THREE.Scene, private roots: () => THREE.Object3D[]) {}
+  /**
+   * keepShader: a clone keeps the original's own shader patch (onBeforeCompile and its cache key), which
+   * Material.clone drops. World 3 asks for it (its village shares the painted kit materials); the Sky Isles keep
+   * the behaviour they were tuned with.
+   */
+  constructor(private scene: THREE.Scene, private roots: () => THREE.Object3D[], private opts: { keepShader?: boolean } = {}) {}
 
   /** Patch the materials under the sky's roots (new meshes too: call now and then). */
   scan() {
@@ -125,6 +130,10 @@ export class SeeThrough {
       c = m.clone();
       const sm = m as THREE.ShaderMaterial;
       if (sm.isShaderMaterial) (c as THREE.ShaderMaterial).uniforms = sm.uniforms;
+      if (this.opts.keepShader && Object.prototype.hasOwnProperty.call(m, 'onBeforeCompile')) {
+        c.onBeforeCompile = m.onBeforeCompile;
+        c.customProgramCacheKey = m.customProgramCacheKey;
+      }
       patch(c);
       this.clones.set(m, c);
     }

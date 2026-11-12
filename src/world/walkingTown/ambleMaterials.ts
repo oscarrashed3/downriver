@@ -63,12 +63,19 @@ export function ambleBodyMaterial(): THREE.MeshToonMaterial {
             alb *= 0.92 + 0.14 * n1 + 0.06 * n3;
           } else if (kind < 1.5) {
             // pale hide: soft, faintly streaked like short fur, a few freckles of grey
-            alb *= 0.95 + 0.07 * pNoise(rp * vec3(7.0, 2.0, 7.0)) + 0.03 * n2;
+            // short hair lying back along the head and down the neck: fine strokes, tufts, and softer clumps
+            float hairF = pNoise(rp * vec3(26.0, 26.0, 3.5));
+            float hairM = pNoise(rp * vec3(9.0, 9.0, 1.6) + 2.0);
+            alb *= 0.9 + 0.1 * hairF + 0.08 * hairM + 0.03 * n2;
+            alb = mix(alb, alb * vec3(1.03, 0.95, 0.84), smoothstep(0.45, 0.75, n1) * 0.35);
             alb = mix(alb, alb * vec3(0.84, 0.82, 0.78), smoothstep(0.72, 0.8, n2) * 0.5 * rock * 4.0);
           } else if (kind < 2.5) {
             // antler: pale, a fine grain running along, little dark pits
             alb *= 0.93 + 0.08 * pNoise(rp * vec3(3.0, 9.0, 3.0)) + 0.04 * n1;
             alb *= 1.0 - 0.18 * smoothstep(0.78, 0.84, n3);
+          } else if (kind > 2.5 && kind < 3.5) {
+            // the eye: deep and dark, a soft warm glint low in the iris
+            alb *= 0.55;
           } else if (kind > 3.5 && kind < 4.5) {
             alb *= 0.94 + 0.1 * pNoise(rp * vec3(12.0, 2.0, 12.0));
           } else if (kind > 5.5) {
@@ -107,7 +114,7 @@ export function ambleBodyMaterial(): THREE.MeshToonMaterial {
           diffuseColor.rgb = alb;
         }`);
   };
-  m.customProgramCacheKey = () => 'ambleBody2';
+  m.customProgramCacheKey = () => 'ambleBody3';
   bodyMat = m;
   return m;
 }

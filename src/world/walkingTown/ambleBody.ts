@@ -81,6 +81,7 @@ const noise = new Noise(311), noise2 = new Noise(97);
 const STONE = [col('#aca88f'), col('#a2a188'), col('#b0a68b'), col('#979a80'), col('#b6b097')];
 const LEGSKIN = col('#ad9f80'), LEGSKIN2 = col('#b4a888');
 const HIDE = col('#e3d6b6'), HIDE_D = col('#cfc0a0'), HIDE_L = col('#efe6cf');
+const HIDE_W = col('#d8c29c'), WARM = col('#a98860'), WARM_D = col('#8a6646');
 const NOSE = col('#5a4e47'), NOSE_D = col('#2c2420'), MOUTH = col('#a8977c');
 const ANTLER = col('#ddd3bd'), ANTLER_B = col('#a49680');
 const NAIL = col('#d9cba6');
@@ -432,18 +433,22 @@ function headPart(pb: PartB) {
       const de = Math.hypot(dy, dz);
       if (ax > 0.6) {
         const sink = 1 - smoothstep(EYE_RADIUS * 0.86, EYE_RADIUS * 1.2, de);
-        x -= sx * sink * 0.22;
-        // a heavy brow, so the eye sits deep and looks sleepy and kind
-        const brow = Math.exp(-((dy - 0.42) ** 2) / 0.05 - (dz + 0.0) ** 2 / 0.3);
-        x += sx * brow * 0.17; y += brow * 0.08;
-        // the cheek below and behind the eye
-        x += sx * 0.07 * Math.exp(-((dy + 0.75) ** 2) / 0.25 - ((dz + 0.4) ** 2) / 0.6);
+        x -= sx * sink * 0.05;
+        // a heavy brow ridge, so the eye sits deep under it and looks sleepy and kind
+        const brow = Math.exp(-((dy - 0.45 + 0.08 * dz) ** 2) / 0.035 - (dz + 0.05) ** 2 / 0.45);
+        x += sx * brow * 0.26; y += brow * 0.12;
+        // the cheekbone: a soft ridge from under the eye running forward and down towards the muzzle
+        x += sx * 0.15 * Math.exp(-((dy + 0.62 + 0.16 * dz) ** 2) / 0.05 - ((dz - 0.3) ** 2) / 1.3);
+        // the hollow of the temple behind the eye
+        x -= sx * 0.06 * Math.exp(-((dy - 0.1) ** 2) / 0.12 - ((dz + 0.85) ** 2) / 0.12);
       }
       // the nostrils: two big soft comma-shaped dents on the front corners of the nose
       const nzc = 4.68, nyc = headRing(nzc).yc + 0.15;
       const nz = z - nzc, ny = y - nyc;
-      const nost = Math.exp(-((ax - 0.5 + ny * 0.25) ** 2) / 0.03 - (ny * ny) / 0.05 - (nz * nz) / 0.06) * (ax > 0.2 ? 1 : 0);
-      x -= sx * nost * 0.1;
+      const nost = Math.exp(-((ax - 0.5 + ny * 0.25) ** 2) / 0.025 - (ny * ny) / 0.04 - (nz * nz) / 0.05) * (ax > 0.2 ? 1 : 0);
+      // a soft rim round each nostril, the dent deep inside it
+      const rimN = Math.exp(-((ax - 0.52 + ny * 0.25) ** 2) / 0.07 - (ny * ny) / 0.1 - (nz * nz) / 0.12) * (ax > 0.15 ? 1 : 0);
+      x += sx * (rimN * 0.07 - nost * 0.2);
       // the lips: closed, the upper lip soft and heavy, overhanging the chin a little (no drawn line)
       const ly = mouthY(Math.min(MOUTH_Z1, Math.max(MOUTH_Z0, z)));
       const lipK = smoothstep(MOUTH_Z0, MOUTH_Z0 + 0.8, z) * (1 - smoothstep(MOUTH_Z1 - 0.1, MOUTH_Z1 + 0.25, z));
@@ -454,8 +459,14 @@ function headPart(pb: PartB) {
       // the nose: soft, dark and velvety over the front of the muzzle, fading back
       const nose = smoothstep(4.15, 4.7, z) * smoothstep(-0.45, 0.2, y - headRing(z).yc + 0.35);
       const under = smoothstep(-0.1, -0.7, Math.cos(phi));
-      const c = HIDE.clone().lerp(HIDE_L, under * 0.6 * (1 - nose)).lerp(HIDE_D, smoothstep(1.1, 0.2, z) * 0.25).lerp(NOSE, nose * 0.9).lerp(MOUTH, mouth).lerp(NOSE_D, nost * 0.95);
-      const moss = clamp(smoothstep(0.55, 0.95, Math.cos(phi)) * smoothstep(1.4, -0.4, z) * 1.3 + noise.fbm(x, y, z, 2) * 0.8 - 0.25);
+      // the coat: cream, in soft patches of warmer and paler hair; warmer brown down the muzzle and round the eye
+      const patch = noise.fbm(x * 0.9 + 3, y * 0.9, z * 0.9, 2);
+      const muzzle = smoothstep(2.4, 4.0, z) * (1 - under * 0.7);
+      const eyeP = ax > 0.4 ? Math.exp(-(de * de) / 0.7) : 0;
+      const c = HIDE.clone().lerp(HIDE_W, clamp(patch * 1.4 + 0.1) * 0.45).lerp(HIDE_L, under * 0.6 * (1 - nose))
+        .lerp(WARM, muzzle * 0.8).lerp(WARM_D, eyeP * 0.85).lerp(HIDE_D, smoothstep(1.1, 0.2, z) * 0.2)
+        .lerp(NOSE, nose * 0.9).lerp(MOUTH, mouth).lerp(NOSE_D, Math.min(1, nost * 1.3)).lerp(WARM_D, rimN * (1 - nost) * 0.4);
+      const moss = clamp(smoothstep(0.45, 0.9, Math.cos(phi)) * smoothstep(2.2, -0.2, z) * 1.4 + noise.fbm(x, y, z, 2) * 0.9 - 0.25);
       pb.v(p, c, [0.08, moss, mouth * 0.4 + nost * 0.5, KIND.hide], wH);
     }
   }
@@ -496,7 +507,7 @@ function eyesPart() {
     const o = headDir(side, 0.05, 0.32);
     const up = HEAD_UP.clone().addScaledVector(o, -HEAD_UP.dot(o)).normalize();
     const fw = new THREE.Vector3().crossVectors(up, o).multiplyScalar(side);
-    const IRIS = col('#5c3c24'), PUPIL = col('#1c1410'), RING = col('#3b2818'), WHITE = col('#9c8a70');
+    const IRIS = col('#2a1a10'), PUPIL = col('#0e0907'), RING = col('#1e130c'), WHITE = col('#2a1d14');
     // the eyeball: almost all dark iris (a deer's eye), a warm brown ring, a hint of white at the corners
     blob(C, 32, 22, (sx, sy, sz) => {
       const d = new THREE.Vector3().addScaledVector(fw, sx).addScaledVector(up, sy).addScaledVector(o, sz);
@@ -506,44 +517,23 @@ function eyesPart() {
     });
     // one small, soft catchlight, fixed to the head so it stays put while the eye looks about
     const hl2 = C.clone().addScaledVector(o, EYE_R * 0.95).addScaledVector(up, -EYE_R * 0.12).addScaledVector(fw, EYE_R * 0.2);
-    blob(hl2, 8, 5, (sx, sy, sz) => ({ p: hl2.clone().add(new THREE.Vector3(sx, sy, sz).multiplyScalar(0.05)), c: col('#cfc2ae'), s: [0, 0, 0, KIND.eye], w: [[BONE.head, 1]] }));
-    // the rim of the lids round the eye: a soft roll of hide, darker at the lash line
-    {
-      const pb = new PartB();
-      const NU = 40, NR = 10, start = 0;
-      const ringC: THREE.Vector3[] = [];
-      for (let i = 0; i < NU; i++) {
-        const a = (i / NU) * Math.PI * 2;
-        const rc = new THREE.Vector3().addScaledVector(up, Math.cos(a)).addScaledVector(fw, Math.sin(a));
-        // the eye's opening is a soft almond: a little longer than tall
-        const R0 = EYE_R * (0.9 + 0.12 * Math.sin(a) ** 2);
-        const ring = C.clone().addScaledVector(o, EYE_R * 0.42).addScaledVector(rc, R0);
-        ringC.push(ring);
-        for (let k = 0; k < NR; k++) {
-          const b = (k / NR) * Math.PI * 2;
-          const tr = 0.11 * (1 + 0.3 * Math.max(0, Math.cos(a)));
-          const q = ring.clone().addScaledVector(rc, Math.cos(b) * tr).addScaledVector(o, Math.sin(b) * tr * 0.8);
-          const inner = Math.cos(b) < -0.2 && Math.sin(b) > -0.3;
-          pb.v(q, inner ? col('#2e241e') : col('#b9a585'), [0, 0, inner ? 0.3 : 0.1, KIND.hide], [[BONE.head, 1]]);
-        }
-      }
-      pb.rows(start, NU, NR, true);
-      for (let k = 0; k < NR; k++) { const a = start + (NU - 1) * NR + k, b = start + (NU - 1) * NR + ((k + 1) % NR), c = start + k, d = start + ((k + 1) % NR); pb.t(a, c, b); pb.t(b, c, d); }
-      GEOS.push(pb.geo(awayFrom(ringC)));
-    }
+    blob(hl2, 8, 5, (sx, sy, sz) => ({ p: hl2.clone().add(new THREE.Vector3(sx, sy, sz).multiplyScalar(0.05)), c: col('#e8dccb'), s: [0, 0, 0, KIND.eye], w: [[BONE.head, 1]] }));
     // the upper lid: a thin shell over the top of the eyeball, turning down about the eye's forward axis to blink
     {
       const pb = new PartB();
       const NU = 22, NV = 9, start = 0;
       for (let s = 0; s < 2; s++) {
-        const rr = EYE_R * (s === 0 ? 1.1 : 1.03);
+        const rr = EYE_R * (s === 0 ? 1.08 : 1.03);
         for (let i = 0; i < NV; i++) {
-          const el = 0.42 + (i / (NV - 1)) * 1.25; // elevation from the eye's axis towards up
           for (let j = 0; j < NU; j++) {
             const az = -1.25 + (j / (NU - 1)) * 2.5;
+            // elevation from the eye's axis towards up; the edge droops at the corners to meet the lower lid,
+            // so the open eye is an almond, not a round hole
+            const el = 0.42 - (i === 0 ? 0.42 : 0.42 * (1 - i / (NV - 1))) * (az / 1.25) ** 2 + (i / (NV - 1)) * 1.25;
             const d = new THREE.Vector3().addScaledVector(o, Math.cos(el) * Math.cos(az)).addScaledVector(fw, Math.cos(el) * Math.sin(az)).addScaledVector(up, Math.sin(el));
             const edge = i <= 1;
-            pb.v(C.clone().addScaledVector(d, rr * (i === 0 && s === 0 ? 1.03 : 1)), edge ? col(i === 0 ? '#3a2e26' : '#b3a184') : HIDE_D, [0.05, 0, edge ? 0.25 : 0, KIND.hide], [[lb, 1]]);
+            // a soft heavy lid of warm hide, with a dark lash line along its edge
+            pb.v(C.clone().addScaledVector(d, rr * (i === 0 && s === 0 ? 1.04 : 1)), edge ? col(i === 0 ? '#1e1610' : '#6e5038') : WARM_D.clone().lerp(HIDE, 0.25 + 0.2 * smoothstep(2, NV - 1, i)), [0.05, 0, edge ? 0.25 : 0, KIND.hide], [[lb, 1]]);
           }
         }
       }
@@ -554,6 +544,24 @@ function eyesPart() {
       }
       for (let j = 0; j < NU - 1; j++) { const a = start + j, b = a + 1, c = start + NV * NU + j, d = c + 1; pb.t(a, c, b); pb.t(b, c, d); }
       // (the outer shell must face away from the eye; the inner one faces it, and the vote follows the outer)
+      GEOS.push(pb.geo(q => new THREE.Vector3().subVectors(q, C)));
+    }
+    // the lower lid: a soft fixed fold of hide over the bottom of the eyeball, so the open eye is an almond
+    {
+      const pb = new PartB();
+      const NU = 22, NV = 7;
+      for (let i = 0; i < NV; i++) {
+        const el = -0.42 - (i / (NV - 1)) * 1.1;
+        for (let j = 0; j < NU; j++) {
+          const az = -1.3 + (j / (NU - 1)) * 2.6;
+          // the edge rises a little towards the corners of the eye
+          const e2 = el + (i === 0 ? 0.36 * (az / 1.3) ** 2 : 0.36 * (1 - i / (NV - 1)) * (az / 1.3) ** 2);
+          const d = new THREE.Vector3().addScaledVector(o, Math.cos(e2) * Math.cos(az)).addScaledVector(fw, Math.cos(e2) * Math.sin(az)).addScaledVector(up, Math.sin(e2));
+          const c = i === 0 ? col('#2a1e16') : i === 1 ? WARM_D.clone().lerp(HIDE, 0.15) : WARM_D.clone().lerp(HIDE, 0.25 + smoothstep(1, NV - 1, i) * 0.25);
+          pb.v(C.clone().addScaledVector(d, EYE_R * (i === 0 ? 1.06 : 1.1)), c, [0.05, 0, i === 0 ? 0.25 : 0.05, KIND.hide], [[BONE.head, 1]]);
+        }
+      }
+      for (let i = 0; i < NV - 1; i++) for (let j = 0; j < NU - 1; j++) { const a = i * NU + j, b = a + 1, c = a + NU, d = c + 1; pb.t(a, c, b); pb.t(b, c, d); }
       GEOS.push(pb.geo(q => new THREE.Vector3().subVectors(q, C)));
     }
   }
@@ -839,9 +847,9 @@ export function buildAmbleBody(seed = 3): AmbleBodyBuild {
     const sl = i / (neck.C.length - 1) * neck.len;
     mossLump(p, n, (0.7 + rng() * 0.9) * (1.45 - s * 0.9), chainWeights(sl, neck.ctlS.slice(0, 6), [BONE.body, BONE.neck0, BONE.neck1, BONE.neck2, BONE.neck3, BONE.head], 1), rng, 0.5);
   }
-  for (let k = 0; k < 7; k++) {
-    const a = (rng() - 0.5) * 1.6;
-    const z = HEAD_Z0 + 0.2 + rng() * 1.0;
+  for (let k = 0; k < 16; k++) {
+    const a = (rng() - 0.5) * 1.5;
+    const z = HEAD_Z0 + 0.2 + rng() * 2.6;
     const q = headSurface(z, a);
     const p = headPoint(q.x, q.y, z);
     const n = headDir(Math.sin(a), Math.cos(a), 0);

@@ -35,7 +35,7 @@ export const SKY_GOAL = {
   qualify: 'Fly the qualifier through the golden rings of the Chime Garden.',
   race: 'Meet the racers at the gate in Sailtown, and win.',
   goodbye: "Say goodbye at Whale's Rest.",
-  whale: 'Ride the whale down to the Overgrown Garden.',
+  whale: 'Ride the whale down to the Walking Town.',
 };
 
 /** The three steps of the Sky Races, for the goal meter. */

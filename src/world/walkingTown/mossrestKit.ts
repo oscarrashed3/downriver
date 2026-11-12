@@ -117,16 +117,96 @@ export function card(kit: Kit, cell: number, color: THREE.ColorRepresentation, m
   g.translate(0, h / 2, 0);
   kit.add(g, kind, color, m);
 }
-/** A little bunch of flowers: crossed cards of a few blooms (local y up). */
-export function posy(kit: Kit, m: THREE.Matrix4, size: number, r: R, cells: number[] = [FC.daisy, FC.floret, FC.rose, FC.cosmos, FC.buttercup, FC.alyssum]) {
+const LEAFC = ['#5e8c3c', '#6e9a42', '#7ea64a', '#557f36', '#8bb352'];
+const BLOOMC = ['#fbf6ea', '#ffffff', '#f6d9e2', '#e9a3b4', '#f2cf5a', '#c9b6e8', '#e8875f', '#f4e3a0'];
+/** One flower head: five round petals round a little yellow eye, facing along local +y. */
+function blossom(kit: Kit, m: THREE.Matrix4, s: number, c: THREE.ColorRepresentation) {
+  const g = new THREE.CircleGeometry(s, 10).rotateX(-Math.PI / 2);
+  // scallop the rim into five petals and cup the head a little
+  const p = g.attributes.position as THREE.BufferAttribute;
+  for (let i = 1; i < p.count; i++) { const x = p.getX(i), z = p.getZ(i); const a = Math.atan2(z, x); const k = 0.72 + 0.28 * Math.abs(Math.cos(a * 2.5)); p.setXYZ(i, x * k, s * 0.25 * k, z * k); }
+  g.computeVertexNormals();
+  kit.add(g, 'bloom', c, m);
   kit.push(m);
-  for (let k = 0; k < 3; k++) {
-    const c = pk(r, cells);
-    const tintC = c === FC.rose ? pk(r, ['#ffffff', '#ffd6e0', '#fff0c8']) : '#ffffff';
-    card(kit, c, tintC, T((r() - 0.5) * size * 0.4, 0, (r() - 0.5) * size * 0.3, 0, (k / 3) * Math.PI + r() * 0.4, 0), size, size * 0.9);
-  }
-  card(kit, FC.leafy, '#ffffff', T(0, 0, 0, 0, r() * 3, 0), size * 1.1, size * 0.7);
+  kit.add(new THREE.SphereGeometry(s * 0.28, 5, 3), 'bloom', '#e0b13a', T(0, s * 0.08, 0));
   kit.pop();
+}
+/** A little bunch of flowers: a soft mound of leaves with round flower heads nodding out of it (local y up). */
+export function posy(kit: Kit, m: THREE.Matrix4, size: number, r: R, _cells?: number[]) {
+  kit.push(m);
+  const nl = 2 + Math.floor(r() * 2);
+  for (let k = 0; k < nl; k++) {
+    const a = r() * Math.PI * 2, d = size * 0.18 * r();
+    const rr = size * (0.24 + r() * 0.1);
+    kit.add(new THREE.SphereGeometry(rr, 7, 5).scale(1, 0.72, 1), 'plain', new THREE.Color(pk(r, LEAFC)).multiplyScalar(0.9 + r() * 0.2), T(Math.cos(a) * d, rr * 0.55, Math.sin(a) * d));
+  }
+  const c1 = pk(r, BLOOMC), c2 = pk(r, BLOOMC);
+  const nb = 5 + Math.floor(r() * 4);
+  for (let k = 0; k < nb; k++) {
+    const a = r() * Math.PI * 2, el = 0.35 + r() * 0.9;
+    const dir = new THREE.Vector3(Math.cos(a) * Math.cos(el), Math.sin(el), Math.sin(a) * Math.cos(el));
+    const at = dir.clone().multiplyScalar(size * 0.36).add(new THREE.Vector3(0, size * 0.2, 0));
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    blossom(kit, new THREE.Matrix4().compose(at, q, new THREE.Vector3(1, 1, 1)), size * (0.08 + r() * 0.04), k % 3 === 2 ? c2 : c1);
+  }
+  kit.pop();
+}
+
+/** A soft round mass of leaves round a dark core (the crown of a tree or a bush), centred at c. */
+export function crown(kit: Kit, c: THREE.Vector3, rad: number, leafC: THREE.Color, r: R, squash = 0.8) {
+  kit.add(new THREE.IcosahedronGeometry(rad * 0.74, 1).scale(1, squash, 1), 'core', leafC.clone().multiplyScalar(0.55), T(c.x, c.y, c.z));
+  const n = Math.round(10 + rad * 9);
+  for (let i = 0; i < n; i++) {
+    const dir = new THREE.Vector3(r() * 2 - 1, (r() * 1.6 - 0.5) * squash, r() * 2 - 1).normalize();
+    const q = c.clone().addScaledVector(dir, rad * (0.72 + r() * 0.3));
+    const s = rad * (0.55 + r() * 0.3);
+    const g = new THREE.PlaneGeometry(s * 2, s * 2);
+    const mm = new THREE.Matrix4().lookAt(new THREE.Vector3(), dir, Math.abs(dir.y) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0));
+    mm.multiply(new THREE.Matrix4().makeRotationZ(r() * Math.PI)).setPosition(q);
+    const na = g.attributes.normal as THREE.BufferAttribute;
+    for (let j = 0; j < na.count; j++) na.setXYZ(j, 0, 0, -1);
+    kit.add(g, 'leaf', leafC.clone().multiplyScalar(0.85 + 0.3 * (dir.y * 0.5 + 0.5)), mm);
+  }
+}
+/** A bush on the ground (local y up): two or three leaf masses, sometimes in flower. */
+export function shrub(kit: Kit, m: THREE.Matrix4, r: R, size = 1, flowers = r() < 0.4) {
+  kit.push(m);
+  const n = 2 + Math.floor(r() * 2);
+  const base = new THREE.Color(pk(r, PAL.leaf));
+  for (let k = 0; k < n; k++) {
+    const a = r() * Math.PI * 2, d = size * 0.35 * (k ? 1 : 0);
+    const rad = size * (k ? 0.45 + r() * 0.15 : 0.6);
+    crown(kit, new THREE.Vector3(Math.cos(a) * d, rad * 0.7, Math.sin(a) * d), rad, base.clone().multiplyScalar(0.9 + r() * 0.2), r, 0.75);
+  }
+  if (flowers) {
+    const c = pk(r, BLOOMC);
+    for (let k = 0; k < 7; k++) {
+      const a = r() * Math.PI * 2, el = 0.2 + r() * 1.0;
+      const dir = new THREE.Vector3(Math.cos(a) * Math.cos(el), Math.sin(el), Math.sin(a) * Math.cos(el));
+      const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+      blossom(kit, new THREE.Matrix4().compose(dir.clone().multiplyScalar(size * 0.62).add(new THREE.Vector3(0, size * 0.45, 0)), q, new THREE.Vector3(1, 1, 1)), size * 0.09, c);
+    }
+  }
+  kit.pop();
+}
+/** Ivy: leaf cards along a path of points (e.g. down a wall from the eaves), facing out along `out`. */
+export function vine(kit: Kit, pts: THREE.Vector3[], out: THREE.Vector3, r: R, size = 0.42) {
+  const curve = new THREE.CatmullRomCurve3(pts);
+  const L = curve.getLength(), n = Math.max(2, Math.round(L / (size * 0.55)));
+  const base = new THREE.Color(pk(r, PAL.leaf));
+  for (let i = 0; i <= n; i++) {
+    const t = i / n, p = curve.getPointAt(t);
+    const s = size * (1 - 0.45 * t) * (0.8 + r() * 0.4);
+    for (let k = 0; k < 2; k++) {
+      const dir = out.clone().add(new THREE.Vector3((r() - 0.5) * 0.8, (r() - 0.5) * 0.6, (r() - 0.5) * 0.8)).normalize();
+      const g = new THREE.PlaneGeometry(s * 2, s * 2);
+      const mm = new THREE.Matrix4().lookAt(new THREE.Vector3(), dir, new THREE.Vector3(0, 1, 0));
+      mm.multiply(new THREE.Matrix4().makeRotationZ(r() * Math.PI)).setPosition(p.clone().addScaledVector(out, 0.06 + r() * 0.1).add(new THREE.Vector3((r() - 0.5) * s, 0, (r() - 0.5) * s)));
+      const na = g.attributes.normal as THREE.BufferAttribute;
+      for (let j = 0; j < na.count; j++) na.setXYZ(j, 0, 0, -1);
+      kit.add(g, 'leaf', base.clone().multiplyScalar(0.8 + r() * 0.35), mm);
+    }
+  }
 }
 
 /** A flower box: a planked trough (local: centred on x, its back at z = 0 against a wall) spilling flowers. */
@@ -138,7 +218,7 @@ export function flowerBox(kit: Kit, m: THREE.Matrix4, w: number, r: R) {
   kit.add(boxM(w - 0.06, 0.05, 0.24, WOOD_TILE), 'plain', '#5a4330', T(0, 0.02, 0.15));
   for (let k = 0; k < Math.max(2, Math.round(w / 0.32)); k++) posy(kit, T(-w / 2 + 0.16 + k * ((w - 0.32) / Math.max(1, Math.round(w / 0.32) - 1)), 0.02, 0.15, 0, r() * 3, 0), 0.42 + r() * 0.15, r);
   // trailing leaves over the front
-  card(kit, FC.ivy, '#ffffff', T(0, -0.42, 0.31, 0, 0, 0), w * 0.9, 0.45);
+  for (let k = 0; k < Math.max(1, Math.round(w / 0.5)); k++) if (r() < 0.7) { const x = -w / 2 + 0.2 + r() * (w - 0.4); vine(kit, [new THREE.Vector3(x, 0.02, 0.3), new THREE.Vector3(x + (r() - 0.5) * 0.2, -0.25, 0.34), new THREE.Vector3(x + (r() - 0.5) * 0.3, -0.45 - r() * 0.3, 0.36)], new THREE.Vector3(0, 0, 1), r, 0.16); }
   kit.pop();
 }
 
@@ -170,15 +250,13 @@ export function vegTub(kit: Kit, m: THREE.Matrix4, r: R, rad = 0.55) {
     if (kind < 0.45) {
       // a lettuce: a squashed ball of leaves
       kit.add(new THREE.IcosahedronGeometry(0.17, 1).scale(1, 0.75, 1), 'plain', pk(r, ['#8ab54e', '#9cc25a', '#77a444']), T(cx, h + 0.04, cz));
-      card(kit, FC.leafBig, '#c8e08a', T(cx, h - 0.04, cz, 0, r() * 3, 0), 0.42, 0.3);
+      for (let q = 0; q < 4; q++) { const b = q * 1.57 + r(); kit.add(new THREE.SphereGeometry(0.1, 6, 4).scale(1.3, 0.5, 0.8), 'plain', '#9cc860', T(cx + Math.cos(b) * 0.12, h + 0.0, cz + Math.sin(b) * 0.12, 0.4, -b, 0)); }
     } else if (kind < 0.75) {
       // carrots: orange shoulders and feathery tops
       kit.add(new THREE.ConeGeometry(0.05, 0.14, 6).rotateX(Math.PI), 'plain', '#e07a2c', T(cx, h - 0.02, cz));
-      card(kit, FC.sprig, '#ffffff', T(cx, h, cz, 0, r() * 3, 0), 0.3, 0.36);
-      card(kit, FC.sprig, '#ffffff', T(cx, h, cz, 0, r() * 3 + 1.5, 0), 0.3, 0.34);
+      for (let q = 0; q < 5; q++) { const b = q * 1.26 + r(); kit.add(new THREE.ConeGeometry(0.025, 0.3, 3).translate(0, 0.15, 0), 'plain', '#6f9e3c', T(cx, h - 0.02, cz, Math.cos(b) * 0.35, 0, Math.sin(b) * 0.35)); }
     } else {
-      card(kit, FC.leafy, '#ffffff', T(cx, h - 0.04, cz, 0, r() * 3, 0), 0.4, 0.42);
-      card(kit, FC.leafy, '#ffffff', T(cx, h - 0.04, cz, 0, r() * 3 + 1.6, 0), 0.4, 0.4);
+      for (let q = 0; q < 3; q++) kit.add(new THREE.SphereGeometry(0.12, 6, 4).scale(1, 0.8, 1), 'plain', pk(r, ['#5e8c3c', '#6e9a42', '#7a6aa0']), T(cx + (r() - 0.5) * 0.15, h + 0.05 + q * 0.04, cz + (r() - 0.5) * 0.15));
     }
   }
   kit.pop();
@@ -224,12 +302,12 @@ export function ropeLadder(kit: Kit, path: THREE.Vector3[], out: THREE.Vector3, 
   const side = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), out).normalize();
   const curve = new THREE.CatmullRomCurve3(path);
   const L = curve.getLength();
-  for (const sd of [-1, 1]) kit.add(ropeGeo(curve.getSpacedPoints(Math.max(6, Math.round(L / 0.8))).map(p => p.clone().addScaledVector(side, sd * halfW)), 0.035, 5), 'plain', '#b89c70');
+  for (const sd of [-1, 1]) kit.add(ropeGeo(curve.getSpacedPoints(Math.max(6, Math.round(L / 0.8))).map(p => p.clone().addScaledVector(side, sd * halfW)), 0.065, 6), 'plain', '#b89c70');
   const n = Math.floor(L / 0.36);
   for (let k = 1; k < n; k++) {
     const p = curve.getPointAt(k / n), tg = curve.getTangentAt(k / n);
     const m = new THREE.Matrix4().makeBasis(side, tg.clone().cross(side).negate().normalize(), tg.clone().negate()).setPosition(p);
-    kit.add(boxM(halfW * 2 + 0.1, 0.05, 0.11, WOOD_TILE), 'wood', pk(r, PAL.timber), m);
+    kit.add(boxM(halfW * 2 + 0.16, 0.07, 0.14, WOOD_TILE), 'wood', pk(r, PAL.timber), m);
   }
 }
 
@@ -265,20 +343,48 @@ export function laundry(kit: Kit, a: THREE.Vector3, b: THREE.Vector3, r: R, sag 
   }
 }
 
-/** A string of bunting between a and b: small triangular pennants in bright colours. */
+const FLAGC = ['#f3ead4', '#fbf7ee', '#c8644e', '#d4a24a', '#efe3c6', '#d97f62'];
+/** A string of bunting between a and b: small triangular cloth flags (cream, white, soft red, ochre) on a sagging line. */
 export function bunting(kit: Kit, a: THREE.Vector3, b: THREE.Vector3, r: R, sag = 0.5) {
   const pts = sagLine(a, b, sag, 16);
-  kit.add(ropeGeo(pts, 0.014, 3), 'plain', '#d8ccb0');
-  const L = a.distanceTo(b);
-  const dir = b.clone().sub(a).setY(0).normalize();
-  const yaw = Math.atan2(-dir.z, dir.x);
-  const n = Math.floor(L / 0.42);
-  for (let k = 1; k < n; k++) {
-    const t = k / n;
-    const p = a.clone().lerp(b, t); p.y -= 4 * sag * t * (1 - t);
-    const c = new THREE.Color(PAL.bunting[(k + Math.floor(r() * 2)) % PAL.bunting.length]);
-    const g = clothGrid(0.3, 0.4, 2, 3, () => c.clone(), { phase: t * 8, stiff: 0.4, mask: (u, v) => Math.abs(u - 0.5) < 0.5 * (1 - v) + 0.08 });
-    kit.add(g, 'cloth', null, T(p.x, p.y, p.z, 0, yaw, 0));
+  kit.add(ropeGeo(pts, 0.016, 3), 'plain', '#d8ccb0');
+  const curve = new THREE.CatmullRomCurve3(pts);
+  const L = curve.getLength();
+  const n = Math.floor(L / 0.36);
+  const fw = 0.3, fh = 0.4;
+  let ci = Math.floor(r() * FLAGC.length);
+  for (let i = 0; i < n; i++) {
+    const t = (i + 0.5) / n;
+    const p = curve.getPointAt(t), along = curve.getTangentAt(t).normalize();
+    const tg = along.clone().setY(0).normalize();
+    const nrm = new THREE.Vector3(-tg.z, 0, tg.x);
+    const c = new THREE.Color(FLAGC[ci++ % FLAGC.length]).multiplyScalar(0.94 + r() * 0.1);
+    const pos: number[] = [], nor: number[] = [], uv: number[] = [], cl: number[] = [], wv: number[] = [], dr: number[] = [], pat: number[] = [], idx: number[] = [];
+    const rows = 3, ph = r() * 6 + i * 0.5;
+    for (let j = 0; j <= rows; j++) {
+      const v = j / rows, half = (1 - v) * fw / 2;
+      for (const u of [-1, 0, 1]) {
+        // the top edge follows the line; the flag hangs straight down from it to a point
+        const q = p.clone().addScaledVector(j === 0 ? along : tg, u * half).add(new THREE.Vector3(0, -v * fh, 0));
+        pos.push(q.x, q.y, q.z); nor.push(nrm.x, nrm.y, nrm.z); uv.push((u * half + fw / 2) / 0.35, v * fh / 0.35); cl.push(c.r, c.g, c.b);
+        wv.push(0.12 * Math.pow(v, 1.1), ph, 0.5); dr.push(nrm.x, 0.15, nrm.z); pat.push(1, 1, 1, 0);
+      }
+    }
+    for (let j = 0; j < rows; j++) for (let k = 0; k < 2; k++) {
+      const a0 = j * 3 + k, a1 = a0 + 1, b0 = a0 + 3, b1 = b0 + 1;
+      if (j === rows - 1) { idx.push(a0, b0, a1); continue; }
+      idx.push(a0, b0, b1, a0, b1, a1);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(cl, 3));
+    g.setAttribute('aWave', new THREE.Float32BufferAttribute(wv, 3));
+    g.setAttribute('aDir', new THREE.Float32BufferAttribute(dr, 3));
+    g.setAttribute('aPat', new THREE.Float32BufferAttribute(pat, 4));
+    g.setIndex(idx);
+    kit.add(g, 'cloth', null);
   }
 }
 
@@ -329,24 +435,7 @@ export function tree(kit: Kit, m: THREE.Matrix4, r: R, h = 7, spread = 1) {
     kit.add(taperTube([at, at.clone().lerp(end, 0.5).add(new THREE.Vector3(0, 0.2, 0)), end], R0 * 0.5, R0 * 0.18, 5), 'wood', bark);
     crowns.push([end, h * (0.2 + r() * 0.07) * spread]);
   }
-  for (const [c, rad] of crowns) {
-    const leafC = new THREE.Color(pk(r, PAL.leaf));
-    kit.add(new THREE.IcosahedronGeometry(rad * 0.74, 1).scale(1, 0.8, 1), 'core', leafC.clone().multiplyScalar(0.55), T(c.x, c.y, c.z));
-    const n = Math.round(16 + rad * 8);
-    for (let i = 0; i < n; i++) {
-      const dir = new THREE.Vector3(r() * 2 - 1, r() * 1.6 - 0.5, r() * 2 - 1).normalize();
-      const q = c.clone().addScaledVector(dir, rad * (0.72 + r() * 0.3));
-      const s = rad * (0.55 + r() * 0.3);
-      const g = new THREE.PlaneGeometry(s * 2, s * 2);
-      const nn = dir.clone();
-      const mm = new THREE.Matrix4().lookAt(new THREE.Vector3(), nn, Math.abs(nn.y) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0));
-      mm.multiply(new THREE.Matrix4().makeRotationZ(r() * Math.PI)).setPosition(q);
-      // the normals bend outward from the crown's centre, so the mass lights as one soft ball
-      const na = g.attributes.normal as THREE.BufferAttribute;
-      for (let j = 0; j < na.count; j++) na.setXYZ(j, 0, 0, -1);
-      kit.add(g, 'leaf', leafC.clone().multiplyScalar(0.85 + 0.3 * (dir.y * 0.5 + 0.5)), mm);
-    }
-  }
+  for (const [c, rad] of crowns) crown(kit, c, rad, new THREE.Color(pk(r, PAL.leaf)), r);
   kit.pop();
   return crowns;
 }

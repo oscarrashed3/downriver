@@ -136,6 +136,7 @@ export function ambleLab(ctx: LabCtx): { piece: LabPiece; amble: Amble; nilo: Pl
   let logged = false;
   const v = (x: number, y: number, z: number): [number, number, number] => [x, y, z];
   const F = FOOT_REST.FL, Hd = REST[BONE.head];
+  const ER = REST[BONE.eyeR];
   const piece: LabPiece = {
     update(dt, t) {
       amble.update(dt, t);
@@ -154,6 +155,7 @@ export function ambleLab(ctx: LabCtx): { piece: LabPiece; amble: Amble; nilo: Pl
       head: { pos: v(Hd.x - 25, Hd.y + 3, Hd.z + 17), look: v(Hd.x, Hd.y + 6.5, Hd.z + 0.5), fov: 52 },
       profile: { pos: v(Hd.x - 22, Hd.y + 1, Hd.z + 3), look: v(Hd.x, Hd.y + 1.5, Hd.z + 3), fov: 40 },
       eye: { pos: v(Hd.x - 8, Hd.y + 1.0, Hd.z + 7), look: v(Hd.x - 1.8, Hd.y + 0.6, Hd.z + 1.6), fov: 38 },
+      eyeclose: { pos: v(ER.x - 3.2, ER.y + 0.5, ER.z + 1.6), look: v(ER.x, ER.y, ER.z), fov: 34 },
       neck: { pos: v(-26, 16, 34), look: v(0, 16, 22), fov: 45 },
       foot: { pos: v(F.x + 9, 3.2, F.z + 11), look: v(F.x, 2.4, F.z), fov: 42 },
       toes: { pos: v(F.x + 5.5, 1.5, F.z + 8), look: v(F.x + 0.6, 0.9, F.z + 2.2), fov: 50 },
