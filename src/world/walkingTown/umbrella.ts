@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import type { Player } from '../../player/player';
 import { paint, softRamp } from '../../render/paint';
 
-// Fold as a paper umbrella (World 3): cream paper with a faint pattern of leaves, eight bamboo ribs, a thin shaft
+// Fold as a paper umbrella (World 3): a wide dome of cream paper with a faint pattern of leaves, panels sagging
+// a little between sixteen bamboo ribs that stand out on top, a scalloped rim, stretchers underneath, a thin shaft
 // and a crook handle in Nilo's raised hand. It opens with a soft pop when he drops off Old Amble's back, sways a
 // little as he drifts down, and folds back up into Fold when his feet touch the grass.
 
@@ -32,7 +33,10 @@ function leafPaper() {
   return paperTex;
 }
 
-const RIBS = 8;
+const RIBS = 16;
+/** Canopy radius and dome height (m); the shaft runs SHAFT down from the top to the crook in his hand. */
+const R = 1.45, H = 0.62, SHAFT = 1.55;
+const dome = (t: number) => H * (1 - t * t * (0.55 + 0.45 * t));
 
 export class PaperUmbrella {
   readonly root = new THREE.Group();
@@ -47,7 +51,6 @@ export class PaperUmbrella {
   constructor() {
     this.root.name = 'paperUmbrella';
     this.root.visible = false;
-    const R = 0.95, H = 0.34;
     // the canopy: eight panels, each sagging a little between its ribs, with a scalloped rim
     const pos: number[] = [], uv: number[] = [], idx: number[] = [];
     const NS = 6, NR = 6;
@@ -57,9 +60,10 @@ export class PaperUmbrella {
         const t = i / NR;
         for (let j = 0; j <= NS; j++) {
           const u = j / NS, a = ((p + u) / RIBS) * Math.PI * 2;
-          const sag = Math.sin(u * Math.PI) * 0.06 * t;
-          const rr = R * t * (1 - sag * 0.6) + (i === NR ? Math.sin(u * Math.PI) * -0.05 : 0);
-          const y = H * (1 - t * t) - sag;
+          const sag = Math.sin(u * Math.PI) * 0.07 * t;
+          // the rim scallops in between the ribs, and turns down a touch
+          const rr = R * t * (1 - sag * 0.5) + (i === NR ? Math.sin(u * Math.PI) * -0.1 : 0);
+          const y = dome(t) - sag - (i === NR ? 0.03 : 0);
           pos.push(Math.cos(a) * rr, y, Math.sin(a) * rr);
           uv.push(Math.cos(a) * t * 0.9 + 0.5, Math.sin(a) * t * 0.9 + 0.5);
         }
@@ -80,16 +84,24 @@ export class PaperUmbrella {
     // the ribs, the shaft, the crook and the little top knob
     this.ribs = new THREE.Group();
     const bamboo = paint(new THREE.MeshToonMaterial({ color: '#b48a56', gradientMap: softRamp() }), { variation: 0.2 });
+    const ribWood = paint(new THREE.MeshToonMaterial({ color: '#8a6236', gradientMap: softRamp() }), { variation: 0.15 });
     for (let p = 0; p < RIBS; p++) {
       const a = (p / RIBS) * Math.PI * 2;
-      const pts = [0, 0.33, 0.66, 1].map(t => new THREE.Vector3(Math.cos(a) * R * t, H * (1 - t * t) - 0.012, Math.sin(a) * R * t));
-      const rib = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 6, 0.012, 4), bamboo);
-      this.ribs.add(rib);
+      // the rib, standing proud of the paper, a little bead at its tip
+      const pts = [0, 0.25, 0.5, 0.75, 1].map(t => new THREE.Vector3(Math.cos(a) * R * t * 1.005, dome(t) + 0.014, Math.sin(a) * R * t * 1.005));
+      this.ribs.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 8, 0.014, 4), ribWood));
+      const tip = new THREE.Mesh(new THREE.SphereGeometry(0.022, 6, 4), ribWood); tip.position.copy(pts[4]); this.ribs.add(tip);
+      // the stretcher underneath, from the runner on the shaft out to the middle of the rib
+      const mid = new THREE.Vector3(Math.cos(a) * R * 0.55, dome(0.55) - 0.03, Math.sin(a) * R * 0.55), run = new THREE.Vector3(0, -0.42, 0);
+      const st = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, mid.distanceTo(run), 4), bamboo);
+      st.position.copy(mid).add(run).multiplyScalar(0.5); st.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), mid.clone().sub(run).normalize());
+      this.ribs.add(st);
     }
-    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 1.05, 6), bamboo); shaft.position.y = -0.52;
-    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), bamboo); knob.position.y = H + 0.02;
-    const crook = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.016, 5, 12, Math.PI), bamboo); crook.position.set(0.06, -1.05, 0); crook.rotation.z = Math.PI;
-    this.root.add(this.canopy, this.ribs, shaft, knob, crook);
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, SHAFT + H, 6), bamboo); shaft.position.y = (H - SHAFT) / 2;
+    const runner = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.08, 8), ribWood); runner.position.y = -0.42;
+    const knob = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.05, 0.12, 8), ribWood); knob.position.y = H + 0.06;
+    const crook = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.02, 5, 12, Math.PI), bamboo); crook.position.set(0.07, -SHAFT, 0); crook.rotation.z = Math.PI;
+    this.root.add(this.canopy, this.ribs, shaft, runner, knob, crook);
   }
 
   get shown() { return this.root.visible; }
@@ -123,6 +135,6 @@ export class PaperUmbrella {
     this.sway.lerp(drift.multiplyScalar(-0.05), 1 - Math.exp(-3 * dt));
     this.up.copy(pl.up).add(this.sway).addScaledVector(pl.facing, Math.sin(t * 1.7) * 0.03).normalize();
     this.root.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), this.up);
-    this.root.position.copy(hand).addScaledVector(this.up, 1.0);
+    this.root.position.copy(hand).addScaledVector(this.up, SHAFT - 0.12);
   }
 }

@@ -433,7 +433,7 @@ function headPart(pb: PartB) {
       const de = Math.hypot(dy, dz);
       if (ax > 0.6) {
         const sink = 1 - smoothstep(EYE_RADIUS * 0.86, EYE_RADIUS * 1.2, de);
-        x -= sx * sink * 0.05;
+        void sink; // (no socket: the eyeball sits flush, a little proud of the hide)
         // a heavy brow ridge, so the eye sits deep under it and looks sleepy and kind
         const brow = Math.exp(-((dy - 0.45 + 0.08 * dz) ** 2) / 0.035 - (dz + 0.05) ** 2 / 0.45);
         x += sx * brow * 0.26; y += brow * 0.12;
@@ -507,7 +507,7 @@ function eyesPart() {
     const o = headDir(side, 0.05, 0.32);
     const up = HEAD_UP.clone().addScaledVector(o, -HEAD_UP.dot(o)).normalize();
     const fw = new THREE.Vector3().crossVectors(up, o).multiplyScalar(side);
-    const IRIS = col('#2a1a10'), PUPIL = col('#0e0907'), RING = col('#1e130c'), WHITE = col('#2a1d14');
+    const IRIS = col('#6a4428'), PUPIL = col('#160d08'), RING = col('#3a2416'), WHITE = col('#4a3424');
     // the eyeball: almost all dark iris (a deer's eye), a warm brown ring, a hint of white at the corners
     blob(C, 32, 22, (sx, sy, sz) => {
       const d = new THREE.Vector3().addScaledVector(fw, sx).addScaledVector(up, sy).addScaledVector(o, sz);
@@ -517,7 +517,7 @@ function eyesPart() {
     });
     // one small, soft catchlight, fixed to the head so it stays put while the eye looks about
     const hl2 = C.clone().addScaledVector(o, EYE_R * 0.95).addScaledVector(up, -EYE_R * 0.12).addScaledVector(fw, EYE_R * 0.2);
-    blob(hl2, 8, 5, (sx, sy, sz) => ({ p: hl2.clone().add(new THREE.Vector3(sx, sy, sz).multiplyScalar(0.05)), c: col('#e8dccb'), s: [0, 0, 0, KIND.eye], w: [[BONE.head, 1]] }));
+    blob(hl2, 8, 5, (sx, sy, sz) => ({ p: hl2.clone().add(new THREE.Vector3(sx, sy, sz).multiplyScalar(0.065)), c: col('#fff8ec'), s: [0, 0, 0, KIND.eye], w: [[BONE.head, 1]] }));
     // the upper lid: a thin shell over the top of the eyeball, turning down about the eye's forward axis to blink
     {
       const pb = new PartB();

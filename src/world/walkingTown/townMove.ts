@@ -18,7 +18,7 @@ import type { Mossrest } from './mossrest';
 import { groundAt } from './mossrest';
 import { shellPolar } from './ambleShell';
 import { SHELL, FOOT_REST, LEGS } from './ambleRig';
-import { SeeThrough } from '../skyIsles/seeThrough';
+import { SeeThrough, SEE } from '../skyIsles/seeThrough';
 import { PaperUmbrella } from './umbrella';
 import { TOWN_MOVE } from '../../data/townWords';
 
@@ -179,6 +179,8 @@ export class TownMove {
       if (rig.floor === this.floor) rig.floor = null;
       rig.smoothBlock = false;
       this.see.off();
+      SEE.uSeeCircle.value = 1;
+      this.setClutter(false);
       this.umbrella.close(true);
       this.g.fold.root.visible = true;
       pl.pose = {};
@@ -188,6 +190,7 @@ export class TownMove {
     }
     pl.collide = this.collide;
     rig.floor = this.floor; rig.smoothBlock = true;
+    SEE.uSeeCircle.value = 0;
     if (!this.scanned) { this.scanned = true; this.see.scan(); }
     this.syncNow();
     this.prev.copy(this.town.group.matrixWorld); this.havePrev = true;
@@ -200,6 +203,34 @@ export class TownMove {
     }
     // (until the arrival scene is written) set down on the walk on Amble's right side, looking along it
     if (!this.placed) { this.placed = true; this.dropOnShell(); }
+  }
+
+  /** What else hangs in World 3's sky: the other worlds, their falling streams, the cloud sea. */
+  private clutter: THREE.Object3D[] = [];
+  private clutterHidden = false;
+  /** Objects that stay up whatever (the sky whale of the arrival, while it flies here). */
+  keepInSky = new Set<THREE.Object3D>();
+  /**
+   * World 3's sky is its own: the other planets (and all they carry), the streams between the worlds and the Sky
+   * Isles' cloud sea are hidden while you are here (not on the stream ride in, which needs them), and come back
+   * exactly as they were when you leave. Their columns of warm air are left to the game, which shows them itself.
+   */
+  setClutter(hide: boolean) {
+    if (hide === this.clutterHidden) return;
+    this.clutterHidden = hide;
+    const g = this.g;
+    if (!hide) { for (const o of this.clutter) o.visible = true; this.clutter = []; return; }
+    const skip = new Set<THREE.Object3D>([...g.updrafts, g.player.root, g.fold.root, this.umbrella.root, ...this.keepInSky]);
+    const w = new THREE.Vector3();
+    const add = (o: THREE.Object3D) => { if (o.visible && !skip.has(o)) { o.visible = false; this.clutter.push(o); } };
+    for (const s of g.streams) add(s);
+    add(g.cloudSea.group);
+    for (const c of g.scene.children) {
+      if ((c as THREE.Light).isLight || (c as THREE.Camera).isCamera || skip.has(c)) continue;
+      c.getWorldPosition(w);
+      const near = g.planets.findIndex((q, i) => i !== this.idx && w.distanceTo(q.center) < q.R + 80);
+      if (near >= 0 && w.distanceTo(g.planets[this.idx].center) > g.planets[this.idx].R + 80) add(c);
+    }
   }
 
   /** Stand Nilo on the walkway, by the stretch of picture 3 (on the right flank, between the cottages). */
@@ -250,6 +281,7 @@ export class TownMove {
   /** Every frame in World 3, after Amble has moved: carry, sync the colliders, the village, the camera melt. */
   frame(dt: number, t: number) {
     const pl = this.g.player;
+    this.setClutter(this.g.mode !== 'ride' && this.g.skyView.k < 0.02);
     this.syncNow();
     const M = this.town.group.matrixWorld;
     if (this.havePrev && (this.onAmble || this.climb)) {

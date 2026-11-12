@@ -28,7 +28,8 @@ export function prepareTown(p: Planet, f: Flat) {
   f(176, 0, 9, p.cfg.riverBed + 1.6, 6);
   // Amble's meadow: a broad, level pad
   const { A } = townFrame(p);
-  p.flattens.push({ dir: A.clone(), radius: 36, height: 2.2, blend: 18 });
+  // (Amble's level meadow and the plain round it are part of the land itself: planet.ts townHeight)
+  void A;
   // the far town's hill: its top levelled for the houses
   const hd = townDir(p, ...PLACES.hill);
   p.flattens.push({ dir: hd, radius: 8.5, height: p.baseHeight(hd), blend: 5 });

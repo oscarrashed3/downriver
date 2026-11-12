@@ -22,7 +22,7 @@ const tmpV = new THREE.Vector3();
 function townHeight(p: Planet, d: THREE.Vector3): number {
   const n = p.noise, A = p.cfg.amplitude;
   const reg = (p.extras.townRegions ??= {
-    mts: townDir(p, ...PLACES.mts), sea: townDir(p, ...PLACES.sea), lake: townDir(p, ...PLACES.lake), hill: townDir(p, ...PLACES.hill),
+    amble: townDir(p, 0, 0), mts: townDir(p, ...PLACES.mts), sea: townDir(p, ...PLACES.sea), lake: townDir(p, ...PLACES.lake), hill: townDir(p, ...PLACES.hill),
   }) as Record<string, THREE.Vector3>;
   const x = d.x, y = d.y, z = d.z;
   // rolling hills, gentle near Amble's meadow and rounder further off
@@ -38,6 +38,13 @@ function townHeight(p: Planet, d: THREE.Vector3): number {
   // the Sea: the land falls away under the water to a deep, soft floor
   const sk = smoothstep(Math.cos(0.78), Math.cos(0.55), d.dot(reg.sea)) * (0.85 + 0.3 * n.fbm(x * 3 - 2, y * 3, z * 3, 2));
   if (sk > 0) h = lerp(h, -5 + 1.5 * n.fbm(x * 6, y * 6, z * 6, 2), clamp(sk));
+  // Amble's meadow: a level pad under its feet, then a broad plain that rises gently with the distance, about as
+  // fast as the little world curves away, so from the meadow the land reads as wide and flat (not a knob)
+  const ad = Math.acos(clamp(d.dot(reg.amble), -1, 1)) * p.R;
+  if (ad < 150) {
+    h = lerp(h, 2.2 + 0.6 * smoothstep(30, 90, ad) * (h - 2.2), 1 - smoothstep(40, 110, ad));
+    h += 0.35 * (1 - smoothstep(60, 130, ad)) * Math.max(0, ad - 14) ** 2 / (2 * p.R);
+  }
   // the lake in a dip of the meadow
   const lk = smoothstep(Math.cos(0.2), Math.cos(0.12), d.dot(reg.lake));
   if (lk > 0) h = lerp(h, -1.6, lk);

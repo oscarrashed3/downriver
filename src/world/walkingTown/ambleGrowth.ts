@@ -256,7 +256,7 @@ export function buildAmbleGrowth(body: AmbleBodyBuild, seed = 5) {
       out.normalize(); if (rng() < 0.5) out.negate();
       // hang from the underside of the branch
       const c = p.clone().addScaledVector(out, r * 0.5); c.y -= r * 0.8;
-      strand(cb, rng, c, out, 1.2 + rng() * (p.y > 30 ? 2.5 : 4.5), null, wH, 0.42 + rng() * 0.15, rng() < 0.3 ? pickOf(rng, BLOOM) : null);
+      strand(cb, rng, c, out, 0.8 + rng() * (p.y > 30 ? 2.2 : 2.0), null, wH, 0.42 + rng() * 0.15, rng() < 0.3 ? pickOf(rng, BLOOM) : null);
       // a sprig where it clings
       const nrm = perp(T).applyAxisAngle(T, rng() * 6.28);
       cb.quad(p.clone().addScaledVector(nrm, r + 0.15), new THREE.Vector3().crossVectors(T, nrm).multiplyScalar(0.5), T.clone().multiplyScalar(0.5).addScaledVector(nrm, 0.25), nrm, CELL.leaves, pickOf(rng, IVY), [0, 0.05], rng() * 9, wH);
@@ -271,12 +271,12 @@ export function buildAmbleGrowth(body: AmbleBodyBuild, seed = 5) {
   }
   // the brow tines: a heavier curtain over the forehead (the vines that will grow down over the eyes)
   for (const side of [1, -1]) {
-    for (let k = 0; k < 5; k++) {
-      const z = 1.0 + k * 0.32;
+    for (let k = 0; k < 3; k++) {
+      const z = 0.7 + k * 0.32;
       const q = headSurface(z, side * (0.32 + k * 0.05));
       const p = headPoint(q.x, q.y + 0.6 + rng() * 0.4, z);
       const out = headDir(side, 0.2, 0.3); out.y = 0; out.normalize();
-      strand(cb, rng, p, out, 0.6 + rng() * 0.7, null, wH, 0.4, null);
+      strand(cb, rng, p, out, 0.35 + rng() * 0.35, null, wH, 0.4, null);
     }
   }
   // moss sprays on the crown of the head

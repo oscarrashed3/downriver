@@ -51,7 +51,7 @@ export function headSideX(y: number, z: number) {
 
 /** The eye (left side): smallish and set in a deep socket under a heavy brow, so about half the eyeball shows. */
 export const EYE_Y = 0.6, EYE_Z = 1.1, EYE_RADIUS = 0.28;
-export const EYE_X = headSideX(EYE_Y, EYE_Z) - 0.2;
+export const EYE_X = headSideX(EYE_Y, EYE_Z) - 0.13;
 
 /** Where the lips part (local y) along z: a straight, closed line low on the muzzle (no drawn smile). */
 export const MOUTH_Z0 = 2.9, MOUTH_Z1 = 4.75;

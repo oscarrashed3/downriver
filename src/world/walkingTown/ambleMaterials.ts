@@ -75,7 +75,7 @@ export function ambleBodyMaterial(): THREE.MeshToonMaterial {
             alb *= 1.0 - 0.18 * smoothstep(0.78, 0.84, n3);
           } else if (kind > 2.5 && kind < 3.5) {
             // the eye: deep and dark, a soft warm glint low in the iris
-            alb *= 0.55;
+            alb *= 0.9;
           } else if (kind > 3.5 && kind < 4.5) {
             alb *= 0.94 + 0.1 * pNoise(rp * vec3(12.0, 2.0, 12.0));
           } else if (kind > 5.5) {
@@ -114,7 +114,7 @@ export function ambleBodyMaterial(): THREE.MeshToonMaterial {
           diffuseColor.rgb = alb;
         }`);
   };
-  m.customProgramCacheKey = () => 'ambleBody3';
+  m.customProgramCacheKey = () => 'ambleBody4';
   bodyMat = m;
   return m;
 }
