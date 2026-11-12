@@ -325,7 +325,7 @@ export class SkyFinish {
           g.leaveSky();
         },
       },
-      { dur: 1.6, tick: k => g.hud.setFade(1 - smoothstep(0, 1, k), '#fff8ee') },
+      { dur: 1.6, tick: k => g.hud.setFade(g.nextCut ? 1 : 1 - smoothstep(0, 1, k), '#fff8ee') },
     );
     return beats;
   }

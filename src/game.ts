@@ -60,6 +60,7 @@ import type { SkyWorld } from './world/skyIsles/world';
 import { skyFlowers, onIsle, isleAt, rockClear } from './world/skyIsles/terrain';
 import { SkyMove } from './world/skyIsles/skyMove';
 import { TownMove } from './world/walkingTown/townMove';
+import { TownStory } from './world/walkingTown/townStory';
 import { townGrassWeights, townFlowers, TOWN_FLOWERS } from './world/walkingTown/townGrass';
 import { SKY_MOVE } from './data/skyWords';
 import { CHAPTERS, MAIN_QUEST, NOT_YET, OPENING, WORLD_TASKS } from './data/story';
@@ -121,6 +122,9 @@ export class Game {
   skyMove: SkyMove | null = null;
   /** World 3, the Walking Town: walking on Old Amble, the ropes, the umbrella (null if the world has no Amble). */
   townMove: TownMove | null = null;
+  townStory: TownStory | null = null;
+  /** A scene to play the moment the current one ends (no gap, no camera glide back). */
+  nextCut: { beats: Beat[]; done?: () => void } | null = null;
   townGrass: Grass | null = null;
   life: Life;
   quality = new QualityAuto();
@@ -409,7 +413,7 @@ export class Game {
     } as any);
     if (this.skyWorld) this.skyMove = new SkyMove(this, this.skyWorld, FOX_WORLD);
     if (this.skyWorld) this.ch2 = new SkyChapter(this, FOX_WORLD);
-    { const ti = WORLDS.findIndex(w => w.id === 'garden'); if (this.contents[ti]?.refs.town) this.townMove = new TownMove(this, ti); }
+    { const ti = WORLDS.findIndex(w => w.id === 'garden'); if (this.contents[ti]?.refs.town) { this.townMove = new TownMove(this, ti); this.townStory = new TownStory(this, ti, this.townMove); } }
     this.registerTravel();
     this.applyRiver();
     this.enterWorld(0, false);
@@ -726,6 +730,9 @@ export class Game {
     this.input.unlock();
     this.hud.setPrompt(null);
     this.seq.run(beats, () => {
+      // a scene that hands straight on to the next (World 2's goodbye into World 3's arrival)
+      const nx = this.nextCut;
+      if (nx) { this.nextCut = null; done?.(); this.cut(nx.beats, nx.done); return; }
       // the Sky Isles: a scene's last shot glides back behind Nilo instead of cutting (unless he is far from it)
       if (this.isSky() && (this.cutCam || this.rig.override) && !this.rig.easing && this.camera.position.distanceTo(this.rig.pos) < 30) this.rig.easeFromHere(1);
       this.cutCam = null; this.rig.override = null; if (this.mode === 'cut') this.mode = 'play'; done?.();
@@ -770,18 +777,21 @@ export class Game {
   /** The whale has carried Nilo down through the clouds: on to the next world (under the cream fade). */
   leaveSky() {
     const to = FOX_WORLD + 1, pl = this.planets[to];
-    this.enterWorld(to);
+    // (the Walking Town shows its card at the end of its own arrival scene)
+    this.enterWorld(to, !(WORLDS[to].id === 'garden' && this.townStory));
     this.player.placeAt(pl, this.arrivalDir(to));
     this.player.facing.copy(pl.surfacePoint(pl.pathPoint(0.08)).sub(this.player.pos).projectOnPlane(this.player.up).normalize());
     this.player.glider = null; this.player.forceOpen = false;
     this.rig.faceDir(this.player.up, this.player.facing); this.rig.smoothUp.copy(this.player.up); this.rig.snap();
     if (this.flags.has('fox-joined')) { this.foxWorld = to; this.fox.place(pl, this.player.up.clone()); }
     if (!this.worldReady(to)) this.hud.notify(NOTE.unbuilt(WORLDS[to].name));
+    // the Walking Town: the whale carries on over the meadow and the arrival scene follows the goodbye
+    if (WORLDS[to].id === 'garden' && this.townStory) this.townStory.arm();
     this.save();
   }
 
   /** Worlds whose story is written. The rest are a quiet bank to rest on, with the way home. */
-  worldReady(i: number) { return i === 0 || (this.isSky(i) && !!this.ch2); }
+  worldReady(i: number) { return i === 0 || (this.isSky(i) && !!this.ch2) || (WORLDS[i]?.id === 'garden' && !!this.townStory); }
   isSky(i = this.cur) { return WORLDS[i]?.id === 'sky'; }
   private frozen: THREE.Object3D[] = [];
   /**
@@ -1228,6 +1238,7 @@ export class Game {
   /** The one thing to do in a world after the first (a sketch until each world's story is written). */
   worldTask(): string | null {
     if (this.isSky() && this.ch2) return this.ch2.goal();
+    if (this.townStory?.active) return this.townStory.goal();
     return this.cur > 0 ? WORLD_TASKS[WORLDS[this.cur].id] ?? null : null;
   }
   worldList() {
@@ -1982,6 +1993,7 @@ export class Game {
       const inTown = this.cur === WORLDS.findIndex(w => w.id === 'garden') && this.mode !== 'title';
       this.townMove.setActive(inTown);
       if (inTown) this.townMove.frame(dt, this.time);
+      if (inTown) this.townStory?.frame(dt); else this.townStory?.off();
     }
     const npcWind = east.clone();
     for (const n of this.contents[this.cur].npcs) n.update(dt, this.mode === 'cut' ? null : this.player.pos, npcWind.clone().applyQuaternion(n.root.quaternion.clone().invert()));
@@ -2041,9 +2053,9 @@ export class Game {
     const step = currentStep(qc);
     const goal = this.worldTask() ?? (step && this.flags.has('read-letter') ? stepDetail(qc) : null);
     const ember = this.cur === 0 ? this.ch1.lanterns.meter() : '';
-    const lit = this.isSky() && this.ch2 ? this.ch2.meter() : ember ? ember : this.cur === 0 && this.flags.has('quest:hollo') && !this.flags.has('chapter1-complete') ? `Lanterns  ${'●'.repeat(lanternsLit(qc))}${'○'.repeat(3 - lanternsLit(qc))}` : '';
+    const lit = this.isSky() && this.ch2 ? this.ch2.meter() : this.townStory?.active ? this.townStory.meter() : ember ? ember : this.cur === 0 && this.flags.has('quest:hollo') && !this.flags.has('chapter1-complete') ? `Lanterns  ${'●'.repeat(lanternsLit(qc))}${'○'.repeat(3 - lanternsLit(qc))}` : '';
     this.hud.setGoal(showGoal && goal ? goal : null, lit);
-    this.hud.compass.update(dt, { show: (this.mode === 'play' || this.mode === 'raft') && !this.hud.goalHidden && this.flags.has('read-letter') && (!this.isSky() || !this.ch2 || this.flags.has('sky:arrived')), center: this.planet.center, radius: this.planet.R, worldId: this.planet.cfg.id, pos: this.player.pos, camera: this.camera, task: goal ? (this.cur === 0 ? this.ch1.guideTarget() : this.skyStory() ? this.ch2!.guideTarget() : null) : null, taskLabel: goal ? goal.replace(/\s*\(\d+ of \d+\)\s*$/, '') : null, pins: this.map });
+    this.hud.compass.update(dt, { show: (this.mode === 'play' || this.mode === 'raft') && !this.hud.goalHidden && this.flags.has('read-letter') && (!this.isSky() || !this.ch2 || this.flags.has('sky:arrived')), center: this.planet.center, radius: this.planet.R, worldId: this.planet.cfg.id, pos: this.player.pos, camera: this.camera, task: goal ? (this.cur === 0 ? this.ch1.guideTarget() : this.skyStory() ? this.ch2!.guideTarget() : this.townStory?.active ? this.townStory.guideTarget() : null) : null, taskLabel: goal ? goal.replace(/\s*\(\d+ of \d+\)\s*$/, '') : null, pins: this.map });
     // A new task: a toast with the same words as the goal line, once the conversation or scene is over.
     if (goal && (this.mode === 'play' || this.mode === 'raft')) {
       const key = goal.replace(/\(\d+ of \d+\)\s*$/, '').trim();

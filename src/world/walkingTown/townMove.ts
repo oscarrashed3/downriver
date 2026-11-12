@@ -54,7 +54,8 @@ export class TownMove {
   private see: SeeThrough;
   private scanned = false;
   private hinted = false;
-  private placed = false;
+  /** Set down on the walk already (the arrival scene sets this, so it is not done again on the way in). */
+  placed = false;
 
   constructor(private g: Game, private idx: number) {
     const refs = g.contents[idx].refs;
@@ -220,7 +221,7 @@ export class TownMove {
     this.clutterHidden = hide;
     const g = this.g;
     if (!hide) { for (const o of this.clutter) o.visible = true; this.clutter = []; return; }
-    const skip = new Set<THREE.Object3D>([...g.updrafts, g.player.root, g.fold.root, this.umbrella.root, ...this.keepInSky]);
+    const skip = new Set<THREE.Object3D>([...g.updrafts, g.player.root, g.fold.root, g.fold.string, g.fox.f.root, this.umbrella.root, g.sky.mesh, g.sky.clouds, g.motes.points, g.rain.points, g.blizzard.points, ...this.keepInSky]);
     const w = new THREE.Vector3();
     const add = (o: THREE.Object3D) => { if (o.visible && !skip.has(o)) { o.visible = false; this.clutter.push(o); } };
     for (const s of g.streams) add(s);

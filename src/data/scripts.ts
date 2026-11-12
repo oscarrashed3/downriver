@@ -1,5 +1,6 @@
 import type { Node, Script } from '../systems/connection';
 import { SKY_SCRIPTS, SKY_RETURN_LINES } from './skyScripts';
+import { TOWN_SCRIPTS, TOWN_RETURN_LINES } from './townScripts';
 
 // All player-facing words live in data, so they can be translated later.
 // Keep every line to two short lines on screen.
@@ -605,6 +606,9 @@ function lineKey(who: string, text: string): string {
 // World 2's people join the same tables (their ids never clash with World 1's).
 Object.assign(SCRIPTS, SKY_SCRIPTS);
 Object.assign(RETURN_LINES, SKY_RETURN_LINES);
+// and World 3's Mossfolk
+Object.assign(SCRIPTS, TOWN_SCRIPTS);
+Object.assign(RETURN_LINES, TOWN_RETURN_LINES);
 
 /**
  * The line a person says when you come back. Fresh lines from the latest matching set come first,

@@ -126,8 +126,14 @@ export class Fox {
   /** A place she is pointing her nose at, if any. */
   poi: THREE.Vector3 | null = null;
   constructor() { this.f = makeFox(); this.f.root.scale.setScalar(1.35); }
+  /**
+   * Where she stands in direction d, when that is not the planet's ground (World 3: the walks and moss on Old
+   * Amble's back). Return false for the ground. Unset everywhere else, so the other worlds are as they were.
+   */
+  ground: ((d: THREE.Vector3, out: THREE.Vector3) => boolean) | null = null;
+  private stand(p: Planet, out: THREE.Vector3) { if (!this.ground || !this.ground(this.dir, out)) p.surfacePoint(this.dir, -0.02, out); }
 
-  place(p: Planet, d: THREE.Vector3) { this.dir.copy(d).normalize(); p.surfacePoint(this.dir, -0.02, this.f.root.position); orientTo(this.f.root, this.dir); }
+  place(p: Planet, d: THREE.Vector3) { this.dir.copy(d).normalize(); this.stand(p, this.f.root.position); orientTo(this.f.root, this.dir); }
 
   /** Trot to a spot a little behind and beside the player, then sit. Gestures come from what is around. */
   update(dt: number, p: Planet, playerPos: THREE.Vector3, playerFacing: THREE.Vector3, opts: { danger?: boolean; happy?: boolean; poi?: THREE.Vector3 | null }) {
@@ -139,7 +145,7 @@ export class Fox {
     const gap = this.f.root.position.distanceTo(playerPos);
     const prev = this.dir.clone();
     if (gap > 2.4) this.dir.lerp(goal, 1 - Math.exp(-(gap > 10 ? 5 : 2.2) * dt)).normalize();
-    p.surfacePoint(this.dir, -0.02, this.f.root.position);
+    this.stand(p, this.f.root.position);
     const mv = this.dir.clone().sub(prev).multiplyScalar(p.R);
     this.speed = mv.length() / Math.max(dt, 1e-3);
     this.stillT = this.speed < 0.3 ? this.stillT + dt : 0;

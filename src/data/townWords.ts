@@ -7,3 +7,20 @@ export const TOWN_MOVE = {
   ropeHint: 'Hold <b>W</b> to climb, <b>S</b> to go down. Let go to hang on and rest.',
   umbrellaHint: 'Fold opens into a paper umbrella, and you float down into the long grass.',
 };
+
+// the goal line, step by step (Pip first, then the three things that keep Amble standing still)
+export const TOWN_GOALS = {
+  pip: 'Talk to Pip, the kid in the straw hat.',
+  tamsin: 'Find Tamsin the Ropewright, by the big rope on the front leg.',
+  foot: "See to Amble's sore front foot, with Tamsin's help.",
+  water: 'Bring the water back to the rain pools.',
+  eyes: 'Help Old Amble open its eyes.',
+  walk: 'Old Amble is walking again. Ride along.',
+};
+
+// the arrival scene's lines
+export const TOWN_LINES = {
+  below: 'Far below, through a gap in the clouds: a hill with a village on its back. A hill with legs.',
+  fall: 'Fold opens wide. Down through the cloud, slow as a seed.',
+  pipCalls: 'Hey! HEY! You came out of the sky!',
+};

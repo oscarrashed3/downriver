@@ -132,8 +132,8 @@ export class Sway {
 
 // ---------------------------------------------------------------- shared body parts
 
-interface LegSpec { B: number; thigh: string; shin: string; boot: string; bare?: boolean; skin: string; bootH?: number; bootS?: number; cuff?: string; cuffY?: number; pad?: string; wrap?: string; sock?: string; patch?: string; thighR?: number; shinR?: number }
-function legs(p: Person, k: Kit, o: LegSpec) {
+export interface LegSpec { B: number; thigh: string; shin: string; boot: string; bare?: boolean; skin: string; bootH?: number; bootS?: number; cuff?: string; cuffY?: number; pad?: string; wrap?: string; sock?: string; patch?: string; thighR?: number; shinR?: number }
+export function legs(p: Person, k: Kit, o: LegSpec) {
   for (const s of [-1, 1]) {
     const thigh = new G.Group(); thigh.position.set(0.1 * s * o.B, -0.02, 0);
     k.add(thigh, cap(0.095 * o.B * (o.thighR ?? 1), 0.25), o.thigh, 0, -0.2, 0);
@@ -171,8 +171,8 @@ export function handGeo(s: number, size = 1) {
   const g = mergeGeometries(parts)!; g.scale(size, size, size); return g;
 }
 
-interface ArmSpec { B: number; sleeve: string; fore: string; skin: string; cuff?: string; rolled?: boolean; puff?: number; shX?: number; hand?: number; foreR?: number }
-function arms(p: Person, k: Kit, o: ArmSpec) {
+export interface ArmSpec { B: number; sleeve: string; fore: string; skin: string; cuff?: string; rolled?: boolean; puff?: number; shX?: number; hand?: number; foreR?: number }
+export function arms(p: Person, k: Kit, o: ArmSpec) {
   for (const s of [-1, 1]) {
     const sh = new G.Group(); sh.position.set((o.shX ?? 0.215) * s * o.B, 0.42, 0);
     k.add(sh, cap(0.07 * o.B * (o.puff ?? 1), 0.18), o.sleeve, 0, -0.13, 0);
