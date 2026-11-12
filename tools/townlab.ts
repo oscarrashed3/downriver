@@ -64,6 +64,7 @@ function applyView(name: string) {
   // keep the shadow map centred on what the camera looks at
   const c = new THREE.Vector3().fromArray(v.look);
   sun.target.position.copy(c); sun.position.copy(c).addScaledVector(sunDir, 220);
+  piece.onView?.(name, camera);
 }
 applyView(viewName);
 let t = 0;

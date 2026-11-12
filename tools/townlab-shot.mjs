@@ -1,6 +1,7 @@
 // Screenshots of a Walking Town lab piece: node tools/townlab-shot.mjs <piece> <out-dir> [view,view] [seconds] [extra query]
 // Needs the dev server (npm run dev). Renders each named view (or all) after `seconds` of simulated time, and
 // prints the renderer's draw calls and triangles for each (the whole frame: shadow pass, scene, post passes).
+// ADV=0.4,0.4 takes more shots of each view after simulating that many more seconds each (for a walk cycle).
 import pw from '/opt/node-tools/node_modules/playwright/index.js';
 import fs from 'node:fs';
 const { chromium } = pw;
@@ -23,6 +24,15 @@ for (const v of views) {
   const f = `${out}/${piece}-${v}${tag}.png`;
   await page.screenshot({ path: f, timeout: 180000 });
   console.log('wrote', f, JSON.stringify(await page.evaluate(() => window.__info)));
+  let k = 0;
+  for (const a of (process.env.ADV ? process.env.ADV.split(',').map(Number) : [])) {
+    await page.evaluate(a => window.__advance(a), a);
+    await page.evaluate(v => window.__view(v), v);
+    await page.waitForFunction(n => window.__frames > n + 2, await page.evaluate(() => window.__frames), { timeout: 180000 });
+    const g = `${out}/${piece}-${v}${tag}-${++k}.png`;
+    await page.screenshot({ path: g, timeout: 180000 });
+    console.log('wrote', g);
+  }
 }
 console.log(logs.filter(l => !l.includes('useProgram')).slice(0, 30).join('\n'));
 await browser.close();

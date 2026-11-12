@@ -6,9 +6,10 @@ import { paint, softRamp } from '../../../render/paint';
 import { Player } from '../../../player/player';
 import { CardBuilder } from '../ambleGrowth';
 import { CELL } from '../ambleMaterials';
-import { ambleCardMaterial } from '../ambleMaterials';
+import { ambleCardMaterial, AMBLE_BUMP } from '../ambleMaterials';
 import { townRng } from '../rand';
 import { Noise } from '../../noise';
+import { Kick } from '../ambleWalk';
 
 /**
  * Amble lab: Old Amble standing in a stand-in golden meadow (daisies, lupins, rocks, far blue hills, a lake and
@@ -29,6 +30,8 @@ export function ambleLab(ctx: LabCtx): { piece: LabPiece; amble: Amble; nilo: Pl
   if (params.get('walk')) amble.pose.walk = Number(params.get('walk'));
   if (params.get('dbg') === 'top') amble.growth.visible = false;
   if (params.get('lid')) amble.rig.idle.lid = Number(params.get('lid'));
+  if (params.get('bump')) AMBLE_BUMP.value = Number(params.get('bump'));
+  if (params.get('noshadow')) ctx.sun.castShadow = false;
   if (params.get('dbg') === 'bones') {
     for (const b of amble.rig.bones) { const m = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 6), new THREE.MeshBasicMaterial({ color: '#ff2050', depthTest: false })); m.renderOrder = 10; b.add(m); }
   }
@@ -133,13 +136,35 @@ export function ambleLab(ctx: LabCtx): { piece: LabPiece; amble: Amble; nilo: Pl
   // solo=1: Amble alone (for counting its draws and triangles)
   if (params.get('solo')) for (const o of [ground, lake, rocks, meadow, ...scene.children.filter(c => c.type === 'Mesh' && c !== ground && c !== lake && c !== meadow)]) o.visible = false;
   if (params.get('solo') && nilo) nilo.root.visible = false;
+  // dust and petals kicked up by each footfall when walking
+  const kick = new Kick();
+  scene.add(kick.mesh);
+  const kickCenter = new THREE.Vector3(0, -1e5, 0), kickUp = new THREE.Vector3(0, 1, 0);
+  const niloHead = new THREE.Vector3();
+  if (nilo && params.get('look') !== '0') amble.lookAt = niloHead;
   let logged = false;
   const v = (x: number, y: number, z: number): [number, number, number] => [x, y, z];
   const F = FOOT_REST.FL, Hd = REST[BONE.head];
   const ER = REST[BONE.eyeR];
+  // the close views of the face ride the head bone (they are given at rest; the head has moved since)
+  const tracked: Record<string, number> = { headc: BONE.head, eyex: BONE.head };
   const piece: LabPiece = {
+    onView(name, cam) {
+      const b = tracked[name];
+      if (b === undefined) return;
+      const vw = piece.views[name], bone = amble.rig.bones[b];
+      amble.root.updateMatrixWorld(true);
+      const at = (p: [number, number, number]) => bone.localToWorld(new THREE.Vector3().fromArray(p).sub(REST[b]));
+      cam.position.copy(at(vw.pos)); cam.lookAt(at(vw.look));
+    },
     update(dt, t) {
+      if (nilo) niloHead.copy(nilo.root.position).add(new THREE.Vector3(0, 1.0, 0));
       amble.update(dt, t);
+      for (const leg of amble.rig.planted) {
+        const f = amble.rig.bone(`foot${leg}`).getWorldPosition(new THREE.Vector3()); f.y = 0;
+        kick.emit(f, kickUp, false, 26);
+      }
+      kick.update(dt, kickCenter);
       if (nilo) { nilo.pose = {}; nilo.animate(dt, 0, false); }
       if (!logged && t > 0.5) {
         logged = true;
@@ -162,6 +187,12 @@ export function ambleLab(ctx: LabCtx): { piece: LabPiece; amble: Amble; nilo: Pl
       scale: { pos: v(F.x + 13, 2.2, F.z + 13), look: v(F.x + 1.5, 4.5, F.z - 1), fov: 50 },
       top: { pos: v(-36, 58, 32), look: v(0, 18, SHELL.cz), fov: 45 },
       under: { pos: v(-6, 1.6, 30), look: v(0, 3.5, -10), fov: 60 },
+      // the quality-pass set: head close-up, the eye, the front right leg and foot, the neck and mane, a walk frame
+      headc: { pos: v(-15, 25.5, 45), look: v(-0.8, 23.2, 37.5), fov: 44 },
+      eyex: { pos: v(ER.x - 2.6, ER.y + 0.4, ER.z + 1.5), look: v(ER.x, ER.y, ER.z), fov: 30 },
+      leg: { pos: v(-23, 5, 25), look: v(-12, 4.6, 11), fov: 46 },
+      neckm: { pos: v(-22, 13, 38), look: v(0, 18, 25), fov: 48 },
+      walk: { pos: v(-74, 11, 12), look: v(0, 14, 2), fov: 46 },
     },
   };
   return { piece, amble, nilo };

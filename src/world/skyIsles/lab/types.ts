@@ -18,4 +18,6 @@ export interface LabPiece {
   views: Record<string, LabView>;
   /** Optional: drive the camera every step (overrides the view). */
   camera?(cam: THREE.PerspectiveCamera, t: number): void;
+  /** Optional: called after a named view is applied (a piece can carry the view on a moving part). */
+  onView?(name: string, cam: THREE.PerspectiveCamera): void;
 }

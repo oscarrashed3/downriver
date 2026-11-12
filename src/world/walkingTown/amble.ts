@@ -7,12 +7,18 @@ import { AmbleBirds, type Perch } from './ambleBirds';
 import { SkyBirds } from '../skyIsles/skyBirds';
 import { townRng } from './rand';
 
+const _lp = new THREE.Vector3();
+
 /**
- * Old Amble: the huge, gentle creature the Walking Town lives on. Part tortoise, part elk: a domed, plated shell
- * covered in moss with terraces on top for the village, four pillar legs with layered rock-like skin, wide flat
- * toes, a long neck, a kind elk's head and huge pale antlers hung with vines. Awake the whole time: it breathes
- * (the shell lifting slowly, with a deep sigh now and then), its ears turn and flick, its eyes wander and blink
- * slowly, its head sways, and white birds land on its antlers and lift off again.
+ * Old Amble: the huge, gentle creature the Walking Town lives on. Part tortoise, part elk and moose, with an
+ * elephant's legs: a domed, plated shell covered in moss with terraces on top for the village, four massive legs in
+ * wrinkled, cracked hide on round feet with thick toenails, a long, strong neck with a shaggy throat mane, an
+ * elk's head on a real skull (brow, sockets, cheekbones, a moose's heavy nose and overhanging lip, a dewlap) and
+ * huge pale antlers like driftwood hung with vines. Awake the whole time: it breathes (the flanks swell, the
+ * shell lifts a beat later, the nostrils open; a deep sigh now and then), shifts its weight from leg to leg, its
+ * neck sways in a slow S, its eyes find things and the head turns after them, it blinks (the lids squash
+ * together), squints, chews a little, its ears flick, the dewlap swings on after the head, and white birds land
+ * on its antlers and lift off again.
  *
  * Build: one skinned mesh for the whole body (shell, plates, legs, feet, neck, head, eyes, ears, antlers, moss;
  * see ambleBody.ts), one skinned mesh of cards for the growth (vines, ferns, flowers, leaves; ambleGrowth.ts),
@@ -27,6 +33,7 @@ import { townRng } from './rand';
  *   - `pose`: head lift / yaw, a foot held up, walking speed, lean (see AmblePose).
  *   - `stoneSlot`: a frame on the front left foot, in the gap between its third and fourth toes.
  *   - `mouth`, `eyeL`/`eyeR`, `brow`: frames on the head (water, the eye look, the vines over the eyes).
+ *   - `lookAt`: a world point for the eyes to find (the head follows them); `gaze` takes the eyes over in scenes.
  *   - `addPerch()`: more places for the birds to land (windmill caps, roofs).
  */
 export class Amble {
@@ -48,7 +55,13 @@ export class Amble {
   stats = { triangles: 0, cards: 0, bones: 0 };
   private perches: Perch[] = [];
   private rng = townRng(17);
-  private next = { blink: 2, earL: 3, earR: 5, look: 1, sigh: 14 };
+  private next = { blink: 2, earL: 3, earR: 5, look: 1, sigh: 14, chew: 9, squint: 16 };
+  private chewT = -100; private chewLen = 5; private squintT = -100;
+  /** Where the eyes are aimed and where the head has turned to (creature-frame yaw and pitch): the eyes get there
+   * first, the head follows slowly after them. */
+  private aim = { ex: 0, ey: 0, hx: 0, hy: 0 };
+  /** A point in the world for Amble to look at (Nilo, say): the eyes find it, then the head turns after them. */
+  lookAt: THREE.Vector3 | null = null;
   private sighT = -100;
   private look = { x: 0, y: 0, tx: 0, ty: 0 };
   private flick = { L: -10, R: -10 };
@@ -142,22 +155,50 @@ export class Amble {
     const ph = (t / 7.5) * Math.PI * 2;
     this.rig.breath = Math.sin(ph) * (1 - sighK * 0.6) + sighK * 2.2;
     this.rig.shellBreath = Math.sin(ph - 0.5) * (1 - sighK * 0.6) + sighK * 2.6;
-    // ---- head: a slow wander
-    I.headYaw = 0.07 * Math.sin(t * 0.11) + 0.035 * Math.sin(t * 0.27 + 1.3);
-    I.headPitch = 0.03 * Math.sin(t * 0.17 + 0.4) - sighK * 0.05;
+    // ---- weight: shifting slowly from leg to leg (the feet stay planted, the knees take it)
+    I.shiftX = 0.75 * Math.sin(t * 0.37 + 0.5) + 0.25 * Math.sin(t * 0.83 + 2.1);
+    I.shiftZ = 0.5 * Math.sin(t * 0.27 + 1.7);
+    // ---- the neck: a slow S-curve travelling up it, in pitch and in yaw
+    for (let i = 0; i < 5; i++) {
+      I.neckPitch[i] = 0.018 * Math.sin(t * 0.55 - i * 0.95) + (i === 4 ? 0.01 * Math.sin(t * 0.31) : 0);
+      I.neckYaw[i] = 0.016 * Math.sin(t * 0.41 - i * 0.85 + 1.0);
+    }
+    // ---- the nostrils open on each in-breath and wide on a sigh; now and then Amble chews a little, or
+    // squints softly
+    I.nostril = Math.max(0, Math.sin(ph + 0.4)) ** 2 * 0.7 + sighK * 1.2;
+    if (t > this.next.chew) { this.chewT = t; this.chewLen = 3.5 + r() * 4; this.next.chew = t + 14 + r() * 18; }
+    const ct = t - this.chewT;
+    const chewEnv = ct >= 0 && ct < this.chewLen ? Math.sin(Math.PI * ct / this.chewLen) ** 0.5 : 0;
+    I.jaw = chewEnv * (0.55 + 0.45 * Math.sin(ct * 5.2));
+    I.chew = chewEnv * Math.cos(ct * 5.2) * 0.9;
+    if (t > this.next.squint) { this.squintT = t; this.next.squint = t + 18 + r() * 20; }
+    const qt = (t - this.squintT) / 2.6;
+    I.squint = qt >= 0 && qt < 1 ? Math.sin(Math.PI * qt) ** 1.5 * 0.8 : 0;
     // ---- ears: drift, and now and then a quick flick
     if (t > this.next.earL) { this.flick.L = t; this.next.earL = t + 3 + r() * 7; }
     if (t > this.next.earR) { this.flick.R = t; this.next.earR = t + 3 + r() * 7; }
     const fl = (t0: number) => { const k = (t - t0) / 0.9; return k >= 0 && k < 1 ? Math.sin(Math.PI * k) * (1 - k * 0.3) : 0; };
     I.earL = 0.12 + 0.08 * Math.sin(t * 0.23); I.earR = 0.12 + 0.08 * Math.sin(t * 0.19 + 2);
     I.earFlickL = fl(this.flick.L); I.earFlickR = fl(this.flick.R);
-    // ---- eyes: look somewhere new every few seconds, the eyes easing slowly there; slow blinks
-    if (t > this.next.look) { this.look.tx = (r() - 0.5) * 0.35; this.look.ty = (r() - 0.5) * 0.18; this.next.look = t + 2.5 + r() * 4; }
-    this.look.x += (this.look.tx - this.look.x) * (1 - Math.exp(-dt * 2.5));
-    this.look.y += (this.look.ty - this.look.y) * (1 - Math.exp(-dt * 2.5));
-    I.lookX = this.look.x; I.lookY = this.look.y;
-    if (t > this.next.blink) { this.blinkT = t; this.next.blink = t + 4 + r() * 5; }
-    const bk = (t - this.blinkT) / 0.75;
+    // ---- the gaze: somewhere new every few seconds (or the look-at point). The eyes lead, quick; the head turns
+    // after them, slow and heavy, and as it comes round the eyes ease back towards its middle
+    if (t > this.next.look) { this.look.tx = (r() - 0.5) * 0.7; this.look.ty = (r() - 0.5) * 0.24; this.next.look = t + 3 + r() * 5; }
+    let tx = this.look.tx, ty = this.look.ty;
+    if (this.lookAt) {
+      const lp = this.root.worldToLocal(_lp.copy(this.lookAt)).sub(REST[BONE.head]);
+      tx = Math.max(-0.9, Math.min(0.9, Math.atan2(lp.x, lp.z)));
+      ty = Math.max(-0.5, Math.min(0.4, Math.atan2(lp.y, Math.hypot(lp.x, lp.z)) + 0.29));
+    }
+    const A = this.aim, k1 = 1 - Math.exp(-dt * 5), k2 = 1 - Math.exp(-dt * 0.8);
+    A.ex += (tx - A.ex) * k1; A.ey += (ty - A.ey) * k1;
+    A.hx += (tx * 0.75 - A.hx) * k2; A.hy += (ty * 0.5 - A.hy) * k2;
+    I.headYaw = A.hx + 0.04 * Math.sin(t * 0.11) + 0.02 * Math.sin(t * 0.27 + 1.3);
+    I.headPitch = A.hy * 1.4 + 0.025 * Math.sin(t * 0.17 + 0.4) - sighK * 0.05;
+    I.lookX = Math.max(-0.45, Math.min(0.45, A.ex - A.hx * 0.95));
+    I.lookY = Math.max(-0.25, Math.min(0.25, A.ey - A.hy * 0.9));
+    // (a big turn of the eyes often brings a blink with it, as it does in animals)
+    if (t > this.next.blink || (Math.abs(tx - A.ex) > 0.3 && t - this.blinkT > 2.5)) { this.blinkT = t; this.next.blink = t + 4 + r() * 5; }
+    const bk = (t - this.blinkT) / 0.85;
     I.blink = bk >= 0 && bk < 1 ? (bk < 0.35 ? bk / 0.35 : bk < 0.45 ? 1 : 1 - (bk - 0.45) / 0.55) : 0;
     I.blink = I.blink * I.blink * (3 - 2 * I.blink);
     I.tail = 0.08 * Math.sin(t * 0.3);
@@ -167,6 +208,7 @@ export class Amble {
       I.lookX += (gz.x - I.lookX) * gz.k; I.lookY += (gz.y - I.lookY) * gz.k;
       I.blink = I.blink * (1 - gz.k) + gz.blink * gz.k;
       I.lid = 0.22 + (gz.lid - 0.22) * gz.k;
+      I.squint *= 1 - gz.k;
     } else I.lid = 0.22;
     this.rig.update(dt);
     this.root.updateMatrixWorld(true);

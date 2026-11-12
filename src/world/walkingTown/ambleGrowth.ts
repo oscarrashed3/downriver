@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { smoothstep, clamp } from '../noise';
 import { townRng, pickOf } from './rand';
-import { BONE, SHELL, LEGS, legBones, headPoint, headDir, HEAD_FWD } from './ambleRig';
+import { BONE, REST, SHELL, LEGS, legBones, headPoint, headDir, HEAD_FWD, HEAD_SCALE } from './ambleRig';
 import type { AmbleBodyBuild, W } from './ambleBody';
 import { chainWeights } from './ambleBody';
-import { headSurface } from './ambleHead';
+import { headSurface, headRing } from './ambleHead';
 import { ledges, outlinePoint, shellTopY } from './ambleShell';
 import { CELL, cellUV } from './ambleMaterials';
 
@@ -223,7 +223,7 @@ export function buildAmbleGrowth(body: AmbleBodyBuild, seed = 5) {
   // ---- the neck: vines hanging from the mane down both sides
   const neck = body.neck;
   const neckBones = [BONE.body, BONE.neck0, BONE.neck1, BONE.neck2, BONE.neck3, BONE.head];
-  for (let k = 0; k < 120; k++) {
+  for (let k = 0; k < 84; k++) {
     const t = 0.06 + rng() * 0.8;
     const i = Math.round(t * (neck.C.length - 1));
     const sd = rng() < 0.5 ? 1 : -1;
@@ -305,7 +305,7 @@ export function buildAmbleGrowth(body: AmbleBodyBuild, seed = 5) {
   for (const l of LEGS) {
     const fr = body.legs[l];
     const [h] = legBones(l);
-    for (let k = 0; k < (l.startsWith('F') ? 26 : 14); k++) {
+    for (let k = 0; k < (l.startsWith('F') ? 18 : 10); k++) {
       const i = Math.floor(rng() * fr.C.length * 0.6);
       const ang = rng() * Math.PI * 2;
       const n = fr.N[i].clone().multiplyScalar(Math.cos(ang)).addScaledVector(fr.B[i], Math.sin(ang));
@@ -316,8 +316,98 @@ export function buildAmbleGrowth(body: AmbleBodyBuild, seed = 5) {
     }
   }
 
+  hair(cb, rng, body);
+
   const geometry = cb.geometry();
   return { geometry, quads: cb.quads };
+}
+
+// ------------------------------------------------------------------------------------------------ hair
+
+const HAIR = [new THREE.Color('#efdbb2'), new THREE.Color('#e8d0a4'), new THREE.Color('#e2c799'), new THREE.Color('#f2e2c0'), new THREE.Color('#dcc092')];
+
+/** A lock of long hair from `root`, falling along `dir` for `len` metres, `wid` wide, facing `n`; crossed by a
+ * second card turned about the fall so it has body from every side. */
+function lock(cb: CardBuilder, rng: () => number, root: THREE.Vector3, dir: THREE.Vector3, len: number, wid: number, n: THREE.Vector3, color: THREE.Color, w: W, crossed = true) {
+  const across = new THREE.Vector3().crossVectors(dir, n).normalize();
+  const c = root.clone().addScaledVector(dir, len * 0.5);
+  // (lit as the coat it grows from, a little towards the sky, so locks under the throat are not black)
+  n = n.clone().lerp(Y, 0.3).normalize();
+  const b = dir.clone().multiplyScalar(-len * 0.5);
+  const sway = Math.min(0.25, len * 0.06);
+  cb.quad(c, across.clone().multiplyScalar(wid), b, n, CELL.lock, color, [sway, 0], rng() * 9, w);
+  if (crossed) cb.quad(c, across.clone().applyAxisAngle(dir, 1.1).multiplyScalar(wid * 0.85), b, n, CELL.lock, color.clone().multiplyScalar(0.9), [sway, 0], rng() * 9, w);
+}
+
+/** Old Amble's hair: a shaggy mane down the throat and along the upper sides of the neck, a beard along the
+ * jaw and from the dewlap, and soft fur inside the ears. */
+function hair(cb: CardBuilder, rng: () => number, body: AmbleBodyBuild) {
+  const neck = body.neck;
+  const neckBones = [BONE.body, BONE.neck0, BONE.neck1, BONE.neck2, BONE.neck3, BONE.head];
+  const DOWN = new THREE.Vector3(0, -1, 0);
+  // the throat mane: long locks hanging from under the neck, longest halfway up it
+  for (let k = 0; k < 420; k++) {
+    const t = 0.47 + Math.pow(rng(), 0.7) * 0.5;
+    const i = Math.round(t * (neck.C.length - 1));
+    const ang = Math.PI + (rng() - 0.5) * 2.1;
+    const n = neck.N[i].clone().multiplyScalar(Math.cos(ang)).addScaledVector(neck.B[i], Math.sin(ang)).normalize();
+    const p = neck.C[i].clone().addScaledVector(neck.N[i], Math.cos(ang) * neck.R[i] * 1.06 * 0.96).addScaledVector(neck.B[i], Math.sin(ang) * neck.R[i] * 0.92 * 0.96);
+    const dir = DOWN.clone().addScaledVector(neck.T[i], -0.4).addScaledVector(n, 0.15).normalize();
+    const len = (1.3 + rng() * 1.4) * (0.7 + 0.6 * Math.sin(Math.PI * (t - 0.4) / 0.6));
+    const w = chainWeights(t * neck.len, neck.ctlS.slice(0, 6), neckBones, 1);
+    const nn = n.clone().applyAxisAngle(dir, (rng() - 0.5) * 1.2);
+    lock(cb, rng, p, dir, len, 0.24 + rng() * 0.2, nn, pickOf(rng, HAIR).clone().multiplyScalar(0.95 + rng() * 0.08), w);
+  }
+  // the mane along the upper sides of the neck: locks lying back and down over the coat
+  for (let k = 0; k < 0; k++) {
+    const t = 0.45 + rng() * 0.48;
+    const i = Math.round(t * (neck.C.length - 1));
+    const ang = (rng() < 0.5 ? 1 : -1) * (0.5 + rng() * 0.75);
+    const n = neck.N[i].clone().multiplyScalar(Math.cos(ang)).addScaledVector(neck.B[i], Math.sin(ang)).normalize();
+    const p = neck.C[i].clone().addScaledVector(n, neck.R[i] * 0.95);
+    const dir = neck.T[i].clone().multiplyScalar(-0.75).addScaledVector(DOWN, 0.45).addScaledVector(n, 0.12);
+    dir.addScaledVector(n, -dir.dot(n) * 0.85).normalize();
+    const w = chainWeights(t * neck.len, neck.ctlS.slice(0, 6), neckBones, 1);
+    lock(cb, rng, p.addScaledVector(n, 0.06), dir, 1.0 + rng() * 1.1, 0.42 + rng() * 0.25, n, pickOf(rng, HAIR).clone().multiplyScalar(1.0 + rng() * 0.08), w, false);
+  }
+  // a beard along the jaw and under the chin
+  for (let k = 0; k < 60; k++) {
+    const z = -0.7 + rng() * 2.6;
+    const phi = Math.PI + (rng() - 0.5) * 1.3;
+    const q = headSurface(z, phi);
+    const p = headPoint(q.x * 0.95, q.y + 0.05, z);
+    const n = headDir(Math.sin(phi), Math.cos(phi), 0);
+    const dir = DOWN.clone().addScaledVector(HEAD_FWD, -0.3).normalize();
+    const jw = z > 0.6 ? 0.7 : 0.2;
+    lock(cb, rng, p, dir, (0.7 + rng() * 0.8) * (1.2 - z * 0.12), 0.3 + rng() * 0.15, n, pickOf(rng, HAIR).clone().multiplyScalar(0.95), [[BONE.head, 1 - jw], [BONE.jaw, jw]]);
+  }
+  // the dewlap's beard: long hair hanging in a tassel from its lower half
+  const D = body.dewlap;
+  for (let k = 0; k < 46; k++) {
+    const t = 0.5 + rng() * 0.48;
+    const a = rng() * Math.PI * 2;
+    const p = D.root.clone().addScaledVector(D.down, t * D.len).addScaledVector(D.fwd, Math.cos(a) * 0.5 * HEAD_SCALE * Math.sin(Math.PI * t) * 0.9).addScaledVector(D.side, Math.sin(a) * 0.3 * HEAD_SCALE * Math.sin(Math.PI * t) * 0.9);
+    const n = D.fwd.clone().multiplyScalar(Math.cos(a)).addScaledVector(D.side, Math.sin(a)).normalize();
+    lock(cb, rng, p, D.down.clone().addScaledVector(n, 0.12).normalize(), 1.2 + rng() * 1.5 * t, 0.3 + rng() * 0.2, n, pickOf(rng, HAIR).clone().multiplyScalar(0.85 + rng() * 0.1), [[BONE.dewlap, 1]]);
+  }
+  // soft pale fur inside the ears
+  for (const side of [1, -1] as const) {
+    const eb = side > 0 ? BONE.earL : BONE.earR;
+    const root = REST[eb];
+    const L = headDir(0.96 * side, 0.16, -0.32);
+    const n0 = headDir(0.1 * side, 0.55, 1);
+    const N = n0.clone().addScaledVector(L, -n0.dot(L)).normalize();
+    const Wd = new THREE.Vector3().crossVectors(L, N);
+    for (let k = 0; k < 14; k++) {
+      const l = 0.08 + rng() * 0.55, cc = (rng() - 0.5) * 0.9;
+      const hw = 0.66 * Math.pow(Math.sin(Math.PI * Math.pow(l, 0.68)), 0.85);
+      const cup = 0.48 * hw * cc * cc - 0.12 * (1 - l) * (1 - cc * cc);
+      const p = root.clone().addScaledVector(L, l * 2.25 * HEAD_SCALE).addScaledVector(Wd, cc * hw * HEAD_SCALE).addScaledVector(N, (0.06 + cup - 0.05) * HEAD_SCALE);
+      const sz = (0.32 + rng() * 0.2) * HEAD_SCALE * (1 - l * 0.5);
+      cb.quad(p.clone().addScaledVector(L, sz * 0.4).addScaledVector(N, sz * 0.3), Wd.clone().multiplyScalar(sz * 0.6), L.clone().multiplyScalar(0.7).addScaledVector(N, 0.6).normalize().multiplyScalar(sz * 0.55), N, CELL.tuft, new THREE.Color('#efe3cb').multiplyScalar(0.92 + rng() * 0.1), [0, 0.02], rng() * 9, [[eb, 1]]);
+    }
+  }
+  void headRing;
 }
 
 export { clamp, HEAD_FWD };

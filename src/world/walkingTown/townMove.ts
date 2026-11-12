@@ -303,11 +303,15 @@ export class TownMove {
     }
   }
 
+  private lookPt = new THREE.Vector3();
   /** Every frame in World 3, after Amble has moved: carry, sync the colliders, the village, the camera melt. */
   frame(dt: number, t: number) {
     const pl = this.g.player;
     this.setClutter(this.g.mode !== 'ride' && this.g.skyView.k < 0.02);
     this.syncNow();
+    // Amble's eyes find Nilo when he is down near its head (not when he rides on its back), and its head follows
+    const hd = this.amble.rig.bone('head').getWorldPosition(this.lookPt).distanceTo(pl.pos);
+    this.amble.lookAt = hd < 55 && !this.onAmble && !this.climb ? this.lookPt.copy(pl.pos) : null;
     const M = this.town.group.matrixWorld;
     // (a jump or a hop off a step keeps the shell's own going: he comes down where he took off, even as it turns)
     const q0 = this.toCreature(pl.pos, _w), aloft = !pl.grounded && this.offT < 1.5 && q0.y > SHELL.yLip - 2 && shellPolar(q0.x, q0.z).rho < 1.15;

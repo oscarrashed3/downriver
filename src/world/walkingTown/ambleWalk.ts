@@ -47,7 +47,7 @@ class Path2 {
 }
 
 /** Dust and petals kicked up round a foot (one instanced draw). */
-class Kick {
+export class Kick {
   mesh: THREE.InstancedMesh;
   private N = 220;
   private p: { pos: THREE.Vector3; v: THREE.Vector3; age: number; life: number; size: number; spin: THREE.Vector3; petal: boolean }[] = [];
