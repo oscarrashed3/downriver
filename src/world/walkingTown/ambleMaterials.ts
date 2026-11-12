@@ -9,7 +9,7 @@ import { paint, softRamp, PAINT } from '../../render/paint';
 // never swim over the skin when Amble breathes or walks.
 
 const BODY_GLSL = /* glsl */ `
-  varying vec3 vRest; varying vec4 vSkin;
+  varying vec3 vRest; varying vec4 vSkin; varying float vFold;
   vec3 aHash3(vec3 p){
     p = vec3(dot(p, vec3(127.1, 311.7, 74.7)), dot(p, vec3(269.5, 183.3, 246.1)), dot(p, vec3(113.5, 271.9, 124.6)));
     return fract(sin(p) * 43758.5453);
@@ -40,8 +40,8 @@ export function ambleBodyMaterial(): THREE.MeshToonMaterial {
     sh.uniforms.uMossA = { value: new THREE.Color('#5b7f34') };
     sh.uniforms.uMossB = { value: new THREE.Color('#a3bb58') };
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec4 aSkin; varying vec3 vRest; varying vec4 vSkin;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\n  vRest = position; vSkin = aSkin;');
+      .replace('#include <common>', '#include <common>\nattribute vec4 aSkin; attribute float aFold; varying vec3 vRest; varying vec4 vSkin; varying float vFold;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n  vRest = position; vSkin = aSkin; vFold = aFold;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\nuniform vec3 uMossA, uMossB;\n' + BODY_GLSL)
       .replace('#include <color_fragment>', `#include <color_fragment>
@@ -53,11 +53,11 @@ export function ambleBodyMaterial(): THREE.MeshToonMaterial {
           vec3 alb = diffuseColor.rgb;
           if (kind < 0.5) {
             // stone and rock-skin: broken into plates by deep cracks, finer cracks inside each plate
-            vec3 v1 = aVor(rp * 0.95);
-            vec3 v2 = aVor(rp * 2.6 + 11.0);
+            vec3 v1 = aVor(rp * 0.42);
+            vec3 v2 = aVor(rp * 1.5 + 11.0);
             float crack1 = 1.0 - smoothstep(0.02, 0.1, v1.y - v1.x);
             float crack2 = 1.0 - smoothstep(0.01, 0.06, v2.y - v2.x);
-            alb *= mix(1.0, (0.88 + 0.2 * v1.z) * (1.0 - 0.3 * crack1) * (1.0 - 0.14 * crack2), rock);
+            alb *= mix(1.0, (0.9 + 0.16 * v1.z) * (1.0 - 0.22 * crack1) * (1.0 - 0.1 * crack2), rock);
             // each plate is a little rounded: lighter in its middle
             alb *= mix(1.0, 0.94 + 0.12 * smoothstep(0.0, 0.5, v1.y - v1.x), rock);
             alb *= 0.92 + 0.14 * n1 + 0.06 * n3;
@@ -71,24 +71,43 @@ export function ambleBodyMaterial(): THREE.MeshToonMaterial {
             alb *= 1.0 - 0.18 * smoothstep(0.78, 0.84, n3);
           } else if (kind > 3.5 && kind < 4.5) {
             alb *= 0.94 + 0.1 * pNoise(rp * vec3(12.0, 2.0, 12.0));
+          } else if (kind > 5.5) {
+            // the legs' and neck's hide: layered like old rock and bark, in long horizontal folds. Each fold is
+            // lit along its rounded top and dark in the crease under it; a fainter crease halves it; the hide
+            // between is streaked along the fold and split here and there by short upright cracks.
+            float fw = vFold + (n1 - 0.5) * 0.35;
+            float fp = fract(fw);
+            float crease = 1.0 - smoothstep(0.0, 0.12, fp);
+            float half_ = (1.0 - smoothstep(0.0, 0.06, abs(fp - 0.5))) * 0.45;
+            float roll = smoothstep(0.1, 0.55, fp) * (1.0 - smoothstep(0.7, 1.0, fp));
+            float streak = pNoise(vec3(rp.x * 1.4, fw * 9.0, rp.z * 1.4));
+            vec3 vc = aVor(vec3(rp.x * 1.1, fw * 2.4, rp.z * 1.1) + 3.0);
+            float split = (1.0 - smoothstep(0.02, 0.09, vc.y - vc.x)) * smoothstep(0.25, 0.6, fp) * (1.0 - smoothstep(0.75, 0.95, fp));
+            alb *= 0.84 + 0.2 * roll + 0.1 * streak + 0.06 * n3;
+            alb *= (1.0 - 0.42 * crease) * (1.0 - 0.18 * half_) * (1.0 - 0.22 * split);
+            alb = mix(alb, alb * vec3(1.04, 1.0, 0.9), smoothstep(0.55, 0.8, n2) * 0.5);
           }
           // moss: a soft cushion texture, broken up at its edges so it creeps over the stone in ragged patches
-          float mk = kind > 4.5 ? 1.0 : smoothstep(0.44, 0.6, mossW + (n1 - 0.5) * 0.55 + (n2 - 0.5) * 0.35);
+          float mk = (kind > 4.5 && kind < 5.5) ? 1.0 : smoothstep(0.44, 0.6, mossW + (n1 - 0.5) * 0.55 + (n2 - 0.5) * 0.35);
           if (mk > 0.0) {
             vec3 mv = aVor(rp * 3.4 + 5.0);
-            vec3 mc = mix(uMossA, uMossB, clamp(n1 * 0.7 + n3 * 0.5 - 0.1, 0.0, 1.0));
+            // three greens in broad drifts: deep moss, leaf green and a sunny yellow-green
+            float drift = pNoise(rp * 0.11 + 4.0);
+            vec3 mA = mix(uMossA, vec3(0.27, 0.40, 0.17), smoothstep(0.55, 0.8, drift) * 0.7);
+            vec3 mB = mix(uMossB, vec3(0.74, 0.76, 0.33), smoothstep(0.25, 0.05, drift) * 0.8);
+            vec3 mc = mix(mA, mB, clamp(n1 * 0.7 + n3 * 0.5 - 0.1, 0.0, 1.0));
             mc *= 0.8 + 0.32 * smoothstep(0.0, 0.55, mv.x);
             // flecks of yellow-green and tiny pale flowers in the thicker moss
             mc = mix(mc, vec3(0.78, 0.82, 0.42), smoothstep(0.82, 0.88, n3) * 0.6);
             mc = mix(mc, vec3(0.96, 0.92, 0.84), smoothstep(0.93, 0.95, pNoise(rp * 9.0)) * mk * 0.7);
-            if (kind > 4.5) mc = mix(mc, alb, 0.45);
+            if (kind > 4.5 && kind < 5.5) mc = mix(mc, alb, 0.45);
             alb = mix(alb, mc, mk);
           }
           alb *= 1.0 - 0.55 * ao;
           diffuseColor.rgb = alb;
         }`);
   };
-  m.customProgramCacheKey = () => 'ambleBody1';
+  m.customProgramCacheKey = () => 'ambleBody2';
   bodyMat = m;
   return m;
 }

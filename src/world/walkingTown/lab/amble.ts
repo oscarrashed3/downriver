@@ -17,7 +17,10 @@ import { Noise } from '../../noise';
  * dbg=bones (bone markers) | dbg=top (hide the growth).
  * Views: threeq (like picture 1), side, front, head, eye, foot, scale (Nilo at the front foot), top, under.
  */
-export default function (ctx: LabCtx): LabPiece {
+export default function (ctx: LabCtx): LabPiece { return ambleLab(ctx).piece; }
+
+/** The Amble lab, handing back Amble and Nilo too (the town lab builds on it). */
+export function ambleLab(ctx: LabCtx): { piece: LabPiece; amble: Amble; nilo: Player | null } {
   const { scene, params } = ctx;
   const amble = new Amble({ birds: Number(params.get('birds') ?? 5) });
   scene.add(amble.root);
@@ -133,7 +136,7 @@ export default function (ctx: LabCtx): LabPiece {
   let logged = false;
   const v = (x: number, y: number, z: number): [number, number, number] => [x, y, z];
   const F = FOOT_REST.FL, Hd = REST[BONE.head];
-  return {
+  const piece: LabPiece = {
     update(dt, t) {
       amble.update(dt, t);
       if (nilo) { nilo.pose = {}; nilo.animate(dt, 0, false); }
@@ -144,10 +147,10 @@ export default function (ctx: LabCtx): LabPiece {
     },
     views: {
       // three-quarter from the front right, low in the meadow, head to the right (picture 1)
-      threeq: { pos: v(-52, 8, 40), look: v(-1, 15, 3), fov: 48 },
+      threeq: { pos: v(-62, 9, 48), look: v(-1, 17, 4), fov: 48 },
       left: { pos: v(48, 4, 46), look: v(2, 13, 6), fov: 48 },
       side: { pos: v(-92, 12, 2), look: v(0, 15, 2), fov: 42 },
-      front: { pos: v(-22, 14, 88), look: v(0, 16, 10), fov: 42 },
+      front: { pos: v(-14, 16, 92), look: v(0, 19, 10), fov: 44 },
       head: { pos: v(Hd.x - 25, Hd.y + 3, Hd.z + 17), look: v(Hd.x, Hd.y + 6.5, Hd.z + 0.5), fov: 52 },
       profile: { pos: v(Hd.x - 22, Hd.y + 1, Hd.z + 3), look: v(Hd.x, Hd.y + 1.5, Hd.z + 3), fov: 40 },
       eye: { pos: v(Hd.x - 8, Hd.y + 1.0, Hd.z + 7), look: v(Hd.x - 1.8, Hd.y + 0.6, Hd.z + 1.6), fov: 38 },
@@ -159,4 +162,5 @@ export default function (ctx: LabCtx): LabPiece {
       under: { pos: v(-6, 1.6, 30), look: v(0, 3.5, -10), fov: 60 },
     },
   };
+  return { piece, amble, nilo };
 }

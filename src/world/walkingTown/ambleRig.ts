@@ -37,24 +37,24 @@ export const legBones = (l: Leg) => [BONE[`hip${l}`], BONE[`knee${l}`], BONE[`fo
 
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 
-/** The shell's size and its terrace levels (creature space). */
+/** The shell's size and its levels (creature space). The shell is a high, lumpy dome: natural rocky ledges
+ * step its top into three levels and a shoulder, then its plated flanks bulge out and curl under at a low lip. */
 export const SHELL = {
   /** Centre of the oval, on the midline. */
   cz: -4,
   /** Half-width, and half-length in front of and behind the centre. */
-  ax: 18, azFront: 23, azBack: 26,
+  ax: 18.5, azFront: 23.5, azBack: 26,
   /** Superellipse exponent of the outline (2 = an ellipse; more is boxier). */
-  pOut: 2.5,
-  /** Terrace levels: the top terrace, the middle ring and the rim walk. */
-  yTop: 22.4, yMid: 19.0, yLow: 15.6,
-  /** The lower lip of the edge plates, and the underside (hidden in the body). */
-  yLip: 8.0, yUnder: 8.4,
-  /** Where each terrace ends, as a fraction of the outline radius. */
-  rTop: 0.43, rMid: 0.79, rLedge: 0.955,
+  pOut: 2.4,
+  /** Heights: the crown at the centre, the shoulder where the flanks begin, the lower lip of the edge plates. */
+  yTop: 29.6, yLow: 18.0, yLip: 8.2,
+  /** The ledges (as a fraction of the outline radius): the crown's edge, the middle terrace's edge and the
+   * shoulder's; and where the dome's top turns into the plated flank. */
+  rTop: 0.36, rMid: 0.62, rLedge: 0.8, rJoin: 0.86,
 } as const;
 
 /** The head's frame: the head bone, the muzzle direction (pitched gently down) and the head's up. */
-export const HEAD_POS = V(0, 21.6, 31.0);
+export const HEAD_POS = V(0, 24.4, 35.4);
 export const HEAD_FWD = V(0, -0.3, 1).normalize();
 /** The head's size against the head-local profile in ambleHead.ts. */
 export const HEAD_SCALE = 1.65;
@@ -73,31 +73,31 @@ export function headDir(x: number, y: number, z: number, out = new THREE.Vector3
 /** Eyes, ears and antler roots in head-local coordinates (left side; mirror x for the right). */
 export const EYE_LOCAL = V(EYE_X, EYE_Y, EYE_Z);
 export const EYE_R = EYE_RADIUS * HEAD_SCALE;
-export const EAR_LOCAL = V(1.08, 1.42, -0.45);
+export const EAR_LOCAL = V(1.2, 1.3, -0.5);
 export const ANTLER_LOCAL = V(0.72, 1.78, 0.25);
 
 /** Legs: hip, knee, ankle (rest). Front knees and hind stifles both point a little forwards. */
 const LEG_REST: Record<Leg, [THREE.Vector3, THREE.Vector3, THREE.Vector3]> = {
-  FL: [V(10.6, 8.6, 11.0), V(11.4, 4.9, 12.2), V(11.5, 1.45, 11.5)],
-  FR: [V(-10.6, 8.6, 11.0), V(-11.4, 4.9, 12.2), V(-11.5, 1.45, 11.5)],
-  BL: [V(10.8, 8.6, -18.0), V(11.6, 5.1, -16.7), V(11.7, 1.45, -18.0)],
-  BR: [V(-10.8, 8.6, -18.0), V(-11.6, 5.1, -16.7), V(-11.7, 1.45, -18.0)],
+  FL: [V(9.6, 10.4, 11.0), V(11.2, 6.0, 12.0), V(12.1, 1.7, 11.5)],
+  FR: [V(-9.6, 10.4, 11.0), V(-11.2, 6.0, 12.0), V(-12.1, 1.7, 11.5)],
+  BL: [V(9.8, 10.4, -18.0), V(11.4, 6.1, -16.8), V(12.3, 1.7, -18.0)],
+  BR: [V(-9.8, 10.4, -18.0), V(-11.4, 6.1, -16.8), V(-12.3, 1.7, -18.0)],
 };
 /** Each foot's centre on the ground (rest), a little ahead of its ankle. */
 export const FOOT_REST: Record<Leg, THREE.Vector3> = {
-  FL: V(11.5, 0, 11.9), FR: V(-11.5, 0, 11.9), BL: V(11.7, 0, -17.6), BR: V(-11.7, 0, -17.6),
+  FL: V(12.2, 0, 11.9), FR: V(-12.2, 0, 11.9), BL: V(12.4, 0, -17.6), BR: V(-12.4, 0, -17.6),
 };
 
 /** Rest positions of every bone, creature space. */
 export const REST: THREE.Vector3[] = (() => {
   const r: THREE.Vector3[] = new Array(BONE_COUNT);
   r[BONE.root] = V(0, 0, 0);
-  r[BONE.body] = V(0, 9.6, -4);
-  r[BONE.shell] = V(0, 12.5, SHELL.cz);
-  r[BONE.neck0] = V(0, 13.0, 15.5);
-  r[BONE.neck1] = V(0, 15.0, 21.0);
-  r[BONE.neck2] = V(0, 17.4, 25.0);
-  r[BONE.neck3] = V(0, 19.6, 28.2);
+  r[BONE.body] = V(0, 11.4, -4);
+  r[BONE.shell] = V(0, 14.0, SHELL.cz);
+  r[BONE.neck0] = V(0, 13.6, 17.5);
+  r[BONE.neck1] = V(0, 16.2, 23.6);
+  r[BONE.neck2] = V(0, 19.2, 28.3);
+  r[BONE.neck3] = V(0, 22.0, 32.0);
   r[BONE.head] = HEAD_POS.clone();
   r[BONE.earL] = headPoint(EAR_LOCAL.x, EAR_LOCAL.y, EAR_LOCAL.z);
   r[BONE.earR] = headPoint(-EAR_LOCAL.x, EAR_LOCAL.y, EAR_LOCAL.z);
@@ -106,8 +106,8 @@ export const REST: THREE.Vector3[] = (() => {
   r[BONE.lidL] = r[BONE.eyeL].clone();
   r[BONE.lidR] = r[BONE.eyeR].clone();
   for (const l of LEGS) { const [h, k, f] = legBones(l); [r[h], r[k], r[f]] = LEG_REST[l].map(p => p.clone()); }
-  r[BONE.tail0] = V(0, 8.8, -25.5);
-  r[BONE.tail1] = V(0, 7.4, -29.0);
+  r[BONE.tail0] = V(0, 10.0, -25.5);
+  r[BONE.tail1] = V(0, 8.6, -29.0);
   return r;
 })();
 
@@ -178,7 +178,7 @@ export class AmbleRig {
   private gaitPhase = 0;
   /** Idle inputs set by Amble each frame. */
   breath = 0; shellBreath = 0;
-  idle = { headYaw: 0, headPitch: 0, earL: 0, earR: 0, earFlickL: 0, earFlickR: 0, lookX: 0, lookY: 0, blink: 0, lid: 0.3, tail: 0 };
+  idle = { headYaw: 0, headPitch: 0, earL: 0, earR: 0, earFlickL: 0, earFlickR: 0, lookX: 0, lookY: 0, blink: 0, lid: 0.58, tail: 0 };
   /** The ground under each foot when standing (creature space y); the game can set it to follow the planet. */
   groundY: Record<Leg, number> = { FL: 0, FR: 0, BL: 0, BR: 0 };
 

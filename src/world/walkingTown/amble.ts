@@ -37,6 +37,8 @@ export class Amble {
   birds: AmbleBirds;
   flock: SkyBirds;
   shellTop = new THREE.Object3D();
+  /** A frame riding the neck (on the second neck bone, at its rest position) for the lookout on the neck. */
+  neckRide = new THREE.Object3D();
   stoneSlot = new THREE.Object3D();
   mouth = new THREE.Object3D();
   eyeL = new THREE.Object3D(); eyeR = new THREE.Object3D();
@@ -73,7 +75,7 @@ export class Amble {
     this.body.bind(this.rig.skeleton);
     this.growth.bind(this.rig.skeleton);
     // generous fixed bounds (the skinned bounds would walk every vertex through the bones)
-    const bs = new THREE.Sphere(new THREE.Vector3(0, 16, 2), 48);
+    const bs = new THREE.Sphere(new THREE.Vector3(0, 18, 3), 52);
     this.body.boundingSphere = bs.clone(); this.growth.boundingSphere = bs.clone();
     bodyGeo.boundingSphere = bs.clone(); growth.geometry.boundingSphere = bs.clone();
     this.stats = { triangles: this.build.triangles + growth.quads * 2, cards: growth.quads, bones: this.rig.bones.length };
@@ -82,6 +84,7 @@ export class Amble {
     const B = (n: number) => this.rig.bones[n];
     const at = (o: THREE.Object3D, bone: number, p: THREE.Vector3) => { o.position.copy(p).sub(REST[bone]); B(bone).add(o); };
     at(this.shellTop, BONE.shell, new THREE.Vector3(0, SHELL.yTop, SHELL.cz));
+    at(this.neckRide, BONE.neck1, REST[BONE.neck1]);
     at(this.stoneSlot, BONE.footFL, this.build.stoneSlot);
     at(this.mouth, BONE.head, this.build.mouth);
     at(this.eyeL, BONE.head, REST[BONE.eyeL]); at(this.eyeR, BONE.head, REST[BONE.eyeR]);
@@ -90,13 +93,13 @@ export class Amble {
     this.shellRest = this.restShell(bodyGeo);
 
     // birds: perched on the upward antler tips; a flock wheeling high over the shell
-    const tips = this.build.antlerTips.filter(t => t.up && t.p.y > 27);
+    const tips = this.build.antlerTips.filter(t => t.up && t.p.y > 31);
     tips.forEach((tp, i) => this.perches.push({ bone: B(BONE.head), local: tp.p.clone().sub(REST[BONE.head]).add(new THREE.Vector3(0, 0.05, 0)), yaw: (i * 1.7) % (Math.PI * 2) }));
     this.birds = new AmbleBirds(this.root, this.perches, opts.birds ?? 5);
-    this.birds.centres = [new THREE.Vector3(0, 35, 28), new THREE.Vector3(0, 33, -4), new THREE.Vector3(8, 34, 14)];
+    this.birds.centres = [new THREE.Vector3(0, 40, 31), new THREE.Vector3(0, 38, -4), new THREE.Vector3(8, 39, 14)];
     this.flock = new SkyBirds([
-      { center: new THREE.Vector3(-4, 42, -2), radius: 26, speed: 0.11, birds: opts.flock ?? 6, span: 1.4 },
-      { center: new THREE.Vector3(10, 37, 20), radius: 15, speed: -0.16, birds: 3, span: 1.3 },
+      { center: new THREE.Vector3(-4, 48, -2), radius: 26, speed: 0.11, birds: opts.flock ?? 6, span: 1.4 },
+      { center: new THREE.Vector3(10, 43, 20), radius: 15, speed: -0.16, birds: 3, span: 1.3 },
     ], 9);
     this.root.add(this.flock.mesh);
     this.rig.update(0);
