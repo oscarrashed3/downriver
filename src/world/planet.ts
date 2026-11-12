@@ -13,6 +13,7 @@ import { townDir, PLACES } from './walkingTown/meadow';
 export interface Flatten { dir: THREE.Vector3; radius: number; height: number; blend: number }
 
 const tmpV = new THREE.Vector3();
+const TOWN_FAR_ROCK = new THREE.Color('#8697bd');
 
 /**
  * World 3, the Walking Town: a golden meadow over soft rolling hills; a range of snowy mountains across the river;
@@ -28,10 +29,12 @@ function townHeight(p: Planet, d: THREE.Vector3): number {
   // rolling hills, gentle near Amble's meadow and rounder further off
   let h = A * (0.6 * (n.fbm(x * 2.0, y * 2.0, z * 2.0, 3) * 0.5 + 0.5) + 0.22 * (n.fbm(x * 5 + 5, y * 5, z * 5, 2) * 0.5 + 0.5)) + 0.8;
   // the mountains: a long ridged range, snow above ~28 m
-  const m = smoothstep(Math.cos(0.95), Math.cos(0.55), d.dot(reg.mts));
+  let m = smoothstep(Math.cos(0.78), Math.cos(0.5), d.dot(reg.mts));
+  // (kept back from the river, so its valley stays an easy walk across)
+  if (m > 0) m *= smoothstep(26, 58, p.riverNearest(d).dist);
   if (m > 0) {
     const r = n.ridged(x * 2.6 + 3, y * 2.6, z * 2.6, 4);
-    h += m * (6 + 46 * Math.pow(r, 2.2) * smoothstep(Math.cos(0.9), Math.cos(0.4), d.dot(reg.mts)));
+    h += m * (6 + 66 * Math.pow(r, 2.2) * smoothstep(Math.cos(0.74), Math.cos(0.35), d.dot(reg.mts)));
   }
   // the hill the far town stands on
   h += 11 * smoothstep(Math.cos(0.19), Math.cos(0.08), d.dot(reg.hill));
@@ -386,7 +389,9 @@ export class Planet {
       let snowAmt = 0;
       if (shape === 'garden') {
         // the far mountains: blue-grey rock, snow on their heads
-        snowAmt = smoothstep(26, 32, heights[i] + jitter * 20) * smoothstep(0.35, 0.6, flat);
+        // (the high rock goes blue with the distance; the snow holds on all but the sheerest faces)
+        c.lerp(TOWN_FAR_ROCK, smoothstep(12, 34, heights[i]) * rocky * 0.6);
+        snowAmt = smoothstep(22, 30, heights[i] + jitter * 16) * smoothstep(0.1, 0.38, flat);
         c.lerp(snow, snowAmt);
       }
       if (peaks) {

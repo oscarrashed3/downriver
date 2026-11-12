@@ -45,6 +45,10 @@ export const TOWN_SCRIPTS: Record<string, Script> = {
     id: 'ropewright', name: 'Tamsin', title: 'the Ropewright', stranger: 'the woman with the coil of rope',
     start: { trust: 0.5, worry: 0.45, openness: 0.55 },
     nodes: [
+      { type: 'branch', ifFlag: 'town:stone-roped', then: [
+        { type: 'say', text: "A stone? Between the toes? No wonder. My pulley's rigged, right here on the walk." },
+        { type: 'say', text: 'Take hold of the rope with the rest of us. When I say heave, you heave.' },
+      ], else: [
       { type: 'branch', ifFlag: 'town:quest', then: [
         { type: 'say', text: "So you're the one who came down under a paper hat. Pip's told everyone twice." },
         { type: 'say', text: "Look at the front foot, down there. Amble holds it off the ground, then sets it down so gently. It's hurting." },
@@ -60,32 +64,58 @@ export const TOWN_SCRIPTS: Record<string, Script> = {
         { type: 'say', text: "Mind the rope. That's three days of splicing." },
         { type: 'say', text: "Talk to Pip, new one. Pip talks to everyone first. It's a rule Pip made." },
       ] },
+      ] },
     ],
   },
   bramwyn: {
     id: 'bramwyn', name: 'Old Bramwyn', title: 'who keeps the moss', stranger: 'the old woman with the basket',
     start: { trust: 0.6, worry: 0.35, openness: 0.6 },
     nodes: [
-      { type: 'say', text: "Hm. A child from the sky. Well, sit down before you fall over again." },
-      { type: 'say', text: "I've kept Amble's moss since I was smaller than Pip. Seventy years of moss. It grows wherever it likes." },
-      { type: 'ask', cards: [
-        { kind: 'open', text: 'Is Amble ill?', gives: [],
-          reply: ["Not ill. Stuck. There's a difference, though it looks the same from up here.", 'An ill thing turns away from you. Amble still turns its eye to me. I think.'] },
-        { kind: 'leading', text: 'What do the vines do?', gives: [],
-          reply: ['Keep the rain in, keep the shell cool, keep the birds happy. Mostly they just grow.', "Some days I think they grow faster than I can cut. Old hands, young vines."] },
+      { type: 'branch', ifFlag: 'town:water-done', then: [
+        { type: 'say', text: 'Fed and watered, and still it stands there. Do you know why? It cannot see.' },
+        { type: 'say', text: 'The vines from its antlers have grown right down over both eyes. Thick as curtains. My fault. I got slow.' },
+        { type: 'ask', cards: [
+          { kind: 'open', text: 'Can we cut them?', gives: ['town:met-bramwyn'],
+            reply: ['We can. Out along the neck, onto the head between the antlers. There is a plank walk.', 'You hold them, I snip. My shears are older than the Miller.'] },
+          { kind: 'leading', text: 'Is it safe up there?', gives: ['town:met-bramwyn'],
+            reply: ['Safer than falling out of the sky, child. There are rails all the way.', 'And Amble keeps its head very still for me. It always has.'] },
+        ] },
+        { type: 'say', text: "Come on, then. I'll meet you on the lookout. Bring the fox." },
+        { type: 'give', items: ['town:met-bramwyn'] },
+      ], else: [
+        { type: 'say', text: "Hm. A child from the sky. Well, sit down before you fall over again." },
+        { type: 'say', text: "I've kept Amble's moss since I was smaller than Pip. Seventy years of moss. It grows wherever it likes." },
+        { type: 'ask', cards: [
+          { kind: 'open', text: 'Is Amble ill?', gives: [],
+            reply: ["Not ill. Stuck. There's a difference, though it looks the same from up here.", 'An ill thing turns away from you. Amble still turns its eye to me. I think.'] },
+          { kind: 'leading', text: 'What do the vines do?', gives: [],
+            reply: ['Keep the rain in, keep the shell cool, keep the birds happy. Mostly they just grow.', "Some days I think they grow faster than I can cut. Old hands, young vines."] },
+        ] },
+        { type: 'say', text: 'Go on, then. Help the others first. I always come last. Moss is patient.' },
       ] },
-      { type: 'say', text: 'Go on, then. Help the others first. I always come last. Moss is patient.' },
     ],
   },
   miller: {
     id: 'miller', name: 'the Miller', title: 'who ran the two windmills', stranger: 'the big man with the mug',
     start: { trust: 0.55, worry: 0.4, openness: 0.5 },
     nodes: [
-      { type: 'say', text: "Tea? No? More for me. Everything's stopped, but the kettle still works." },
-      { type: 'say', text: 'Those two mills used to pump rain from the pools up top, down a wooden channel, all the way to Amble\'s mouth.' },
-      { type: 'say', text: "A storm took a sail off the old mill and broke the channel. Now Amble's thirsty, and so are my flowers." },
-      { type: 'silence', seconds: 2, reward: "I'd fix it myself. But I'm the size of a door, and the channel runs where only small people fit." },
-      { type: 'say', text: 'One thing at a time, though. Tamsin says the foot. Start with the foot.' },
+      { type: 'branch', ifFlag: 'town:foot-done', then: [
+        { type: 'say', text: "The foot's down! I felt it in my teacup. Now look at the poor thing's head. Hanging. It's thirsty." },
+        { type: 'say', text: 'Those two mills used to pump rain from the pools up top, down a wooden channel, all the way to Amble\'s mouth.' },
+        { type: 'say', text: 'A storm took a sail off the old mill and broke the channel. Now Amble\'s thirsty, and so are my flowers.' },
+        { type: 'ask', cards: [
+          { kind: 'open', text: 'Where did the sail go?', gives: ['town:met-miller'],
+            reply: ['Blown into somebody\'s garden, I expect. It went over the roofs like a kite.', 'Bring it back to the old mill and it\'ll drop right onto the stub. I built it that way.'] },
+          { kind: 'leading', text: 'And the channel?', gives: ['town:met-miller'],
+            reply: ['Three gaps where the storm tore it. The carpenter\'s yard has new pieces stacked up.', 'Carry them over one at a time. They click right in.'] },
+        ] },
+        { type: 'silence', seconds: 2, reward: "I'd fix it myself. But I'm the size of a door, and the channel runs where only small people fit." },
+        { type: 'say', text: 'Sail on the mill, pieces in the gaps, then open the sluice by the rain pools. Up she comes.' },
+        { type: 'give', items: ['town:met-miller'] },
+      ], else: [
+        { type: 'say', text: "Tea? No? More for me. Everything's stopped, but the kettle still works." },
+        { type: 'say', text: 'Amble needs a lot of things. But one thing at a time. Tamsin says the foot. Start with the foot.' },
+      ] },
     ],
   },
   moss1: { id: 'moss1', name: 'a Mossfolk gardener', title: 'who thinks it is sulking', start: { trust: 0.5, worry: 0.3, openness: 0.6 },

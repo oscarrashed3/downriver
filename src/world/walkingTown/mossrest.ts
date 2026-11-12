@@ -82,7 +82,11 @@ export class Mossrest {
   private gk = new Kit();
   private nk = new Kit();
   private r: R;
-  private sails: THREE.Group[] = [];
+  /** The two mills' sail groups (they turn about local z). */
+  readonly sails: THREE.Group[] = [];
+  /** How fast the sails turn (1 the usual slow turn; the big moment sends them spinning). */
+  millSpeed = 1;
+  private millAng: number[] = [0, 0];
   /** Keep-out discs (x, z, radius) so dressing never lands on a path, a house or the channel's route. */
   private taken: [number, number, number][] = [];
 
@@ -137,7 +141,7 @@ export class Mossrest {
     // the working mill turns slowly; the broken one creaks a little in the gusts, but cannot turn
     this.mills.forEach((m, i) => {
       const s = this.sails[i];
-      if (!m.broken) s.rotation.z = -t * 0.55;
+      if (!m.broken) { this.millAng[i] -= _dt * 0.55 * this.millSpeed; s.rotation.z = this.millAng[i]; }
       else s.rotation.z = 0.04 * Math.sin(t * 0.7) * Math.sin(t * 0.23);
     });
   }
@@ -767,12 +771,19 @@ export class Mossrest {
       k.add(taperTube(pts, 0.07, 0.07, 5, 24), 'plain', '#b39668');
     }
     // the railing, a bench, a spyglass on a stand, a flagpole with a long pennant
-    for (let q = 0; q < 14; q++) {
-      const a = (q / 14) * TAU;
+    // (open at the back, where the walk from the shell comes in, and at the front, where the walk out to the
+    // head between the antlers goes on)
+    const gap = 0.36;
+    for (let q = 0; q < 16; q++) {
+      const a = (q / 16) * TAU;
+      if (Math.abs(Math.sin(a)) > Math.cos(gap + 0.12)) continue;
       k.add(slab(0.13, 1.05, 0.13, WOOD_TILE, true), 'wood', pk(r, PAL.timber), T(Math.cos(a) * (rad - 0.1), 0, Math.sin(a) * (rad - 0.1)));
     }
-    k.add(new THREE.TorusGeometry(rad - 0.1, 0.07, 5, 28), 'wood', pk(r, PAL.timber), T(0, 1.05, 0, Math.PI / 2));
-    k.add(new THREE.TorusGeometry(rad - 0.1, 0.05, 5, 28), 'wood', pk(r, PAL.timber), T(0, 0.55, 0, Math.PI / 2));
+    for (const a0 of [Math.PI / 2 + gap, -Math.PI / 2 + gap]) {
+      k.add(new THREE.TorusGeometry(rad - 0.1, 0.07, 5, 14, Math.PI - 2 * gap).rotateZ(a0), 'wood', pk(r, PAL.timber), T(0, 1.05, 0, Math.PI / 2));
+      k.add(new THREE.TorusGeometry(rad - 0.1, 0.05, 5, 14, Math.PI - 2 * gap).rotateZ(a0), 'wood', pk(r, PAL.timber), T(0, 0.55, 0, Math.PI / 2));
+      for (const e of [a0, a0 + Math.PI - 2 * gap]) k.add(slab(0.15, 1.15, 0.15, WOOD_TILE, true), 'wood', pk(r, PAL.timberDark), T(Math.cos(e) * (rad - 0.1), 0, Math.sin(e) * (rad - 0.1)));
+    }
     bench(k, T(-0.9, 0.04, -1.2, 0, 0.6, 0), r, 1.3);
     k.add(slab(0.08, 1.1, 0.08), 'wood', pk(r, PAL.timberDark), T(1.0, 0.04, 0.9));
     k.add(new THREE.CylinderGeometry(0.06, 0.08, 0.7, 8), 'brass', '#c9a05a', T(1.0, 1.2, 1.0, 1.25, 0.3, 0));

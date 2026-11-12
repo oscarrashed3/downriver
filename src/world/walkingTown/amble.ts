@@ -125,6 +125,9 @@ export class Amble {
     return new THREE.Mesh(sg, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
   }
 
+  /** Set by a scene: the eyes' look (radians), a blink and the lids, blended in by k (0 leaves them to Amble). */
+  gaze: { x: number; y: number; blink: number; lid: number; k: number } | null = null;
+
   /** Make Amble let out a long, deep sigh (the shell rises and settles). */
   sigh() { this.sighT = this.time; this.next.sigh = this.time + 25 + this.rng() * 20; }
 
@@ -158,6 +161,13 @@ export class Amble {
     I.blink = bk >= 0 && bk < 1 ? (bk < 0.35 ? bk / 0.35 : bk < 0.45 ? 1 : 1 - (bk - 0.45) / 0.55) : 0;
     I.blink = I.blink * I.blink * (3 - 2 * I.blink);
     I.tail = 0.08 * Math.sin(t * 0.3);
+    // a scene can take the eyes over: where they look, a blink, how far the lids are down (k blends it in)
+    const gz = this.gaze;
+    if (gz && gz.k > 0) {
+      I.lookX += (gz.x - I.lookX) * gz.k; I.lookY += (gz.y - I.lookY) * gz.k;
+      I.blink = I.blink * (1 - gz.k) + gz.blink * gz.k;
+      I.lid = 0.22 + (gz.lid - 0.22) * gz.k;
+    } else I.lid = 0.22;
     this.rig.update(dt);
     this.root.updateMatrixWorld(true);
     this.birds.update(dt, t);

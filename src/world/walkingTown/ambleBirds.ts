@@ -119,6 +119,8 @@ export class AmbleBirds {
       this.birds.push({ perch: p, state: 'sit', t: 0, dur: 2 + this.rng() * 12, pos: new THREE.Vector3(), vel: new THREE.Vector3(), cc: new THREE.Vector3(), cr: 10, cw: 0.3, ang: 0, flap: 0, fold: 1, from: new THREE.Vector3(), fromV: new THREE.Vector3() });
     }
   }
+  /** Every sitting bird springs off at once (a fright, or Old Amble's first step). */
+  scatter() { for (const b of this.birds) if (b.state === 'sit') b.t = b.dur + 1; }
   private freePerch(pref: number) {
     for (let k = 0; k < this.perches.length; k++) { const i = (pref + k * 3) % this.perches.length; if (!this.taken.has(i)) { this.taken.add(i); return i; } }
     return pref % this.perches.length;

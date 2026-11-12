@@ -2019,7 +2019,8 @@ export class Game {
     const blink = 0.55 + 0.45 * Math.pow(Math.max(0, Math.sin(this.time * 1.7)), 3);
     (this.beacon.material as THREE.SpriteMaterial).opacity = blink;
     if (this.mode !== 'cut') this.beacon.scale.setScalar(this.mode === 'title' ? 0.1 + 0.04 * blink : 0.03 + this.skyView.k * 0.03);
-    for (const u of this.updrafts) u.visible = this.skyView.k < 0.5;
+    // (World 3's scenes keep the warm-air columns out of the shot)
+    for (const u of this.updrafts) u.visible = this.skyView.k < 0.5 && !(this.townStory?.active && this.mode === 'cut');
     if (this.mode !== 'ride') this.motes.update(dt, p.center, this.player.pos, onPeaks ? 0.6 : 0.8, onPeaks ? 0.6 : 0.35);
     // the drifting motes read as stray white specks against the open sky of the far shots
     this.motes.points.visible = this.dream < 0.05;

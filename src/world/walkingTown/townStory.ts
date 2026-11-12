@@ -24,18 +24,23 @@ import { CHAPTERS } from '../../data/story';
 import { SkyWhale } from '../skyIsles/whale';
 import { MOSSFOLK, folkLook } from './mossfolk';
 import { TOWN_GOALS, TOWN_LINES } from '../../data/townWords';
+import { TownTasks } from './townTasks';
 
 const sm = (k: number) => k * k * (3 - 2 * k);
 const clamp = (x: number, a = 0, b = 1) => Math.min(b, Math.max(a, x));
 const V = () => new THREE.Vector3();
 
-interface Home { npc: Npc; pos: THREE.Vector3; face: THREE.Vector3 }
+/** Where someone stands: in the village's frame (creature space), or riding another frame of Amble's (the neck, the
+ * head), in that frame's own coordinates. */
+export interface Home { npc: Npc; pos: THREE.Vector3; face: THREE.Vector3; ride?: THREE.Object3D | null }
 
 export class TownStory {
   active = false;
   private town: Mossrest;
-  private homes: Home[] = [];
-  private byId: Record<string, Home> = {};
+  readonly homes: Home[] = [];
+  readonly byId: Record<string, Home> = {};
+  /** The three steps (the stone, the water, the vines). */
+  tasks!: TownTasks;
   readonly root = new THREE.Group();
   private beam: THREE.Mesh;
   private whale: SkyWhale;
@@ -49,22 +54,13 @@ export class TownStory {
     this.town = tm.town;
     this.root.name = 'townFolk';
     g.scene.add(this.root);
-    const T = this.town, free = (x: number, z: number, r: number) => (T as unknown as { free(x: number, z: number, r: number): boolean }).free(x, z, r);
-    const find = (near: THREE.Vector3, r0: number, r1: number, clear: number, fallback: THREE.Vector3) => {
-      let best: THREE.Vector3 | null = null, bd = 1e9;
-      for (let a = 0; a < Math.PI * 2; a += 0.21) for (let r = r0; r <= r1; r += 0.6) {
-        const x = near.x + Math.cos(a) * r, z = near.z + Math.sin(a) * r;
-        if (shellPolar(x, z).rho > 0.8 || !free(x, z, clear)) continue;
-        const d = Math.abs(r - (r0 + r1) / 2);
-        if (d < bd) { bd = d; best = new THREE.Vector3(x, groundAt(x, z), z); }
-      }
-      return best ?? fallback;
-    };
+    const T = this.town, find = this.find.bind(this);
     // the landing: open moss as near the middle of the village as there is
     this.landing = find(new THREE.Vector3(0, 0, SHELL.cz), 0.5, 9, 2.2, spot(0, 0.2));
     // the named Mossfolk
     const front = T.legLines.find(l => l.kind === 'rope' && l.leg[0] === 'F') ?? T.legLines[0];
-    const tamsinAt = front.top.clone().addScaledVector(front.out.clone().setY(0).normalize(), -1.0);
+    // (on the walk by the rope's beam: the rope's top hangs a little under a metre over the planks)
+    const tamsinAt = front.top.clone().addScaledVector(front.out.clone().setY(0).normalize(), -2.0); tamsinAt.y = front.top.y - 0.93;
     const mill = spot(-1.2, 0.3);
     const homes: [string, THREE.Vector3, THREE.Vector3 | null][] = [
       ['pip', find(this.landing, 6, 10, 1.2, spot(1, 0.3)), null],
@@ -112,8 +108,21 @@ export class TownStory {
     this.clouds = this.cloudDeck();
     g.scene.add(this.clouds);
     tm.keepInSky.add(this.whale.root); tm.keepInSky.add(this.clouds); tm.keepInSky.add(this.root);
+    this.tasks = new TownTasks(g, idx, tm, this);
   }
 
+  /** Open ground on the shell between r0 and r1 from `near` with `clear` metres free all round (creature space). */
+  find(near: THREE.Vector3, r0: number, r1: number, clear: number, fallback: THREE.Vector3) {
+    const free = (x: number, z: number, r: number) => (this.town as unknown as { free(x: number, z: number, r: number): boolean }).free(x, z, r);
+    let best: THREE.Vector3 | null = null, bd = 1e9;
+    for (let a = 0; a < Math.PI * 2; a += 0.21) for (let r = r0; r <= r1; r += 0.6) {
+      const x = near.x + Math.cos(a) * r, z = near.z + Math.sin(a) * r;
+      if (shellPolar(x, z).rho > 0.8 || !free(x, z, clear)) continue;
+      const d = Math.abs(r - (r0 + r1) / 2);
+      if (d < bd) { bd = d; best = new THREE.Vector3(x, groundAt(x, z), z); }
+    }
+    return best ?? fallback;
+  }
   private has(f: string) { return this.g.flags.has(f); }
   private w(v: THREE.Vector3, out = V()) { return this.tm.world(v, out); }
   private wDir(v: THREE.Vector3) { return v.clone().transformDirection(this.town.group.matrixWorld); }
@@ -150,10 +159,11 @@ export class TownStory {
     const p = this.g.planets[this.idx];
     for (const h of this.homes) {
       const n = h.npc;
-      const at = this.w(h.pos);
+      const at = h.ride ? h.ride.localToWorld(h.pos.clone()) : this.w(h.pos);
+      const fw = h.ride ? h.face.clone().transformDirection(h.ride.matrixWorld) : this.wDir(h.face);
       const up = at.clone().sub(p.center).normalize();
-      if (force) n.place(at, up, this.wDir(h.face));
-      else { n.root.position.copy(at); n.up.copy(up); n.homeForward.copy(this.wDir(h.face)); n.homePos.copy(at); }
+      if (force) n.place(at, up, fw);
+      else { n.root.position.copy(at); n.up.copy(up); n.homeForward.copy(fw); n.homePos.copy(at); }
     }
   }
 
@@ -165,10 +175,8 @@ export class TownStory {
   goal(): string | null {
     if (!this.has('town:arrived')) return null;
     if (!this.has('town:quest')) return TOWN_GOALS.pip;
-    if (this.step() === 1) return this.has('town:met-tamsin') ? TOWN_GOALS.foot : TOWN_GOALS.tamsin;
-    if (this.step() === 2) return TOWN_GOALS.water;
-    if (this.step() === 3) return TOWN_GOALS.eyes;
-    return TOWN_GOALS.walk;
+    if (this.step() === 1 && !this.has('town:met-tamsin')) return TOWN_GOALS.tamsin;
+    return this.tasks.goal();
   }
   /** The three steps: ● for each done and the one in hand, ○ for those still ahead. */
   meter() { const s = this.step(); return s >= 1 && s <= 3 ? `Amble  ${'●'.repeat(s)}${'○'.repeat(3 - s)}` : ''; }
@@ -176,14 +184,8 @@ export class TownStory {
   guideTarget(): THREE.Vector3 | null {
     if (!this.has('town:arrived')) return null;
     if (!this.has('town:quest')) return this.npc('pip').root.position.clone();
-    if (this.step() === 1) {
-      if (!this.has('town:met-tamsin')) return this.npc('ropewright').root.position.clone();
-      const front = this.town.legLines.find(l => l.kind === 'rope' && l.leg[0] === 'F') ?? this.town.legLines[0];
-      return this.w(front.pts[front.pts.length - 1]);
-    }
-    if (this.step() === 2) return this.npc('miller').root.position.clone();
-    if (this.step() === 3) return this.npc('bramwyn').root.position.clone();
-    return null;
+    if (this.step() === 1 && !this.has('town:met-tamsin')) return this.npc('ropewright').root.position.clone();
+    return this.tasks.guideTarget();
   }
 
   // ------------------------------------------------------------------ each frame in World 3
@@ -194,7 +196,7 @@ export class TownStory {
     this.sync();
     // the fox walks on the shell with him (at his height when he is on Amble, else on the meadow)
     g.fox.ground = (d, out) => {
-      if (!this.tm.onAmble && !this.tm.climb) return false;
+      if (!this.tm.onAmble && !this.tm.climb && !this.tasks.high) return false;
       const p = g.planets[this.idx];
       out.copy(p.center).addScaledVector(d, pl.pos.distanceTo(p.center) - 0.02);
       return true;
@@ -223,12 +225,13 @@ export class TownStory {
       this.beam.position.copy(target).addScaledVector(up, 68);
       this.beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), up);
     }
+    this.tasks.frame(dt);
     // never arrived (a save from before the scene, or the stream ride in): the scene plays now
     if (!this.has('town:arrived') && !this.arriving && g.mode === 'play' && !g.seq.running) this.play();
   }
 
   /** Leaving World 3: the fox goes back to the ground she knows. */
-  off() { if (this.active) { this.active = false; this.g.fox.ground = null; this.beam.visible = false; } }
+  off() { if (this.active) { this.active = false; this.g.fox.ground = null; this.beam.visible = false; this.tasks.off(); } }
 
   // ------------------------------------------------------------------ the sky jump
 
@@ -309,7 +312,8 @@ export class TownStory {
       fox.gesture = gesture; fox.t += 1 / 60; (fox as unknown as { pose(dt: number): void }).pose(1 / 60);
     };
     // Nilo carries the fox in his arms (from the scoop to the landing)
-    const carried = () => foxAt(pl.pos.clone().addScaledVector(pl.up, 0.95).addScaledVector(pl.facing, 0.32), pl.facing.clone(), 'wary');
+    // (held up a little and drawn a size larger, so he reads in Nilo's arms from the far angles of the jump and fall)
+    const carried = () => { foxAt(pl.pos.clone().addScaledVector(pl.up, 0.95).addScaledVector(pl.facing, 0.42), pl.facing.clone(), 'wary'); fox.f.root.scale.setScalar(1.35); };
     // the way down: off the whale's side, under the umbrella, then a long soft drift to the landing
     let J0 = V(), J1 = V();
     const fall = new THREE.CubicBezierCurve3(V(), V(), V(), V());
@@ -386,7 +390,7 @@ export class TownStory {
           pl.pos.copy(at); pl.up.copy(at).sub(p.center).normalize(); pl.facing.copy(S); pl.grounded = false;
           pl.pose = { tuck: sm(clamp(k * 2)) * 0.4, smile: 1, touchChest: 1 } as typeof pl.pose; pl.sync();
           carried();
-          cam(J0.clone().addScaledVector(S, 9.5).addScaledVector(up, 0.6).addScaledVector(D, -4.5), at.clone().addScaledVector(up, 0.7));
+          cam(J0.clone().addScaledVector(S, 6.2).addScaledVector(up, 0.9).addScaledVector(D, -2.4), at.clone().addScaledVector(up, 0.75));
         },
       },
       // 5. Fold opens over him into the paper umbrella
@@ -396,8 +400,8 @@ export class TownStory {
           pl.pose = { smile: 1, touchChest: 1 } as typeof pl.pose;
           tm.umbrella.openAt(pl); g.fold.root.visible = false; g.sound.sfxPlay('paper');
           const L1 = J1.clone().addScaledVector(up, -3);
-          fall.v0.copy(L1); fall.v1.copy(L1).addScaledVector(up, -30).addScaledVector(D, 4);
-          fall.v2.copy(Lw).addScaledVector(up, 24).addScaledVector(S, 6); fall.v3.copy(Lw);
+          fall.v0.copy(L1); fall.v1.copy(L1).addScaledVector(up, -30).addScaledVector(D, 4).addScaledVector(S, 44);
+          fall.v2.copy(Lw).addScaledVector(up, 24).addScaledVector(S, 14); fall.v3.copy(Lw);
           last = 0;
         },
         tick: (k, dt) => {
@@ -414,13 +418,25 @@ export class TownStory {
       {
         dur: 5.5, line: { text: TOWN_LINES.fall },
         enter: () => { g.sound.whaleSong(); this.whale.swim = 1; },
+        exit: () => { g.camera.fov = 58; g.camera.updateProjectionMatrix(); },
         tick: (k, dt) => {
           const t = clock(dt); whaleAt(t * 1.4 - tJump * 0.4);
           this.whale.update(dt, g.time);
           const u = sm(k) * 0.72; along(u, dt); last = u;
           carried();
           const at = pl.pos;
-          cam(at.clone().addScaledVector(D, 6.5 - k * 1.5).addScaledVector(S, 3.8).addScaledVector(up, -0.8 + k * 0.6), at.clone().addScaledVector(up, 0.9 - k * 0.6));
+          // close beside him first (the fox in his arms, the umbrella over them), then from above and behind his
+          // shoulder, down through the gap in the clouds to Amble and the village far below
+          if (k < 0.45) cam(at.clone().addScaledVector(D, 2.4).addScaledVector(S, 3.4).addScaledVector(up, -0.3 + k * 0.4), at.clone().addScaledVector(up, 0.75));
+          else {
+            // out beside him at the umbrella's height: Nilo, the fox and Fold up top, and through the gap in the
+            // cloud, Amble and the village far below
+            // (a wider lens for this one: he is high over the village, well out to the side of it)
+            const c = at.clone().addScaledVector(S, 7).addScaledVector(D, 2).addScaledVector(up, -0.4);
+            const toN = at.clone().addScaledVector(up, 1.1).sub(c).normalize(), toA = AV(0, 16, 4).sub(c).normalize();
+            cam(c, c.clone().add(toN.multiplyScalar(0.6).addScaledVector(toA, 0.4)));
+            if (g.camera.fov !== 76) { g.camera.fov = 76; g.camera.updateProjectionMatrix(); }
+          }
         },
       },
       // 7. past the circling birds and the windmill sails, softly down into the moss in the middle of the village
@@ -442,6 +458,7 @@ export class TownStory {
           tm.onAmble = true; tm.umbrella.close();
           this.whale.root.visible = false; this.clouds.visible = false;
           // the fox jumps down out of his arms
+          fox.f.root.scale.setScalar(1);
           fox.place(p, pl.pos.clone().addScaledVector(pl.facing, 0.5).addScaledVector(S, 1.0).sub(p.center).normalize());
           wow.from.pos.copy(g.camera.position); wow.from.look.copy(pl.pos).addScaledVector(up, 0.6);
         },
@@ -452,8 +469,12 @@ export class TownStory {
         enter: () => { const c = CHAPTERS[this.idx]; g.hud.showChapter(c.n, c.title, '', 5.5); },
         tick: k => {
           const s = sm(k);
-          const pos = wow.from.pos.clone().lerp(AV(-62, 8, 48), s).addScaledVector(up, Math.sin(Math.PI * s) * 18);
-          cam(pos, wow.from.look.clone().lerp(AV(-1, 17, 4), sm(clamp(k * 1.4))));
+          // to three-quarters front, off Amble's right and a little over its shell: the golden plain, and past the
+          // head the river, the lake, the far hill town and the snowy mountains
+          const pos = wow.from.pos.clone().lerp(AV(-55, 27, 66), s).addScaledVector(up, Math.sin(Math.PI * s) * 12);
+          // (level with the ground out there: the camera's own up, so the far horizon lies flat across the frame)
+          const cu = up.clone().lerp(pos.clone().sub(p.center).normalize(), s).normalize();
+          g.cutCam = { pos, look: wow.from.look.clone().lerp(AV(25, 11, 10), sm(clamp(k * 1.4))), up: cu };
         },
         exit: () => { g.give('town:arrived'); g.flags.add('town:jump-seen'); this.arriving = false; g.save(); },
       },

@@ -454,7 +454,7 @@ export function house(kit: Kit, o: HouseOpts): HouseOut {
 
 // ------------------------------------------------------------------------------------------------ windmills
 
-export interface MillOut { sails: THREE.Group; hub: THREE.Vector3; top: THREE.Vector3; solid: Box2; broken: boolean }
+export interface MillOut { sails: THREE.Group; hub: THREE.Vector3; top: THREE.Vector3; solid: Box2; broken: boolean; /** The lost sail's arm (broken mill), or -1. */ lost: number }
 
 /**
  * A windmill (origin at the ground centre, its sails facing +z): a tapering cream tower on a stone footing with
@@ -560,5 +560,5 @@ export function windmill(kit: Kit, seed: number, broken: boolean, plinth0: numbe
   sails.position.copy(hub);
   sails.scale.setScalar(S);
   sails.rotation.x = -0.12;
-  return { sails, hub, top: new THREE.Vector3(0, (capY + 2.5) * S, 0), solid: { x: 0, z: 0, hw: (rb + 0.3) * S, hd: (rb + 0.3) * S, h: capY * S, rot: 0 }, broken };
+  return { sails, hub, top: new THREE.Vector3(0, (capY + 2.5) * S, 0), solid: { x: 0, z: 0, hw: (rb + 0.3) * S, hd: (rb + 0.3) * S, h: capY * S, rot: 0 }, broken, lost };
 }

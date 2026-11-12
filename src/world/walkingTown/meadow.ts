@@ -25,7 +25,9 @@ export function townDir(p: Planet, fwd: number, left: number, out = new THREE.Ve
 }
 
 /** The places of the meadow world (metres forward, metres left of Amble). The river runs past ~26 m to the left,
- * from behind to ahead-left; the hill town and the mountains lie across it, the lake and the Sea on the near side. */
+ * from behind to ahead-left; the hill town and the mountains lie across it, ahead and to the left (so from the
+ * meadow off Amble's right they stand past its head, as in Oscar's picture), the lake on the near side of the
+ * river ahead, and the Sea far behind on the right. */
 export const PLACES = {
-  lake: [45, -50], hill: [-70, 60], mts: [-120, 150], sea: [-60, -180], ford: [-19, 18],
+  lake: [72, 8], hill: [40, 85], mts: [24, 148], sea: [-60, -180], ford: [-19, 18],
 } as const;

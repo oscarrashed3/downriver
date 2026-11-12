@@ -10,7 +10,7 @@ import type { Planet } from './planet';
  * She never talks. She trots behind, sits when you stop, points her nose at things that matter,
  * flattens her ears near danger, and wags when she is pleased.
  */
-export type FoxGesture = 'trot' | 'sit' | 'point' | 'wary' | 'wag' | 'sleep';
+export type FoxGesture = 'trot' | 'sit' | 'point' | 'wary' | 'wag' | 'sleep' | 'dig';
 
 export interface FoxBody {
   root: THREE.Group; body: THREE.Group; head: THREE.Group; tail: THREE.Group; ears: THREE.Object3D[]; legs: THREE.Object3D[];
@@ -186,6 +186,13 @@ export class Fox {
     // an ear flicks now and then (one, then the other)
     const flick = Math.max(0, Math.sin(t * 0.9) - 0.96) * 25, side = Math.sin(t * 0.45) > 0 ? 0 : 1;
     ears.forEach((e, i) => (e.rotation.y = i === side ? -flick * 0.5 * (i ? -1 : 1) : 0));
+    // digging (World 3, at the stone in Amble's foot): nose down, the front paws scrabbling, the tail going
+    if (g === 'dig') {
+      body.rotation.x = 0.32; body.position.y -= 0.05;
+      legs.forEach((l, i) => { if (i < 2) l.rotation.x = -0.9 + Math.sin(t * 22 + i * Math.PI) * 0.7; });
+      head.rotation.x = 0.45 + Math.sin(t * 11) * 0.08;
+      tail.rotation.y = Math.sin(t * 13) * 0.5;
+    }
     // the hop
     if (this.hopT > 0) {
       this.hopT += dt;
