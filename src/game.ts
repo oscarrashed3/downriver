@@ -1,4 +1,7 @@
 import { skySkip } from './story/skySkip';
+
+/** Tryout-only buttons ("Try World 2", "Skip task") show only in a preview build made with VITE_TRYOUT=1. The real game makes you play everything. */
+const TRYOUT = import.meta.env.VITE_TRYOUT === '1';
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -632,7 +635,7 @@ export class Game {
     el.className = 'title';
     el.innerHTML = `<h1 class="hand">The Light<br>Below the Clouds</h1><div class="tag">a long way from home, and a river that knows the way back</div>
       ${saved.notice ? `<div class="notice">${esc(saved.notice)}</div>` : ''}
-      <div>${has ? '<button data-a="continue">Continue</button>' : ''}<button data-a="new">${has ? 'Begin again' : 'Begin'}</button><button data-a="try2" class="try2">Try World 2</button></div>
+      <div>${has ? '<button data-a="continue">Continue</button>' : ''}<button data-a="new">${has ? 'Begin again' : 'Begin'}</button>${TRYOUT ? '<button data-a="try2" class="try2">Try World 2</button>' : ''}</div>
       <button class="tset" data-a="settings" aria-label="Settings (Esc)">${TITLE_GEAR}<span>Settings</span></button>
       <div class="foot">Chapter One &middot; best with headphones &middot; <b>Esc</b> settings</div>`;
     document.getElementById('ui')!.append(el);
