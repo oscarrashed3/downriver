@@ -30,6 +30,7 @@ const sm = smoothstep;
 const STONE = [col('#aca88f'), col('#a2a188'), col('#b0a68b'), col('#979a80'), col('#b6b097')];
 /** The bare hide: an elephant's, warm grey-brown, a little darker and muddier towards the feet. */
 const HIDE_G = col('#a89a82'), HIDE_G2 = col('#9a8d78'), HIDE_GL = col('#b8ab92'), MUD = col('#867560');
+const NECK_G = col('#8b8e74'), NECK_GD = col('#6d725c');
 const FUR = col('#e3d6b6'), FUR_D = col('#cfc0a0'), FUR_W = col('#d6bf98'), MANE = col('#bfa27a');
 const ANTLER = col('#ddd5c2'), ANTLER_B = col('#8f7d66'), ANTLER_G = col('#c4bcaa');
 const NAIL = col('#cfc5ad'), NAIL_B = col('#8d8270');
@@ -334,20 +335,20 @@ function neckPart(pb: PartB) {
   const NN = 120, NA = 64;
   const fr = curveFrames(pts, NN, new THREE.Vector3(0, 1, 0));
   const S = fr.ctlS;
-  const rad = mono(S, [6.2, 6.0, 5.5, 4.7, 3.85, 3.0, 2.4]);
+  const rad = mono(S, [6.9, 6.6, 5.8, 4.8, 3.9, 3.05, 2.45]);
   const bones = [BONE.body, BONE.neck0, BONE.neck1, BONE.neck2, BONE.neck3, BONE.head, BONE.head];
   const start = pb.count, p = new THREE.Vector3();
   // fold coordinate: heavy folds every ~0.9 m at the base, finer creases up the throat
   const acc: number[] = [0];
-  for (let i = 1; i < NN; i++) { const t = i / (NN - 1), ds = fr.len / (NN - 1); acc.push(acc[i - 1] + ds / (0.95 - 0.5 * sm(0.2, 0.6, t))); }
+  for (let i = 1; i < NN; i++) { const t = i / (NN - 1), ds = fr.len / (NN - 1); acc.push(acc[i - 1] + ds / (1.0 - 0.45 * sm(0.2, 0.7, t))); }
   for (let i = 0; i < NN; i++) {
     const s = (i / (NN - 1)) * fr.len, t = s / fr.len;
     for (let j = 0; j < NA; j++) {
       const ang = (j / NA) * Math.PI * 2; // 0 = top
       const up = Math.cos(ang), sd = Math.sin(ang);
       const under = Math.max(0, -up);
-      // where the bare hide gives way to fur: lower on the throat, higher along the mane
-      const pale = sm(0.3, 0.55, t + 0.08 * under - 0.05 * Math.max(0, up) + 0.05 * noise.n3(ang * 1.5, s * 0.3, 2.2));
+      // the bare hide runs all the way up; it gives way to the head's fur only just behind the skull
+      const pale = sm(0.8, 0.95, t + 0.04 * under - 0.03 * Math.max(0, up) + 0.04 * noise.n3(ang * 1.5, s * 0.3, 2.2));
       // muscle: the crest along the top, the long cord down each side (rising from the chest to under the jaw)
       // with the jugular groove above it, and a fuller throat
       const cordAng = 2.15 - 0.55 * t;
@@ -359,17 +360,23 @@ function neckPart(pb: PartB) {
       const fold = acc[i] - 1.1 * (1 - up) * 0.5 * (1 - sm(0.2, 0.5, t)) + 0.3 * noise.n3(ang * 1.2, s * 0.2, 4.4);
       const ff = fold - Math.floor(fold);
       const baseK = 1 - sm(0.12, 0.38, t);
-      const gA = 0.006 + 0.04 * baseK * (0.6 + 0.4 * under);
+      // where the neck bends, the hide bunches into deeper folds: over the top where it rises out of the shell,
+      // and under the throat where it turns into the head
+      const bendK = gauss((t - 0.8) / 0.09) * sm(0.0, 0.8, under) + gauss((t - 0.16) / 0.08) * sm(0.0, 0.8, Math.max(0, up)) * 0.8;
+      const gA = (0.014 + 0.04 * baseK * (0.6 + 0.4 * under) + 0.045 * bendK) * (1 - pale);
       const r = rad(s) * (1 + m + gA * foldBump(ff));
       p.copy(fr.C[i]).addScaledVector(fr.N[i], up * r * (up < 0 ? 1.06 : 1)).addScaledVector(fr.B[i], sd * r * 0.92);
-      const mane = sm(0.45, 0.75, t) * (sm(0.2, 0.9, Math.max(0, up)) + sm(0.3, 0.9, under)) * 0.5;
-      const c = HIDE_G.clone().lerp(FUR_D, 0.3).lerp(HIDE_GL, under * 0.3).lerp(FUR, pale).lerp(FUR_D, under * 0.25 * pale).lerp(FUR_W, clamp(noise2.n3(s * 0.2, ang, 0.5) + 0.2) * 0.4 * pale).lerp(MANE, mane * 0.6);
-      // the mane of moss down the top of the neck and over its shoulders, in ragged tongues
+      // the colour: the legs' cracked grey-brown hide, gone grey-green with age and the moss's stain, mottled,
+      // paler under the throat; the cream fur only at the very top
+      const mott = clamp(noise2.n3(s * 0.25, ang * 1.2, 0.5) * 1.2 + 0.5);
+      const c = HIDE_G.clone().lerp(NECK_G, 0.55 + 0.3 * Math.max(0, up)).lerp(NECK_GD, mott * 0.45).lerp(HIDE_GL, under * 0.25)
+        .lerp(FUR_D, pale * 0.8).lerp(FUR, pale * pale * 0.8);
+      // moss over the top and down the sides of the neck in heavy, ragged tongues; thin under the throat
       const mossN = noise.fbm(s * 0.4, ang * 1.3, 1.7, 3);
-      const moss = clamp(sm(-0.2, 0.7, up) * 1.5 - 0.35 + mossN * 1.3 - sm(0.55, 0.95, t) * 0.7 + (1 - pale) * 0.1);
+      const moss = clamp(sm(-0.55, 0.55, up) * 1.5 - 0.32 + mossN * 1.3 - sm(0.82, 0.95, t) * 0.9);
       const crease = 1 - sm(0.0, 0.2, Math.min(ff, 1 - ff));
-      const det: Det = [(0.025 + 0.07 * baseK) * (1 - pale * 0.6), pale, (1 - pale) * 0.8, 0];
-      pb.v(p, c, [0, moss, crease * gA * 12 * (1 - pale * 0.6), KIND.bark], chainWeights(s, S.slice(0, 6), bones.slice(0, 6), 1), fold, det, fr.T[i]);
+      const det: Det = [(0.05 + 0.06 * baseK + 0.04 * bendK) * (1 - pale), pale, (1 - pale) * 0.95, 0];
+      pb.v(p, c, [0, moss, crease * gA * 10, KIND.bark], chainWeights(s, S.slice(0, 6), bones.slice(0, 6), 1), fold, det, fr.T[i]);
     }
   }
   pb.rows(start, NN, NA, true);
@@ -645,18 +652,19 @@ export function buildAmbleBody(seed = 3): AmbleBodyBuild {
     lumps.push({ p, n, r });
   }
   // round the neck root and along the mane
-  for (let k = 0; k < 150; k++) {
-    const s = 0.04 + Math.pow(rng(), 1.5) * 0.66;
+  for (let k = 0; k < 240; k++) {
+    const s = 0.04 + Math.pow(rng(), 1.3) * 0.8;
     const i = Math.round(s * (neck.C.length - 1));
-    // a collar all round the top and sides where the neck leaves the shell, the mane narrowing up the neck
-    const ang = (rng() - 0.5) * (s < 0.2 ? 3.6 : 2.6 - s * 1.6);
+    // a collar all round the top and sides where the neck leaves the shell, heavy pads down the top and sides
+    // of the neck, thinning towards the head
+    const ang = (rng() - 0.5) * (s < 0.2 ? 3.8 : 3.3 - s * 1.6);
     const up = neck.N[i], sd = neck.B[i];
     const n = up.clone().multiplyScalar(Math.cos(ang)).addScaledVector(sd, Math.sin(ang)).normalize();
     // (the neck is a little narrower than tall)
     const rr = neck.R[i] * (1 - 0.1 * Math.sin(ang) ** 2);
     const p = neck.C[i].clone().addScaledVector(n, rr * 0.97);
     const sl = i / (neck.C.length - 1) * neck.len;
-    mossLump(p, n, (0.7 + rng() * 0.9) * (1.45 - s * 0.9), chainWeights(sl, neck.ctlS.slice(0, 6), [BONE.body, BONE.neck0, BONE.neck1, BONE.neck2, BONE.neck3, BONE.head], 1), rng, 0.5);
+    mossLump(p, n, (0.75 + rng() * 1.0) * (1.5 - s * 0.95), chainWeights(sl, neck.ctlS.slice(0, 6), [BONE.body, BONE.neck0, BONE.neck1, BONE.neck2, BONE.neck3, BONE.head], 1), rng, 0.5);
   }
   for (let k = 0; k < 16; k++) {
     const a = (rng() - 0.5) * 1.5;

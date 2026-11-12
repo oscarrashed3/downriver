@@ -4,7 +4,7 @@ import { townRng, pickOf } from './rand';
 import { BONE, REST, SHELL, LEGS, legBones, headPoint, headDir, HEAD_FWD, HEAD_SCALE } from './ambleRig';
 import type { AmbleBodyBuild, W } from './ambleBody';
 import { chainWeights } from './ambleBody';
-import { headSurface, headRing } from './ambleHead';
+import { headSurface, headRing, EAR_DIR, EAR_LEN, EAR_HW } from './ambleHead';
 import { ledges, outlinePoint, shellTopY } from './ambleShell';
 import { CELL, cellUV } from './ambleMaterials';
 
@@ -223,11 +223,11 @@ export function buildAmbleGrowth(body: AmbleBodyBuild, seed = 5) {
   // ---- the neck: vines hanging from the mane down both sides
   const neck = body.neck;
   const neckBones = [BONE.body, BONE.neck0, BONE.neck1, BONE.neck2, BONE.neck3, BONE.head];
-  for (let k = 0; k < 84; k++) {
-    const t = 0.06 + rng() * 0.8;
+  for (let k = 0; k < 130; k++) {
+    const t = 0.06 + rng() * 0.78;
     const i = Math.round(t * (neck.C.length - 1));
     const sd = rng() < 0.5 ? 1 : -1;
-    const ang = sd * (0.6 + rng() * 0.9);
+    const ang = sd * (0.5 + rng() * 1.1);
     const n = neck.N[i].clone().multiplyScalar(Math.cos(ang)).addScaledVector(neck.B[i], Math.sin(ang)).normalize();
     const rr = neck.R[i] * (1 - 0.1 * Math.sin(ang) ** 2) * 0.98;
     const p = neck.C[i].clone().addScaledVector(n, rr);
@@ -238,6 +238,19 @@ export function buildAmbleGrowth(body: AmbleBodyBuild, seed = 5) {
     const C = neck.C[i].clone(), Rn = rr;
     const wall = (y: number) => { const dy = y - C.y; if (Math.abs(dy) >= Rn) return null; const half = Math.sqrt(Rn * Rn - dy * dy); return half - (p.clone().sub(C).dot(out)); };
     strand(cb, rng, p, out, 1.2 + rng() * (5.5 - t * 3.5), wall, w, 0.7, rng() < 0.15 ? pickOf(rng, BLOOM) : null);
+  }
+
+  // ferns and flower cushions in the moss along the top and sides of the neck
+  for (let k = 0; k < 70; k++) {
+    const t = 0.05 + Math.pow(rng(), 1.2) * 0.75;
+    const i = Math.round(t * (neck.C.length - 1));
+    const ang = (rng() - 0.5) * (2.6 - t * 1.2);
+    const n = neck.N[i].clone().multiplyScalar(Math.cos(ang)).addScaledVector(neck.B[i], Math.sin(ang)).normalize();
+    const p = neck.C[i].clone().addScaledVector(n, neck.R[i] * (1 - 0.1 * Math.sin(ang) ** 2) * 1.02);
+    const w = chainWeights(t * neck.len, neck.ctlS.slice(0, 6), neckBones, 1);
+    const nn = n.clone().lerp(Y, 0.35).normalize();
+    if (rng() < 0.6) fern(cb, rng, p, nn, (0.9 + rng() * 0.9) * (1.2 - t * 0.6), w);
+    else flowers(cb, rng, p, nn, 0.6 + rng() * 0.5, w);
   }
 
   // ---- antlers: vines hanging from the beams and tines in loose strands and loops (not stuck flat on), with
@@ -280,8 +293,8 @@ export function buildAmbleGrowth(body: AmbleBodyBuild, seed = 5) {
     }
   }
   // moss sprays on the crown of the head
-  for (let k = 0; k < 8; k++) {
-    const a = (rng() - 0.5) * 1.6, z = -1.0 + rng() * 1.4;
+  for (let k = 0; k < 20; k++) {
+    const a = (rng() - 0.5) * (k < 12 ? 0.9 : 1.6), z = (k < 12 ? -0.3 : -1.0) + rng() * 1.5;
     const q = headSurface(z, a);
     const n = headDir(Math.sin(a), Math.cos(a), 0);
     flowers(cb, rng, headPoint(q.x, q.y, z), n, 0.32, wH);
@@ -346,7 +359,7 @@ function hair(cb: CardBuilder, rng: () => number, body: AmbleBodyBuild) {
   const neckBones = [BONE.body, BONE.neck0, BONE.neck1, BONE.neck2, BONE.neck3, BONE.head];
   const DOWN = new THREE.Vector3(0, -1, 0);
   // the throat mane: long locks hanging from under the neck, longest halfway up it
-  for (let k = 0; k < 420; k++) {
+  for (let k = 0; k < 0; k++) {
     const t = 0.47 + Math.pow(rng(), 0.7) * 0.5;
     const i = Math.round(t * (neck.C.length - 1));
     const ang = Math.PI + (rng() - 0.5) * 2.1;
@@ -371,7 +384,7 @@ function hair(cb: CardBuilder, rng: () => number, body: AmbleBodyBuild) {
     lock(cb, rng, p.addScaledVector(n, 0.06), dir, 1.0 + rng() * 1.1, 0.42 + rng() * 0.25, n, pickOf(rng, HAIR).clone().multiplyScalar(1.0 + rng() * 0.08), w, false);
   }
   // a beard along the jaw and under the chin
-  for (let k = 0; k < 60; k++) {
+  for (let k = 0; k < 0; k++) {
     const z = -0.7 + rng() * 2.6;
     const phi = Math.PI + (rng() - 0.5) * 1.3;
     const q = headSurface(z, phi);
@@ -383,7 +396,7 @@ function hair(cb: CardBuilder, rng: () => number, body: AmbleBodyBuild) {
   }
   // the dewlap's beard: long hair hanging in a tassel from its lower half
   const D = body.dewlap;
-  for (let k = 0; k < 46; k++) {
+  for (let k = 0; k < 0; k++) {
     const t = 0.5 + rng() * 0.48;
     const a = rng() * Math.PI * 2;
     const p = D.root.clone().addScaledVector(D.down, t * D.len).addScaledVector(D.fwd, Math.cos(a) * 0.5 * HEAD_SCALE * Math.sin(Math.PI * t) * 0.9).addScaledVector(D.side, Math.sin(a) * 0.3 * HEAD_SCALE * Math.sin(Math.PI * t) * 0.9);
@@ -394,15 +407,15 @@ function hair(cb: CardBuilder, rng: () => number, body: AmbleBodyBuild) {
   for (const side of [1, -1] as const) {
     const eb = side > 0 ? BONE.earL : BONE.earR;
     const root = REST[eb];
-    const L = headDir(0.96 * side, 0.16, -0.32);
+    const L = headDir(EAR_DIR[0] * side, EAR_DIR[1], EAR_DIR[2]);
     const n0 = headDir(0.1 * side, 0.55, 1);
     const N = n0.clone().addScaledVector(L, -n0.dot(L)).normalize();
     const Wd = new THREE.Vector3().crossVectors(L, N);
     for (let k = 0; k < 14; k++) {
       const l = 0.08 + rng() * 0.55, cc = (rng() - 0.5) * 0.9;
-      const hw = 0.66 * Math.pow(Math.sin(Math.PI * Math.pow(l, 0.68)), 0.85);
+      const hw = EAR_HW * Math.pow(Math.sin(Math.PI * Math.pow(l, 0.68)), 0.85);
       const cup = 0.48 * hw * cc * cc - 0.12 * (1 - l) * (1 - cc * cc);
-      const p = root.clone().addScaledVector(L, l * 2.25 * HEAD_SCALE).addScaledVector(Wd, cc * hw * HEAD_SCALE).addScaledVector(N, (0.06 + cup - 0.05) * HEAD_SCALE);
+      const p = root.clone().addScaledVector(L, l * EAR_LEN * HEAD_SCALE).addScaledVector(Wd, cc * hw * HEAD_SCALE).addScaledVector(N, (0.06 + cup - 0.05) * HEAD_SCALE);
       const sz = (0.32 + rng() * 0.2) * HEAD_SCALE * (1 - l * 0.5);
       cb.quad(p.clone().addScaledVector(L, sz * 0.4).addScaledVector(N, sz * 0.3), Wd.clone().multiplyScalar(sz * 0.6), L.clone().multiplyScalar(0.7).addScaledVector(N, 0.6).normalize().multiplyScalar(sz * 0.55), N, CELL.tuft, new THREE.Color('#efe3cb').multiplyScalar(0.92 + rng() * 0.1), [0, 0.02], rng() * 9, [[eb, 1]]);
     }

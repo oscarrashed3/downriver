@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Noise, smoothstep, clamp } from '../noise';
 import { BONE, REST, HEAD_UP, HEAD_FWD, headPoint, headDir, EYE_LOCAL, EYE_R, ANTLER_LOCAL, HEAD_SCALE } from './ambleRig';
-import { HEAD_Z0, HEAD_Z1, headRing, headSurface, mouthY, MOUTH_Z0, EYE_RADIUS, NOSTRIL, DEWLAP_ROOT } from './ambleHead';
+import { HEAD_Z0, HEAD_Z1, headRing, headSurface, mouthY, MOUTH_Z0, EYE_RADIUS, NOSTRIL, DEWLAP_ROOT, EAR_DIR, EAR_LEN, EAR_HW } from './ambleHead';
 import { PartB, SINK, blob, col, gauss, KIND, type W, type Det } from './ambleParts';
 
 // Old Amble's face: the head sculpted over the ring profile of ambleHead.ts into a real skull (brow ridge, eye
@@ -46,25 +46,28 @@ export function headPart(pb: PartB) {
       // ---- around the eye (side of the head only)
       const dyE = y - eye.y, dzE = z - eye.z, de = Math.hypot(dyE, dzE), rr = de / R;
       // the brow ridge: a heavy shelf over the eye, running back towards the antler's root
-      const brow = gauss((dyE - 0.44 + 0.07 * dzE) / 0.14) * gauss((dzE + 0.1) / 0.8) * sideK;
-      dx += brow * 0.3; y += brow * 0.1;
+      const brow = gauss((dyE - 0.46 + 0.07 * dzE) / 0.16) * gauss((dzE + 0.1) / 0.9) * sideK;
+      dx += brow * 0.42; y += brow * 0.14;
       // the socket: the hide sinks round the lids, then rises into the orbit's bony rim
-      const mound = sm(0.92, 1.18, rr) * (1 - sm(1.55, 2.6, rr)) * sideK, rim = gauss((rr - 2.6) / 0.45) * sideK;
+      const mound = sm(0.7, 1.12, rr) * (1 - sm(1.55, 2.6, rr)) * sideK, rim = gauss((rr - 2.6) / 0.45) * sideK;
       const sink = gauss((rr - 1.95) / 0.3) * sideK;
-      dx += 0.17 * mound - 0.03 * sink + 0.04 * rim;
-      ao += sink * 0.3 + (1 - sm(0.92, 1.12, rr)) * sideK * 0.5;
+      dx += 0.2 * mound - 0.04 * sink + 0.05 * rim;
+      // the socket's shadow: deep under the brow, softer below and behind the eye
+      ao += sink * 0.35 + (1 - sm(0.75, 1.15, rr)) * sideK * 0.55 + gauss(Math.hypot((dyE - 0.3) / 0.2, dzE / 0.55)) * sideK * 0.35;
+      dark += gauss((rr - 1.35) / 0.55) * sideK * 0.45;
       // the tear pit in front of the eye (a deer's preorbital gland): a small dark dent
       const pit = gauss(Math.hypot((dyE + 0.22) / 0.1, (dzE - 0.78) / 0.2)) * sideK;
       dx -= pit * 0.07; dark += pit * 0.6;
       // the cheekbone, under the eye and back towards the ear, and the facial crest running on forwards and down
       // along the side of the muzzle
-      dx += 0.11 * gauss((dyE + 0.52) / 0.12) * gauss((dzE + 0.35) / 0.85) * sideK;
+      dx += 0.15 * gauss((dyE + 0.52) / 0.14) * gauss((dzE + 0.35) / 0.85) * sideK;
       const crestY = -0.56 - 0.17 * (dzE - 0.4);
       dx += 0.075 * gauss((dyE - crestY) / 0.09) * sm(0.2, 0.7, dzE) * (1 - sm(1.6, 2.7, dzE)) * sideK;
       // the hollow of the temple behind the eye
       dx -= 0.06 * gauss((dyE - 0.1) / 0.32) * gauss((dzE + 0.9) / 0.32) * sideK;
       // the chewing muscle: a big round cheek over the back of the jaw
-      dx += 0.14 * gauss(Math.hypot((y + 1.05) / 0.55, (z - 0.25) / 0.72)) * sideK;
+      const cheek = gauss(Math.hypot((y + 1.05) / 0.6, (z - 0.25) / 0.8)) * sideK;
+      dx += 0.24 * cheek;
       // ---- the jaw: its lower edge stands out, the underside between the jaw bones is narrower and a little hollow
       const yEdge = ring.yc - ring.bot * 0.6;
       const underJaw = sm(yEdge, yEdge - 0.45, y) * sm(-0.8, -0.2, z) * (1 - sm(3.9, 4.6, z));
@@ -82,9 +85,12 @@ export function headPart(pb: PartB) {
       const lipK = sm(MOUTH_Z0, MOUTH_Z0 + 0.7, z);
       const below = sm(ly + 0.04, ly - 0.22, y) * lipK;
       const upLip = gauss((y - ly - 0.14) / 0.13) * lipK;
-      dx += upLip * 0.09 - below * 0.17 * Math.min(1, ax);
-      y -= upLip * 0.07 * sm(3.4, 4.4, z);
-      if (z > 3.85) z = z - below * (z - 3.85) * 0.24;
+      // (a moose's: broad, bulbous and hanging well over the lower lip and chin)
+      const upBulb = gauss((y - ly - 0.3) / 0.32) * lipK * sm(3.6, 4.6, z);
+      dx += upLip * 0.14 + upBulb * 0.1 - below * 0.26 * Math.min(1, ax);
+      y -= upLip * 0.16 * sm(3.4, 4.4, z);
+      if (z > 3.85) z = z - below * (z - 3.85) * 0.36;
+      z += upBulb * 0.12;
       // the chin: a soft bulge under the front of the lower jaw
       y -= 0.07 * gauss(Math.hypot((z - 4.1) / 0.35, x / 0.5)) * below;
       const mouthLine = Math.exp(-(((y - ly) / 0.06) ** 2)) * lipK;
@@ -123,13 +129,18 @@ export function headPart(pb: PartB) {
       for (const [w, f, a] of cand) if (w > best) { best = w; fold = f; fAmp = a * w; }
       // ---- colour: a cream coat in soft patches; warmer and darker down the muzzle and round the eyes; paler under
       // the jaw and on the throat; the nose dark and moist
-      const nosePad = sm(4.5, 4.85, z) * sm(ly + 0.1, ly + 0.35, y) * (1 - sm(0.95, 1.2, ax)) + nost;
+      const nosePad = sm(4.5, 4.85, z) * sm(ly + 0.1, ly + 0.35, y) * (1 - sm(1.05, 1.3, ax)) + nost;
       const under = sm(-0.1, -0.7, Math.cos(phi));
       const patch = noise.fbm(x * 0.9 + 3, y * 0.9, z * 0.9, 2);
-      const muzzle = sm(2.2, 3.9, z) * (1 - under * 0.6);
-      const eyeP = Math.exp(-(de * de) / 0.55) * sideK;
-      const c = FUR.clone().lerp(FUR_W, clamp(patch * 1.4 + 0.15) * 0.5).lerp(FUR_L, under * 0.65 * (1 - nosePad))
-        .lerp(WARM, muzzle * 0.62).lerp(FUR_D, sm(1.0, -0.4, z) * 0.18 * topK).lerp(WARM_D, eyeP * 0.75 + dark * 0.5)
+      // warm brown down the muzzle, darkest along the nose bridge and towards the nose; a dark ring round the
+      // eye; the cheeks and the jaw pale; the brow and crown a sandy tan
+      const muzzle = sm(1.8, 3.6, z) * (1 - under * 0.55) * (1 - 0.45 * cheek);
+      const bridge = gauss(x / (0.55 + 0.1 * z)) * topK * sm(0.8, 2.0, z) * (1 - sm(4.6, 4.9, z));
+      const eyeP = Math.exp(-(de * de) / 0.6) * sideK;
+      const pale = clamp(cheek * 1.2 + under * 0.8) * (1 - sm(2.6, 3.6, z) * 0.6);
+      const c = FUR.clone().lerp(FUR_W, clamp(patch * 1.4 + 0.25) * 0.55).lerp(FUR_L, pale * 0.75 * (1 - nosePad))
+        .lerp(FUR_D, sm(1.2, -0.6, z) * 0.35 * topK).lerp(WARM, muzzle * 0.78).lerp(WARM_D, clamp(bridge * 0.85 + muzzle * sm(3.6, 4.6, z) * 0.35))
+        .lerp(WARM_D, clamp(eyeP * 0.85 + dark * 0.6))
         .lerp(LIP, clamp(mouthLine * 0.9 + below * sm(4.0, 4.6, z) * 0.35)).lerp(NOSE, clamp(nosePad) * 0.92).lerp(NOSE_D, Math.min(1, nost * 1.4));
       const moss = clamp(sm(0.45, 0.9, Math.cos(phi)) * sm(2.2, -0.2, z) * 1.4 + noise.fbm(x, y, z, 2) * 0.9 - 0.25);
       const fur = clamp(1 - nosePad * 1.2 - mouthLine * 0.7) * (1 - 0.5 * gauss((rr - 1.1) / 0.3) * sideK);
@@ -182,17 +193,18 @@ export function eyesPart() {
       const NU = 26;
       // rows from the rim up over the lid: [elevation offset above the edge, radius / EYE_R, colour, ao, fur]
       const rowsDef: [number, number, THREE.Color, number, number][] = [
-        [-0.02, 1.0, LIP_IN, 0.3, 0],          // the wet inner rim against the eyeball
-        [0.0, 1.05, LASH, 0.2, 0],              // the lash line
-        [0.06, 1.09, WARM_D, 0.1, 0.2],         // the rounded rim of the lid
-        [0.2, 1.1, WARM_D.clone().lerp(WARM, 0.6), 0, 0.5],
-        [0.36, 1.07, WARM_D, 0.35, 0.4],        // the crease above the lid
-        [0.55, 1.1, WARM.clone().lerp(FUR_D, 0.5), 0, 0.8],
-        [0.85, 1.09, FUR_D.clone().lerp(WARM, 0.35), 0, 1],
-        [1.15, 1.04, FUR.clone().lerp(WARM, 0.3), 0, 1],
-        [1.4, 0.96, FUR.clone().lerp(WARM, 0.3), 0, 1],
+        [-0.06, 0.99, LIP_IN, 0.4, 0],          // the wet inner rim, tucked against the eyeball
+        [0.0, 1.03, LASH, 0.3, 0],              // the lash line
+        [0.06, 1.055, LASH.clone().lerp(WARM_D, 0.5), 0.15, 0.1], // the rounded rim of the lid
+        [0.2, 1.065, WARM_D, 0.1, 0.4],
+        [0.36, 1.045, WARM_D.clone().multiplyScalar(0.85), 0.35, 0.4], // the crease above the lid
+        [0.55, 1.06, WARM_D, 0.2, 0.8],
+        [0.85, 1.04, WARM_D, 0.3, 1],
+        [1.15, 0.98, WARM_D, 0.4, 1],           // (from here it runs in under the hide of the socket)
+        [1.5, 0.86, WARM_D, 0.5, 1],
       ];
-      const edgeEl = (az: number) => 0.64 - 0.56 * (az / 1.25) ** 2;
+      // a heavy, sleepy lid: its edge low over the iris, so the eye looks soft and kind
+      const edgeEl = (az: number) => 0.46 - 0.5 * (az / 1.25) ** 2;
       for (let i = 0; i < rowsDef.length; i++) {
         const [de, rad, c, ao, fur] = rowsDef[i];
         for (let j = 0; j < NU; j++) {
@@ -211,7 +223,7 @@ export function eyesPart() {
       for (let k = 0; k < NLash; k++) {
         const az = -1.12 + (k / (NLash - 1)) * 2.24 + Math.sin(k * 7.1) * 0.02;
         const el = edgeEl(az) + 0.01;
-        const root = C.clone().addScaledVector(dirOf(el, az), EYE_R * 1.08);
+        const root = C.clone().addScaledVector(dirOf(el, az), EYE_R * 1.045);
         const out = dirOf(el, az);
         const len = EYE_R * (0.14 + 0.1 * Math.sin(Math.PI * (k / (NLash - 1)) * 0.9 + 0.25) + 0.03 * Math.sin(k * 3.7));
         const dir1 = out.clone().multiplyScalar(0.92).addScaledVector(up, -0.1).normalize();
@@ -236,21 +248,21 @@ export function eyesPart() {
       const pb = new PartB();
       const NU = 26;
       const rowsDef: [number, number, THREE.Color, number, number, number][] = [
-        [0.02, 1.0, LASH, 0.2, 0, 1],
-        [-0.02, 1.05, LASH.clone().lerp(WARM_D, 0.5), 0.1, 0, 0.7],
-        [-0.1, 1.1, WARM_D, 0.05, 0.3, 0],
-        [-0.25, 1.11, WARM_D.clone().lerp(WARM, 0.5), 0, 0.6, 0],
-        [-0.42, 1.07, WARM_D, 0.25, 0.5, 0],    // the crease under the lid
-        [-0.65, 1.11, WARM.clone().lerp(FUR_D, 0.4), 0, 0.9, 0],
-        [-1.0, 1.08, FUR.clone().lerp(WARM, 0.3), 0, 1, 0],
-        [-1.35, 0.98, FUR.clone().lerp(WARM, 0.3), 0, 1, 0],
+        [0.06, 0.99, LASH, 0.3, 0, 1],
+        [-0.02, 1.035, LASH.clone().lerp(WARM_D, 0.5), 0.15, 0, 0.7],
+        [-0.1, 1.06, WARM_D, 0.05, 0.3, 0],
+        [-0.25, 1.065, WARM_D, 0.05, 0.6, 0],
+        [-0.42, 1.045, WARM_D.clone().multiplyScalar(0.85), 0.3, 0.5, 0],    // the crease under the lid
+        [-0.65, 1.05, WARM_D, 0.15, 0.9, 0],
+        [-1.0, 0.98, WARM_D, 0.3, 1, 0],
+        [-1.4, 0.86, WARM_D, 0.4, 1, 0],
       ];
       for (let i = 0; i < rowsDef.length; i++) {
         const [de, rad, c, ao, fur, wet] = rowsDef[i];
         for (let j = 0; j < NU; j++) {
           const az = -1.32 + (j / (NU - 1)) * 2.64;
           // the edge rises a little towards the corners of the eye
-          const el = -0.5 + 0.44 * (az / 1.32) ** 2 * (1 - Math.min(1, -de / 1.0)) + de;
+          const el = -0.44 + 0.4 * (az / 1.32) ** 2 * (1 - Math.min(1, -de / 1.0)) + de;
           pb.v(C.clone().addScaledVector(dirOf(el, az), EYE_R * (1 + (rad - 1) * (1 - 0.7 * (az / 1.32) ** 6))), c, [0.05, 0, ao, KIND.hide], [[llb, 1]], 0, [0, fur, 0, wet], headDir(0, -0.3, -1));
         }
       }
@@ -273,7 +285,7 @@ export function earsPart() {
   for (const side of [1, -1] as const) {
     const eb = side > 0 ? BONE.earL : BONE.earR;
     const root = REST[eb];
-    const L = headDir(0.96 * side, 0.16, -0.32); // out to the side, barely up, and back
+    const L = headDir(EAR_DIR[0] * side, EAR_DIR[1], EAR_DIR[2]); // out to the side, up, and a little back
     const n0 = headDir(0.1 * side, 0.55, 1); // the ear's open face looks forwards and a little up
     const N = n0.clone().addScaledVector(L, -n0.dot(L)).normalize();
     const Wd = new THREE.Vector3().crossVectors(L, N);
@@ -282,7 +294,7 @@ export function earsPart() {
     const INNER = col('#cdb7a4'), INNER_D = col('#8e7666'), RIM = col('#9c8262');
     for (let i = 0; i <= NL; i++) {
       const l = i / NL;
-      const hw = 0.66 * Math.pow(Math.sin(Math.PI * Math.pow(l, 0.68)), 0.85) + 0.02;
+      const hw = EAR_HW * Math.pow(Math.sin(Math.PI * Math.pow(l, 0.68)), 0.85) + 0.02;
       for (let j = 0; j < NC; j++) {
         const a = (j / NC) * Math.PI * 2;
         const c = Math.cos(a), s = Math.sin(a);
@@ -290,7 +302,7 @@ export function earsPart() {
         const rimK = Math.abs(c) ** 6;
         const thick = (0.07 + 0.08 * rimK) * (1 - 0.6 * l) + 0.02;
         const cup = 0.48 * hw * c * c - (s > 0 ? 0.12 * (1 - l) * (1 - c * c) : 0);
-        const q = root.clone().addScaledVector(L, (l * 2.25 + 0.12 * c * c * l) * HEAD_SCALE).addScaledVector(Wd, c * hw * HEAD_SCALE).addScaledVector(N, (s * thick + cup - 0.05) * HEAD_SCALE);
+        const q = root.clone().addScaledVector(L, (l * EAR_LEN + 0.12 * c * c * l) * HEAD_SCALE).addScaledVector(Wd, c * hw * HEAD_SCALE).addScaledVector(N, (s * thick + cup - 0.05) * HEAD_SCALE);
         const inner = s > 0.2 && Math.abs(c) < 0.8;
         const deep = inner ? (1 - Math.abs(c) / 0.8) * (1 - l) : 0;
         const cc = inner ? INNER.clone().lerp(INNER_D, deep * 0.8).lerp(FUR, sm(0.6, 0.95, l)) : rimK > 0.5 ? RIM : FUR.clone().lerp(FUR_W, 0.4 + 0.3 * l).lerp(WARM_D, sm(0.8, 1.0, l) * 0.6);
@@ -327,7 +339,8 @@ export function dewlapPart(pb: PartB) {
       const wob = 1 + 0.06 * noise.n3(Math.cos(a) * 2, t * 4, Math.sin(a) * 2);
       const p = cen.clone().addScaledVector(fwd, Math.cos(a) * rz * wob).addScaledVector(sideV, Math.sin(a) * rx * wob);
       const c = FUR.clone().lerp(FUR_W, 0.35).lerp(WARM, sm(0.45, 1.0, t) * 0.65).lerp(WARM_D, sm(0.85, 1.0, t) * 0.4);
-      pb.v(p, c, [0.05, 0, sm(0.15, 0.0, t) * 0.4, KIND.hide], [[BONE.head, 1 - wD], [BONE.dewlap, wD]], t * 7 + 0.3 * Math.sin(a * 2), [0.03 * (1 - t), 1, 0, 0], down);
+      const moss = clamp(noise.fbm(Math.cos(a) * 1.5 + 4, t * 3, Math.sin(a) * 1.5, 2) * 1.5 + 0.05 + sm(0.3, 0.0, t) * 0.4) * (1 - 0.5 * sm(0.6, 1.0, t));
+      pb.v(p, c, [0.05, moss, sm(0.15, 0.0, t) * 0.4, KIND.hide], [[BONE.head, 1 - wD], [BONE.dewlap, wD]], t * 7 + 0.3 * Math.sin(a * 2), [0.03 * (1 - t), 1, 0, 0], down);
     }
   }
   pb.rows(start, NL, NA, true);

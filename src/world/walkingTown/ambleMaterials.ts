@@ -113,8 +113,13 @@ export function ambleBodyMaterial(): THREE.MeshToonMaterial {
           if (vDet.y > 0.0) {
             float sF = aStreak(rp, fdir, 15.0, 1.4), sC = aStreak(rp + 3.0, fdir, 4.2, 0.6);
             float lf = aLod(0.067, fp), lc = aLod(0.24, fp);
-            ambH += vDet.y * (0.003 * (sF - 0.5) * lf + 0.01 * (sC - 0.5) * lc);
-            alb *= 1.0 + vDet.y * ((sF - 0.5) * 0.12 * lf + (sC - 0.5) * 0.08 * lc);
+            // painted strokes: long, soft-edged dabs of lighter and darker hair laid along the coat, the way a
+            // painter would brush it (big enough to read from a few metres)
+            float pS = aStreak(rp + 9.0, fdir, 5.5, 0.6), pT = aStreak(rp + 2.3, fdir, 11.0, 1.1);
+            float lp = aLod(0.18, fp), lt = aLod(0.09, fp);
+            float dab = smoothstep(0.38, 0.62, pS) - 0.5, dab2 = smoothstep(0.4, 0.6, pT) - 0.5;
+            ambH += vDet.y * (0.003 * (sF - 0.5) * lf + 0.01 * (sC - 0.5) * lc + 0.008 * dab * lp);
+            alb *= 1.0 + vDet.y * ((sF - 0.5) * 0.12 * lf + (sC - 0.5) * 0.08 * lc + dab * 0.26 * lp + dab2 * 0.16 * lt);
           }
 
           if (kind < 0.5) {
@@ -148,13 +153,13 @@ export function ambleBodyMaterial(): THREE.MeshToonMaterial {
             vec2 e2 = vSkin.xy; float ea = vSkin.z;
             float ang = atan(e2.y, e2.x), er = length(e2);
             float fib = pNoise(vec3(cos(ang) * 7.0, sin(ang) * 7.0, er * 8.0)) * 0.55 + pNoise(vec3(cos(ang) * 19.0, sin(ang) * 19.0, er * 3.0)) * 0.45;
-            vec3 iris = mix(vec3(0.27, 0.15, 0.065), vec3(0.08, 0.045, 0.025), smoothstep(0.22, 0.74, ea)) * (0.7 + 0.6 * fib);
-            iris = mix(iris, vec3(0.42, 0.26, 0.11), smoothstep(0.24, 0.31, ea) * (1.0 - smoothstep(0.31, 0.42, ea)) * 0.5);
-            float pup = 1.0 - smoothstep(0.88, 1.06, length(e2 / vec2(0.36, 0.13)));
-            vec3 ec = mix(iris, vec3(0.015, 0.01, 0.008), pup * step(ea, 1.2));
-            ec = mix(ec, vec3(0.06, 0.035, 0.02), smoothstep(0.7, 0.8, ea));
-            vec3 white = mix(vec3(0.62, 0.55, 0.48), vec3(0.5, 0.34, 0.3), smoothstep(1.0, 1.4, ea));
-            ec = mix(ec, white, smoothstep(0.98, 1.12, ea));
+            vec3 iris = mix(vec3(0.16, 0.085, 0.04), vec3(0.045, 0.026, 0.016), smoothstep(0.2, 0.7, ea)) * (0.75 + 0.5 * fib);
+            iris = mix(iris, vec3(0.3, 0.17, 0.07), smoothstep(0.22, 0.3, ea) * (1.0 - smoothstep(0.3, 0.42, ea)) * 0.45);
+            float pup = 1.0 - smoothstep(0.88, 1.06, length(e2 / vec2(0.4, 0.15)));
+            vec3 ec = mix(iris, vec3(0.012, 0.008, 0.006), pup * step(ea, 1.2));
+            ec = mix(ec, vec3(0.03, 0.018, 0.012), smoothstep(0.78, 0.9, ea));
+            vec3 white = mix(vec3(0.42, 0.33, 0.27), vec3(0.36, 0.22, 0.18), smoothstep(1.0, 1.4, ea));
+            ec = mix(ec, white, smoothstep(1.02, 1.18, ea));
             ec *= 1.0 - 0.5 * smoothstep(0.05, 0.55, e2.y);
             alb = ec;
           } else if (kind > 3.5 && kind < 4.5) {
@@ -213,7 +218,7 @@ export function ambleBodyMaterial(): THREE.MeshToonMaterial {
         }
         #endif`);
   };
-  m.customProgramCacheKey = () => 'ambleBody6';
+  m.customProgramCacheKey = () => 'ambleBody7';
   bodyMat = m;
   return m;
 }

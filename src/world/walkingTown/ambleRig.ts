@@ -78,7 +78,7 @@ export function headDir(x: number, y: number, z: number, out = new THREE.Vector3
 /** Eyes, ears and antler roots in head-local coordinates (left side; mirror x for the right). */
 export const EYE_LOCAL = V(EYE_X, EYE_Y, EYE_Z);
 export const EYE_R = EYE_RADIUS * HEAD_SCALE;
-export const EAR_LOCAL = V(1.2, 1.3, -0.5);
+export const EAR_LOCAL = V(1.42, 1.2, -0.62);
 export const ANTLER_LOCAL = V(0.72, 1.78, 0.25);
 
 /** Legs: hip, knee, ankle (rest). Front knees and hind stifles both point a little forwards. */
