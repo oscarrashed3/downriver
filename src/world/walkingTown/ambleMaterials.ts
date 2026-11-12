@@ -119,7 +119,7 @@ export function ambleBodyMaterial(): THREE.MeshToonMaterial {
             float lp = aLod(0.18, fp), lt = aLod(0.09, fp);
             float dab = smoothstep(0.38, 0.62, pS) - 0.5, dab2 = smoothstep(0.4, 0.6, pT) - 0.5;
             ambH += vDet.y * (0.003 * (sF - 0.5) * lf + 0.01 * (sC - 0.5) * lc + 0.008 * dab * lp);
-            alb *= 1.0 + vDet.y * ((sF - 0.5) * 0.12 * lf + (sC - 0.5) * 0.08 * lc + dab * 0.26 * lp + dab2 * 0.16 * lt);
+            alb *= 1.0 + vDet.y * ((sF - 0.5) * 0.12 * lf + (sC - 0.5) * 0.08 * lc + dab * 0.26 * lp + dab2 * 0.08 * lt);
           }
 
           if (kind < 0.5) {
@@ -214,7 +214,7 @@ export function ambleBodyMaterial(): THREE.MeshToonMaterial {
           float fres = 0.06 + 0.94 * pow(1.0 - max(dot(eN, eV), 0.0), 4.0);
           vec3 sky = mix(vec3(0.62, 0.66, 0.6), vec3(0.75, 0.85, 1.0), smoothstep(-0.1, 0.5, ry)) * smoothstep(-0.3, 0.3, ry);
           float win = wEye ? smoothstep(0.12, 0.3, ry) * (1.0 - smoothstep(0.8, 0.95, ry)) * 0.32 : 0.0;
-          gl_FragColor.rgb += vDet.w * (vec3(1.0, 0.97, 0.9) * eS + sky * (fres * (wEye ? 0.5 : 0.25) + win));
+          gl_FragColor.rgb += vDet.w * (vec3(1.0, 0.97, 0.9) * eS + sky * (fres * (wEye ? 0.25 : 0.25) + win * 0.1));
         }
         #endif`);
   };

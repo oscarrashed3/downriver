@@ -4,7 +4,7 @@ import { townRng, pickOf } from './rand';
 import { BONE, REST, SHELL, LEGS, legBones, headPoint, headDir, HEAD_FWD, HEAD_SCALE } from './ambleRig';
 import type { AmbleBodyBuild, W } from './ambleBody';
 import { chainWeights } from './ambleBody';
-import { headSurface, headRing, EAR_DIR, EAR_LEN, EAR_HW } from './ambleHead';
+import { headSurface, headRing, EAR_DIR, EAR_FACE, EAR_LEN, EAR_HW } from './ambleHead';
 import { ledges, outlinePoint, shellTopY } from './ambleShell';
 import { CELL, cellUV } from './ambleMaterials';
 
@@ -249,7 +249,7 @@ export function buildAmbleGrowth(body: AmbleBodyBuild, seed = 5) {
     const p = neck.C[i].clone().addScaledVector(n, neck.R[i] * (1 - 0.1 * Math.sin(ang) ** 2) * 1.02);
     const w = chainWeights(t * neck.len, neck.ctlS.slice(0, 6), neckBones, 1);
     const nn = n.clone().lerp(Y, 0.35).normalize();
-    if (rng() < 0.6) fern(cb, rng, p, nn, (0.9 + rng() * 0.9) * (1.2 - t * 0.6), w);
+    if (rng() < 0.6) fern(cb, rng, p, nn, (1.3 + rng() * 1.2) * (1.2 - t * 0.6), w);
     else flowers(cb, rng, p, nn, 0.6 + rng() * 0.5, w);
   }
 
@@ -408,7 +408,7 @@ function hair(cb: CardBuilder, rng: () => number, body: AmbleBodyBuild) {
     const eb = side > 0 ? BONE.earL : BONE.earR;
     const root = REST[eb];
     const L = headDir(EAR_DIR[0] * side, EAR_DIR[1], EAR_DIR[2]);
-    const n0 = headDir(0.1 * side, 0.55, 1);
+    const n0 = headDir(EAR_FACE[0] * side, EAR_FACE[1], EAR_FACE[2]);
     const N = n0.clone().addScaledVector(L, -n0.dot(L)).normalize();
     const Wd = new THREE.Vector3().crossVectors(L, N);
     for (let k = 0; k < 14; k++) {

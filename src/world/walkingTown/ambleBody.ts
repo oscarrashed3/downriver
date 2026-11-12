@@ -30,7 +30,7 @@ const sm = smoothstep;
 const STONE = [col('#aca88f'), col('#a2a188'), col('#b0a68b'), col('#979a80'), col('#b6b097')];
 /** The bare hide: an elephant's, warm grey-brown, a little darker and muddier towards the feet. */
 const HIDE_G = col('#a89a82'), HIDE_G2 = col('#9a8d78'), HIDE_GL = col('#b8ab92'), MUD = col('#867560');
-const NECK_G = col('#8b8e74'), NECK_GD = col('#6d725c');
+const NECK_G = col('#80896a'), NECK_GD = col('#626b52');
 const FUR = col('#e3d6b6'), FUR_D = col('#cfc0a0'), FUR_W = col('#d6bf98'), MANE = col('#bfa27a');
 const ANTLER = col('#ddd5c2'), ANTLER_B = col('#8f7d66'), ANTLER_G = col('#c4bcaa');
 const NAIL = col('#cfc5ad'), NAIL_B = col('#8d8270');
@@ -369,7 +369,7 @@ function neckPart(pb: PartB) {
       // the colour: the legs' cracked grey-brown hide, gone grey-green with age and the moss's stain, mottled,
       // paler under the throat; the cream fur only at the very top
       const mott = clamp(noise2.n3(s * 0.25, ang * 1.2, 0.5) * 1.2 + 0.5);
-      const c = HIDE_G.clone().lerp(NECK_G, 0.55 + 0.3 * Math.max(0, up)).lerp(NECK_GD, mott * 0.45).lerp(HIDE_GL, under * 0.25)
+      const c = HIDE_G.clone().lerp(NECK_G, 0.7 + 0.3 * Math.max(0, up)).lerp(NECK_GD, mott * 0.45).lerp(HIDE_GL, under * 0.25)
         .lerp(FUR_D, pale * 0.8).lerp(FUR, pale * pale * 0.8);
       // moss over the top and down the sides of the neck in heavy, ragged tongues; thin under the throat
       const mossN = noise.fbm(s * 0.4, ang * 1.3, 1.7, 3);
