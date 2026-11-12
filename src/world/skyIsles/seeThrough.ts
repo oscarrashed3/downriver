@@ -21,6 +21,9 @@ export const SEE = {
   /** 1: the round window onto Nilo (the Sky Isles); 0: only what is right in front of the lens (World 3, where
    *  the camera pulls in past the houses instead, and the window's dithered edge caught the ink as a dark ring). */
   uSeeCircle: { value: 1 },
+  /** What right in front of the lens melts whole: from x metres in (none), fully by y. World 3's close cut-scene
+   *  shots push it out (vines between the lens and the face); everywhere else it stays (2.6, 1.4). */
+  uSeeNear: { value: new THREE.Vector2(2.6, 1.4) },
 };
 
 const CHUNK = /* glsl */ `
@@ -29,6 +32,7 @@ uniform vec2 uSeeXY;
 uniform vec2 uSeeR;
 uniform vec2 uSeeNF;
 uniform float uSeeCircle;
+uniform vec2 uSeeNear;
 float seeBayer(vec2 p) {
   vec2 q = mod(floor(p), 4.0);
   float b = mod(q.x * 2.0 + q.y * 3.0 + floor(q.x * 0.5) * 7.0 + floor(q.y * 0.5) * 5.0, 16.0);
@@ -43,7 +47,7 @@ const TEST = /* glsl */ `
     // a clean round window onto Nilo through whatever stands nearer the camera than he does, and anything right
     // in front of the lens (a leafy crown the camera backs into) melts away whole
     float k = uSeeCircle * smoothstep(1.0, 0.9, sr) * smoothstep(uSeeR.y, uSeeR.y - 0.8, zl);
-    k = max(k, smoothstep(2.6, 1.4, zl));
+    k = max(k, smoothstep(uSeeNear.x, uSeeNear.y, zl));
     if (k * uSeeOn > seeBayer(gl_FragCoord.xy)) discard;
   }
 `;

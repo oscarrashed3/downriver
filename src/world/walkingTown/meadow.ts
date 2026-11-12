@@ -29,5 +29,5 @@ export function townDir(p: Planet, fwd: number, left: number, out = new THREE.Ve
  * meadow off Amble's right they stand past its head, as in Oscar's picture), the lake on the near side of the
  * river ahead, and the Sea far behind on the right. */
 export const PLACES = {
-  lake: [72, 8], hill: [40, 85], mts: [24, 148], sea: [-60, -180], ford: [-19, 18],
+  lake: [80, -62], hill: [40, 85], mts: [24, 148], sea: [-60, -180], ford: [-19, 18],
 } as const;

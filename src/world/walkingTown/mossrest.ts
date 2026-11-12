@@ -81,6 +81,11 @@ export class Mossrest {
   /** The walks and stairs (ground you stand on: the camera never melts it). */
   private gk = new Kit();
   private nk = new Kit();
+  /** The free ends of the ropes and ladders down the legs (see ropeEnds). */
+  private ek = new Kit();
+  readonly endFeet: THREE.Vector3[] = [];
+  /** How far the ground under each rope's end is above (+) or below its resting place, metres (one per legLine). */
+  readonly ropeGround = { value: new Array<number>(16).fill(0) };
   private r: R;
   /** The two mills' sail groups (they turn about local z). */
   readonly sails: THREE.Group[] = [];
@@ -109,9 +114,47 @@ export class Mossrest {
     this.gk.build(ground, { outline: false });
     this.group.add(ground);
     this.nk.build(this.neck, { outline: false });
+    this.ropeEnds();
     for (const s of this.sails) this.group.add(s);
     this.group.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) { this.stats.meshes++; this.stats.triangles += (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3; } });
     this.neck.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) { this.stats.meshes++; this.stats.triangles += (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3; } });
+  }
+
+  /**
+   * The ropes' free ends: one mesh (a draw for each material), each vertex knowing which rope it is on and how much
+   * of the reach to the ground it takes (none at 4.5 m up, all of it at the end and the coil on the grass).
+   */
+  private ropeEnds() {
+    const grp = new THREE.Group(); grp.name = 'ropeEnds';
+    this.ek.build(grp, { outline: false });
+    this.group.add(grp);
+    const U = this.ropeGround, feet = this.endFeet;
+    grp.traverse(o => {
+      const m = o as THREE.Mesh; if (!m.isMesh) return;
+      m.castShadow = false;
+      const pa = m.geometry.attributes.position as THREE.BufferAttribute, n = pa.count;
+      const li = new Float32Array(n), w = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        const x = pa.getX(i), y = pa.getY(i), z = pa.getZ(i);
+        let bi = 0, bd = 1e9;
+        feet.forEach((f, j) => { const d = (f.x - x) ** 2 + (f.z - z) ** 2; if (d < bd) { bd = d; bi = j; } });
+        li[i] = bi; w[i] = THREE.MathUtils.clamp((4.5 - y) / (4.5 - 0.12), 0, 1);
+      }
+      m.geometry.setAttribute('aRL', new THREE.BufferAttribute(li, 1));
+      m.geometry.setAttribute('aRW', new THREE.BufferAttribute(w, 1));
+      const mat = (m.material as THREE.Material).clone();
+      const src = m.material as THREE.Material;
+      const prev = src.onBeforeCompile, prevKey = src.customProgramCacheKey.bind(src);
+      mat.onBeforeCompile = (sh, r) => {
+        prev.call(mat, sh, r);
+        sh.uniforms.uRopeG = U;
+        sh.vertexShader = sh.vertexShader
+          .replace('#include <common>', '#include <common>\nattribute float aRL; attribute float aRW; uniform float uRopeG[16];')
+          .replace('#include <begin_vertex>', '#include <begin_vertex>\n  transformed.y += aRW * uRopeG[int(aRL + 0.5)];');
+      };
+      mat.customProgramCacheKey = () => prevKey() + '|ropeEnds';
+      m.material = mat;
+    });
   }
 
   /** Hang the village and the lookout on Amble's frames. */
@@ -727,18 +770,23 @@ export class Mossrest {
         }
         const last = pts[pts.length - 1];
         const foot = new THREE.Vector3(last.x + (r() - 0.5) * 0.3, 0.12, last.z + (r() - 0.5) * 0.3);
-        pts.push(new THREE.Vector3(last.x, 4.5, last.z), foot);
-        if (kind === 'ladder') ropeLadder(k, pts, o, 0.34, r);
+        const hang = new THREE.Vector3(last.x, 4.5, last.z);
+        pts.push(hang, foot);
+        // (the free end, from 4.5 m down to the meadow, is its own mesh: when Amble walks it reaches to the ground
+        // under it, wherever that is, see ropeEnds)
+        const ek = this.ek, upper = pts.slice(0, -1), lower = [hang, hang.clone().lerp(foot, 0.5), foot];
+        if (kind === 'ladder') { ropeLadder(k, upper, o, 0.34, r); ropeLadder(ek, lower, o, 0.34, r); }
         else {
-          rope(k, pts, 0.12);
+          rope(k, upper, 0.12); rope(ek, lower, 0.12);
           // big knots to climb by
           const c = new THREE.CatmullRomCurve3(pts);
-          for (let t = 0.3; t < 0.97; t += 0.045) k.add(new THREE.SphereGeometry(0.2, 8, 5).scale(1, 0.75, 1), 'plain', '#a88d60', T(...c.getPointAt(t).toArray()));
+          for (let t = 0.3; t < 0.97; t += 0.045) { const q = c.getPointAt(t); (q.y > 4.5 ? k : ek).add(new THREE.SphereGeometry(0.2, 8, 5).scale(1, 0.75, 1), 'plain', '#a88d60', T(...q.toArray())); }
         }
         // the end resting on the meadow: a loose coil of spare rope, a flat stone holding it
-        for (let q = 0; q < 3; q++) k.add(new THREE.TorusGeometry(0.42 - q * 0.08, 0.1, 5, 14), 'plain', '#b39668', T(foot.x + 0.35, 0.1 + q * 0.12, foot.z, Math.PI / 2, 0, 0));
-        k.add(new THREE.DodecahedronGeometry(0.4, 0).scale(1.3, 0.5, 1), 'rough', pk(r, PAL.stone), T(foot.x - 0.5, 0.12, foot.z + 0.3));
+        for (let q = 0; q < 3; q++) ek.add(new THREE.TorusGeometry(0.42 - q * 0.08, 0.1, 5, 14), 'plain', '#b39668', T(foot.x + 0.35, 0.1 + q * 0.12, foot.z, Math.PI / 2, 0, 0));
+        ek.add(new THREE.DodecahedronGeometry(0.4, 0).scale(1.3, 0.5, 1), 'rough', pk(r, PAL.stone), T(foot.x - 0.5, 0.12, foot.z + 0.3));
         this.legLines.push({ kind, pts, out: o.clone(), top: rail.clone().addScaledVector(o, -0.4), leg: l });
+        this.endFeet.push(foot.clone());
       }
     }
   }

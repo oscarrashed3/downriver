@@ -6,6 +6,8 @@ export const TOWN_MOVE = {
   ladderDown: 'Climb down the rope ladder to the meadow',
   ropeHint: 'Hold <b>W</b> to climb, <b>S</b> to go down. Let go to hang on and rest.',
   umbrellaHint: 'Fold opens into a paper umbrella, and you float down into the long grass.',
+  noExit: 'Not this way. Old Amble is walking: ride along, and see where it takes you.',
+  sea: 'Wade out into the Sea',
 };
 
 // the goal line, step by step (Pip first, then the three things that keep Amble standing still)
@@ -23,7 +25,9 @@ export const TOWN_GOALS = {
   bramwyn: "Find Old Bramwyn. The vines have grown over Amble's eyes.",
   head: 'Go out along the neck to Amble\'s head, between the antlers.',
   trim: (n: number) => `Trim the vines from Amble's eyes (${n} of 6)`,
-  walk: 'Old Amble is walking again. Ride along.',
+  walk: 'Old Amble is walking again. Ride along, and find Pip up at the lookout.',
+  toCoast: 'Old Amble is walking down to the coast. Hold on.',
+  sea: 'Wade out into the Sea, when you are ready.',
 };
 
 // what you can do, step by step (the prompts by the things themselves)
@@ -63,4 +67,20 @@ export const TOWN_LINES = {
   below: 'Far below, through a gap in the clouds: a hill with a village on its back. A hill with legs.',
   fall: 'Fold opens wide. Down through the cloud, slow as a seed.',
   pipCalls: 'Hey! HEY! You came out of the sky!',
+};
+
+// the goodbye on the beach
+export const TOWN_BYE = {
+  arrive: 'Down the last long slope, onto the sand. Old Amble stops where the meadow meets the Sea.',
+  bram1: 'A tip, from an old gardener. Moss grows best where nobody hurries it.',
+  bram2: 'Wherever you go, look at the faces of things. I waited seventy years to look at one.',
+  tamsin1: 'You climbed every rope on this creature, and never once fell off. Well. Once. With an umbrella.',
+  tamsin2: 'My best rope. Three days of splicing. It holds a cart, so it will hold a boy.',
+  pip1: "I said I'd wave until you were a dot. I still will. But first...",
+  pip2: "A sprig of Amble's moss, in a jar. It grows anywhere. So you'll never be far from us.",
+  kept: 'Nilo holds the little jar up to the light. The moss inside is warm and green.',
+  nose: 'Old Amble lowers its great head, all the way down to him. Nilo touches its nose.',
+  shore: 'Down to the water, with Fold and the fox. The waves are small and gold.',
+  away: 'And Old Amble turns, slow as moss, and walks back across the meadow. The whole village waves.',
+  wade: 'Nilo wades out into the warm shallows. The Sea goes on and on.',
 };

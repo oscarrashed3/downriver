@@ -24,7 +24,7 @@ import { REST, BONE, SHELL, headPoint, headDir, type BoneName } from './ambleRig
 import { headRing, headSideX, headSurface, mouthY } from './ambleHead';
 import { Kit } from '../skyIsles/sailtownKit';
 import { rnd } from './mossrestKit';
-import { stoneProp, pulleyProp, RopeSpan, sailArm, trough, trestle, pieceProp, waterMaterial, sluiceProp, vineClump, plankRun, stairRun, along } from './townProps';
+import { stoneProp, pulleyProp, RopeSpan, sailArm, trough, trestle, pieceProp, waterMaterial, waterLength, waterTube, shearsProp, sluiceProp, vineClump, plankRun, stairRun, along } from './townProps';
 import { TOWN_GOALS, TOWN_DO, TOWN_STEP } from '../../data/townWords';
 
 const sm = (k: number) => k * k * (3 - 2 * k);
@@ -69,6 +69,10 @@ export class TownTasks {
   private carryPiece: THREE.Group;
   private sluice: { group: THREE.Group; gate: THREE.Group };
   private trickle!: THREE.Mesh;
+  private splash!: THREE.InstancedMesh;
+  private splashN = 16;
+  private splashDir: THREE.Vector4[] = [];
+  private splashAt = V();
   // the eyes
   private clumps: { g: THREE.Group; at: THREE.Vector3; fall: { v: THREE.Vector3; w: THREE.Vector3; t: number } | null }[] = [];
   private walk: RidePt[] = [];
@@ -77,6 +81,10 @@ export class TownTasks {
   private ride: WalkDeck | null = null;
   private bramS = 0;
   private bramOut = false;
+  private shears: THREE.Group;
+  private trimCam: THREE.Vector3 | null = null;
+  private trimHold = 0;
+  private trimIdx = 0;
   // the big moment
   private shake = 0;
   private cheerT = 0;
@@ -136,6 +144,9 @@ export class TownTasks {
     // ---- 3. the vines over the eyes, the walk out to the head
     this.buildVines();
     this.buildWalk();
+    this.shears = shearsProp();
+    this.shears.visible = false;
+    g.player.person.arms[1].hand.add(this.shears);
 
     // ---- the things to do
     const it = g.contents[idx].interactables, me = this, pl = g.player;
@@ -243,7 +254,6 @@ export class TownTasks {
     const all = [...shellPts, ...neckPts, ...headPts];
     const kits = new Map<string, Kit>();
     const kitFor = (b: string) => { let k = kits.get(b); if (!k) { k = new Kit(); kits.set(b, k); } return k; };
-    const box = new THREE.BoxGeometry(0.5, 0.09, 1).translate(0, 0, 0.5);
     let s0 = 0;
     for (let i = 0; i < all.length - 1; i++) {
       const a = all[i], b = all[i + 1];
@@ -256,9 +266,9 @@ export class TownTasks {
       const gap = GAPS.indexOf(i);
       if (gap < 0) trough(kitFor(ride), pa, pb, r, { straps: ride !== 'shell' });
       if (ride === 'shell') trestle(kitFor('shell'), pa, pb.clone().sub(pa).normalize(), groundAt(pa.x, pa.z), r);
-      const water = new THREE.Mesh(box, this.waterMat);
+      const water = new THREE.Mesh(waterLength(s0, len), this.waterMat);
       water.matrixAutoUpdate = false;
-      water.matrix.copy(along(pa, pb)).multiply(new THREE.Matrix4().makeTranslation(0, 0.1, 0));
+      water.matrix.copy(along(pa, pb)).multiply(new THREE.Matrix4().makeTranslation(0, 0.1, 0)).multiply(new THREE.Matrix4().makeScale(1, 1, len));
       water.userData.base = water.matrix.clone();
       water.userData.len = len;
       water.visible = false; water.frustumCulled = false;
@@ -281,9 +291,18 @@ export class TownTasks {
     const end = headPts[headPts.length - 1].p.clone().sub(REST[BONE.head]);
     const lip = headPoint(sx * (headSideX(mouthY(3.3), 3.3) - 0.1), mouthY(3.3) - 0.05, 3.3).sub(REST[BONE.head]);
     const tube = new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(end, end.clone().lerp(lip, 0.5).add(V(0, 0.25, 0)), lip), 10, 0.09, 6, false);
-    this.trickle = new THREE.Mesh(tube, this.waterMat);
+    this.trickle = new THREE.Mesh(waterTube(tube, s0, end.distanceTo(lip) * 1.15), this.waterMat);
     this.trickle.visible = false; this.trickle.frustumCulled = false;
     A.rig.bone('head').add(this.trickle);
+    // the splash at the lip (riding the head too)
+    this.splashAt.copy(lip);
+    this.splash = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshBasicMaterial({ color: '#e6f6ff', transparent: true, opacity: 0.85 }), this.splashN);
+    this.splash.frustumCulled = false; this.splash.visible = false; this.splash.userData.noOutline = true;
+    for (let i = 0; i < this.splashN; i++) {
+      const a = (i / this.splashN) * Math.PI * 2;
+      this.splashDir.push(new THREE.Vector4(sx * (0.5 + 0.5 * Math.abs(Math.cos(a))), 0.7 + 0.5 * Math.random(), Math.sin(a) * 0.8, Math.random()));
+    }
+    A.rig.bone('head').add(this.splash);
   }
 
   /** Six clumps of vine hanging from the antlers' brow tines over the eyes, three to each eye. */
@@ -496,12 +515,22 @@ export class TownTasks {
     // ---- the water: full and running once the sluice is open (the scene runs its front down the channel)
     this.waterMat.uniforms.uT.value += dt;
     const f = h('town:water-done') ? this.flowLen + 1 : this.flow;
-    for (const s of this.segs) {
-      const k = clamp((f - s.s0) / s.len);
-      s.water.visible = k > 0.001;
-      if (s.water.visible) s.water.matrix.copy(s.water.userData.base).multiply(new THREE.Matrix4().makeScale(1, 1, k * (s.water.userData.len as number)));
-    }
+    // (each length is whole; the shader shows the water only as far as its front, with a lip of foam there)
+    this.waterMat.uniforms.uFront.value = f >= this.flowLen ? 1e9 : f;
+    for (const s of this.segs) s.water.visible = f > s.s0 + 0.001;
     this.trickle.visible = f >= this.flowLen && (g.mode === 'cut' || !h('town:water-done'));
+    // where it pours into the corner of the mouth: a little splash of drops, over and over
+    this.splash.visible = this.trickle.visible;
+    if (this.splash.visible) {
+      const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = V(), p = V();
+      for (let i = 0; i < this.splashN; i++) {
+        const d = this.splashDir[i], tt = (g.time * 1.7 + i / this.splashN * 1.0 + d.w) % 1;
+        p.copy(this.splashAt).addScaledVector(V(d.x, d.y, d.z), tt * 0.55).add(V(0, -1.4 * tt * tt, 0));
+        m.compose(p, q, sc.setScalar(0.045 * (1 - tt) + 0.01));
+        this.splash.setMatrixAt(i, m);
+      }
+      this.splash.instanceMatrix.needsUpdate = true;
+    }
     this.sluice.gate.position.y = f >= 0 ? 0.55 : 0;
     // ---- the vines: hanging, falling, or gone
     this.clumps.forEach((c, i) => {
@@ -519,6 +548,35 @@ export class TownTasks {
     this.syncWalk(dt);
     // ---- Old Bramwyn goes up to the lookout, then out along the walk behind him
     this.moveBramwyn(dt);
+    // ---- the vines: Bramwyn's shears in his hand up by the head, and while he snips the view swings out to the
+    // side of the head (the clump over the eye and Nilo at it, the leaves by the lens melted away)
+    this.shears.visible = h('town:met-bramwyn') && !h('town:eyes-done') && (this.high || g.mode === 'cut' && this.trimmed() >= 6);
+    // (held a moment after E lets go or a clump comes away, so the view does not jump about between clumps)
+    this.trimHold -= dt;
+    const holding = g.mode === 'play' && this.high && (g.holdKey.startsWith('townVine') && g.holdT > 0.05 || this.trimHold > 0 && !!this.trimCam);
+    if (holding) {
+      if (g.holdKey.startsWith('townVine')) this.trimIdx = +g.holdKey.slice(8);
+      const c = this.clumps[this.trimIdx];
+      if (c && c.g.parent && !c.fall) {
+        const head = A.rig.bone('head'), hd = (x: number, y: number, z: number) => headDir(x, y, z).transformDirection(head.matrixWorld);
+        const cw = c.g.parent.localToWorld(c.at.clone());
+        const sd = Math.sign(cw.clone().sub(head.getWorldPosition(V())).dot(hd(1, 0, 0))) || 1;
+        const want = cw.clone().addScaledVector(hd(sd, -0.1, 0.6).normalize(), 7.5);
+        const look = cw.clone().lerp(pl.pos.clone().addScaledVector(pl.up, 0.9), 0.45);
+        if (!this.trimCam) this.trimCam = g.camera.position.distanceTo(want) > 12 ? want.clone() : g.camera.position.clone();
+        this.trimHold = 0.35;
+        this.trimCam.lerp(want, 1 - Math.exp(-3.5 * dt));
+        g.rig.override = { pos: this.trimCam.clone(), look, up: this.upAt(look) };
+        this.tm.cutMelt = 5.5;
+        pl.pose = { ...pl.pose, kneel: 0.5, lookAt: cw };
+        // (turned to the clump, the shears out to it)
+        const toC = cw.clone().sub(pl.pos).projectOnPlane(pl.up);
+        if (toC.lengthSq() > 0.01) { pl.facing.lerp(toC.normalize(), 1 - Math.exp(-6 * dt)).normalize(); pl.sync(); }
+      }
+    } else if (this.trimCam) {
+      this.trimCam = null; g.rig.override = null; this.tm.cutMelt = 0; g.rig.easeFromHere(0.7);
+      if (pl.pose.kneel) { const { kneel: _k, lookAt: _l, ...rest } = pl.pose; void _k; void _l; pl.pose = rest; }
+    }
     // ---- Tamsin and the others at the pulley while the stone is roped
     this.placePullers();
     // ---- the big moment's shake, the cheering
@@ -595,6 +653,7 @@ export class TownTasks {
 
   private moveBramwyn(dt: number) {
     const hm = this.story.byId.bramwyn, g = this.g;
+    if (this.story.bye?.playing || hm.npc.root.userData.byeHome) return;
     if (!this.has('town:met-bramwyn') || this.has('town:eyes-done') && !this.bramOut) { if (hm.ride) { hm.ride = null; hm.pos.copy(hm.npc.root.userData.home ?? hm.pos); } return; }
     if (!hm.npc.root.userData.home) hm.npc.root.userData.home = hm.pos.clone();
     if (!this.bramOut) {
@@ -636,6 +695,7 @@ export class TownTasks {
 
   // ------------------------------------------------------------------ the scenes
 
+  private fov(v: number) { const c = this.g.camera; if (c.fov !== v) { c.fov = v; c.updateProjectionMatrix(); } }
   private cam(pos: THREE.Vector3, look: THREE.Vector3) {
     const up = this.upAt(look);
     if (this.shake > 0) pos = pos.clone().add(V(Math.sin(this.g.time * 41), Math.sin(this.g.time * 37 + 1), Math.sin(this.g.time * 47 + 2)).multiplyScalar(0.12 * this.shake));
@@ -716,9 +776,15 @@ export class TownTasks {
           const mid = w(this.walkBase.clone().addScaledVector(this.side, 3.0));
           const inW = this.tm.world(this.o.clone().negate().add(this.walkBase), V()).sub(w(this.walkBase)).normalize();
           const look = mid.clone().addScaledVector(this.upAt(mid), 0.9).addScaledVector(sideW, -0.8);
-          // from out in the air beyond the walk's rail (nothing of the village between): everyone on the rope
-          if (!pullCam) pullCam = look.clone().addScaledVector(inW, -6.0).addScaledVector(this.upAt(mid), 2.4).addScaledVector(sideW, -2.2);
-          this.cam(pullCam.clone().addScaledVector(this.upAt(mid), -k * 0.3), look);
+          // from out in the meadow air off the front of the shell (nothing of the village between): the rope from
+          // the stone in the toes up over Tamsin's pulley on the walk, and everyone in a row along it, hauling
+          const wheel = this.pulley.localToWorld(this.wheel.clone()), st = this.stone.getWorldPosition(V());
+          // (out in front of the face and off to the left, low: the leg whole, the stone at its toes, the rope
+          // straight up to the pulley and the row of pullers along the walk above it)
+          const midR = wheel.clone().lerp(st, 0.5);
+          if (!pullCam) pullCam = this.AV(31, 6, 40);
+          this.cam(pullCam.clone().addScaledVector(this.upAt(mid), -k * 0.3), midR.clone().lerp(look, 0.12));
+          void inW;
         },
       },
       {
@@ -840,11 +906,15 @@ export class TownTasks {
           // water itself running down the troughs)
           const q = this.amble.root.worldToLocal(fr.clone());
           const outSide = q.z > 21 ? Math.sign(sideOut.clone().transformDirection(new THREE.Matrix4().copy(this.amble.root.matrixWorld).invert()).x * q.x) || 1 : -1;
+          // (down the neck: close behind the front and a little out and over it, running with the water, the
+          // head and the mouth it is running to ahead)
+          const mouth = A.mouth.getWorldPosition(V());
           const want = q.z > 21
-            ? fr.clone().addScaledVector(along_, -3.5).addScaledVector(sideOut, outSide * 4.5).addScaledVector(up, 1.6)
+            ? fr.clone().addScaledVector(along_, -6.0).addScaledVector(sideOut, outSide * 3.2).addScaledVector(up, 3.2)
             : fr.clone().addScaledVector(along_, -5).addScaledVector(sideOut, -4).addScaledVector(up, 4.5);
-          camP.lerp(want, 1 - Math.exp(-2.2 * dt));
-          this.cam(camP.clone(), fr.clone().lerp(ahead, 0.5));
+          camP.lerp(want, 1 - Math.exp(-2.6 * dt));
+          this.tm.cutMelt = q.z > 21 ? 3.2 : 0;
+          this.cam(camP.clone(), q.z > 21 ? fr.clone().lerp(mouth, 0.8) : fr.clone().lerp(ahead, 0.5).lerp(mouth, 0.15));
           if (Math.random() < dt * 1.5) g.sound.sfxPlay('splash');
         },
       },
@@ -860,7 +930,7 @@ export class TownTasks {
           this.cam(m.clone().addScaledVector(hs, 9).addScaledVector(hf, 5).addScaledVector(this.upAt(m), 1.5), m.clone().addScaledVector(hf, -2.5));
           if (Math.random() < dt * 0.9) g.sound.sfxPlay('soft');
         },
-        exit: () => { A.gaze = null; g.give('town:water-done'); A.sigh(); g.sound.sfxPlay('gift'); g.save(); },
+        exit: () => { A.gaze = null; this.tm.cutMelt = 0; g.give('town:water-done'); A.sigh(); g.sound.sfxPlay('gift'); g.save(); },
       },
     ];
   }
@@ -888,6 +958,8 @@ export class TownTasks {
     const hd = (x: number, y: number, z: number) => headDir(x, y, z).transformDirection(head.matrixWorld);
     // Nilo kneels at the edge of the platform over the eye, looking down into it
     const peer = () => head.localToWorld(headPoint(sd * 0.85, headRing(0.4).yc + headRing(0.4).top + 0.28, 0.4).sub(REST[BONE.head]));
+    // then he climbs down onto the brow, right over the eye (on the hide, a little in from its edge)
+    const brow = () => { const z = 1.0, x = 1.42; const y = headSurface(z, Math.asin(Math.min(1, (x / headRing(z).w) ** (1 / headRing(z).e)))).y; return head.localToWorld(headPoint(sd * x, y + 0.02, z).sub(REST[BONE.head])); };
     const solveGaze = (target: THREE.Vector3) => {
       const eb = A.rig.bone(sd > 0 ? 'eyeL' : 'eyeR');
       const dl = head.worldToLocal(target.clone()).sub(eb.position).normalize();
@@ -907,7 +979,7 @@ export class TownTasks {
     return [
       {
         dur: 3.4, line: { text: TOWN_STEP.blink },
-        enter: () => { g.sound.sfxPlay('chime'); A.gaze = { x: 0, y: 0, blink: 1, lid: 0.9, k: 1 }; },
+        enter: () => { g.sound.sfxPlay('chime'); A.gaze = { x: 0, y: 0, blink: 1, lid: 0.9, k: 1 }; this.tm.cutMelt = 4.5; },
         tick: k => {
           const p = peer();
           this.stand(p, hd(sd, -0.3, 0.6), { kneel: 0.7, lookAt: eye() } as typeof g.player.pose);
@@ -921,19 +993,30 @@ export class TownTasks {
       },
       {
         dur: 4.0, line: { text: TOWN_STEP.look },
-        enter: () => { look = solveGaze(g.player.pos.clone().addScaledVector(g.player.up, 1.1)); },
+        enter: () => {
+          // he is down on the brow, standing right over the eye, looking down into it
+          this.stand(brow(), hd(sd, -0.2, 0.4), { lookAt: eye() } as typeof g.player.pose);
+          look = solveGaze(g.player.pos.clone().addScaledVector(g.player.up, 1.2));
+          // (the eye can only roll up so far under its lid: it opens wide instead)
+          look.y = Math.min(look.y, 0.32);
+          this.tm.cutMelt = 5.0; this.fov(42);
+        },
         tick: k => {
           const s = sm(clamp(k * 1.4));
-          A.gaze = { x: look.x * s, y: look.y * s, blink: 0, lid: 0.1, k: 1 };
-          const e = eye(), n = g.player.pos.clone().addScaledVector(g.player.up, 1.0);
-          // from up in front of the face and out to the side: the great eye turning up to Nilo, who kneels at the
-          // edge of the brow just over it
-          this.cam(e.clone().addScaledVector(hd(sd * 0.75, 0.55, 1).normalize(), 6.0 - 0.6 * k), e.clone().lerp(n, 0.5));
+          A.gaze = { x: look.x * s, y: look.y * s, blink: 0, lid: 0.06 - 0.26 * s, k: 1 };
+          this.stand(brow(), hd(sd, -0.2, 0.4), { lookAt: eye(), smile: k > 0.55 ? 1 : 0 } as typeof g.player.pose);
+          this.foxAt(peer(), hd(sd, 0, 0.5), 'sit');
+          const e = eye();
+          // close, out in front of the face and to its side, level with the eye: the great wet eye big in the
+          // frame, opening and turning up to Nilo, who stands on the brow just over it (the vines near the lens
+          // melt away)
+          this.cam(e.clone().addScaledVector(hd(sd * 0.85, -0.2, 0.6).normalize(), 4.9 - 0.3 * k), e.clone().addScaledVector(hd(0, 1, 0), 0.78));
         },
+        exit: () => { this.fov(58); },
       },
       {
         dur: 3.2, line: { text: TOWN_STEP.rumble },
-        enter: () => { g.sound.sfxPlay('rumble'); this.shake = 0.6; },
+        enter: () => { g.sound.sfxPlay('rumble'); this.shake = 0.6; this.tm.cutMelt = 0; },
         tick: k => {
           A.gaze = { x: look.x, y: look.y, blink: 0, lid: 0.12, k: 1 - 0.6 * k };
           P.headLift = 0.1 + 0.25 * sm(k);

@@ -49,6 +49,8 @@ export function ambleBodyMaterial(): THREE.MeshToonMaterial {
           vec3 rp = vRest;
           float kind = vSkin.w;
           float rock = vSkin.x, mossW = vSkin.y, ao = vSkin.z;
+          // (the eye's own skin values are its place on the eyeball instead: across, up, angle off its axis)
+          if (kind > 2.5 && kind < 3.5) { rock = 0.0; mossW = -9.0; ao = 0.0; }
           float n1 = pNoise(rp * 0.55), n2 = pNoise(rp * 2.1 + 7.0), n3 = pNoise(rp * 6.0 + 3.0);
           vec3 alb = diffuseColor.rgb;
           if (kind < 0.5) {
@@ -74,8 +76,19 @@ export function ambleBodyMaterial(): THREE.MeshToonMaterial {
             alb *= 0.93 + 0.08 * pNoise(rp * vec3(3.0, 9.0, 3.0)) + 0.04 * n1;
             alb *= 1.0 - 0.18 * smoothstep(0.78, 0.84, n3);
           } else if (kind > 2.5 && kind < 3.5) {
-            // the eye: deep and dark, a soft warm glint low in the iris
-            alb *= 0.9;
+            // the eye: a deer's, big and dark and kind. A wide, soft-edged horizontal pupil; a warm brown iris
+            // streaked with fibres and a lighter ring round the pupil; a dark rim; the white just at the corners
+            vec2 e2 = vSkin.xy; float ea = vSkin.z;
+            float ang = atan(e2.y, e2.x), er = length(e2);
+            float fib = pNoise(vec3(cos(ang) * 6.0, sin(ang) * 6.0, er * 7.0)) * 0.6 + pNoise(vec3(cos(ang) * 17.0, sin(ang) * 17.0, er * 3.0)) * 0.4;
+            vec3 iris = mix(vec3(0.27, 0.15, 0.07), vec3(0.62, 0.38, 0.16), smoothstep(0.3, 0.75, ea)) * (0.7 + 0.6 * fib);
+            iris = mix(iris, vec3(0.78, 0.55, 0.26), smoothstep(0.34, 0.44, ea) * (1.0 - smoothstep(0.44, 0.58, ea)) * 0.45);
+            float pup = 1.0 - smoothstep(0.9, 1.08, length(e2 / vec2(0.36, 0.21)));
+            vec3 ec = mix(iris, vec3(0.018, 0.012, 0.01), pup * step(ea, 1.2));
+            ec = mix(ec, vec3(0.09, 0.05, 0.03), smoothstep(0.8, 0.92, ea));
+            ec = mix(ec, vec3(0.86, 0.8, 0.7), smoothstep(1.0, 1.14, ea));
+            if (ea > 5.0) ec = vec3(1.0, 0.99, 0.96);
+            alb = ec;
           } else if (kind > 3.5 && kind < 4.5) {
             alb *= 0.94 + 0.1 * pNoise(rp * vec3(12.0, 2.0, 12.0));
           } else if (kind > 5.5) {
@@ -112,9 +125,20 @@ export function ambleBodyMaterial(): THREE.MeshToonMaterial {
           }
           alb *= 1.0 - 0.55 * ao;
           diffuseColor.rgb = alb;
-        }`);
+        }`)
+      // the eye is wet: a sharp highlight of the sun, and a soft sheen of sky towards its edges
+      .replace('#include <dithering_fragment>', `#include <dithering_fragment>
+        #if NUM_DIR_LIGHTS > 0
+        if (vSkin.w > 2.5 && vSkin.w < 3.5) {
+          vec3 eV = normalize(vViewPosition);
+          vec3 eH = normalize(directionalLights[0].direction + eV);
+          float eS = pow(max(dot(normal, eH), 0.0), 90.0);
+          float eF = pow(1.0 - max(dot(normal, eV), 0.0), 3.0);
+          gl_FragColor.rgb += vec3(1.0, 0.97, 0.9) * eS * 1.4 + vec3(0.55, 0.66, 0.8) * eF * 0.22;
+        }
+        #endif`);
   };
-  m.customProgramCacheKey = () => 'ambleBody4';
+  m.customProgramCacheKey = () => 'ambleBody5';
   bodyMat = m;
   return m;
 }

@@ -17,6 +17,20 @@ export const TOWN_SCRIPTS: Record<string, Script> = {
     id: 'pip', name: 'Pip', title: 'who knows every stair in Mossrest', stranger: 'the kid in the straw hat',
     start: { trust: 0.7, worry: 0.2, openness: 0.85 },
     nodes: [
+      { type: 'branch', ifFlag: 'town:eyes-done', then: [
+        { type: 'branch', ifFlag: 'town:coast', then: [
+          { type: 'say', text: 'Hold on to the rail! Downhill is the fast bit. Well. The less slow bit.' },
+        ], else: [
+          { type: 'say', text: "You can see everything from up here. The lake, the far hill, the mountains. And over there, the Sea." },
+          { type: 'say', text: 'Amble will take you anywhere you want to go. I said so, and now it really can.' },
+          { type: 'ask', cards: [
+            { kind: 'open', text: 'Take me to the coast', gives: ['town:coast'],
+              reply: ["The coast! The baker will cry. She's been waiting all year with her bucket.", "Hold on. Amble, the Sea! It heard me. It always hears me."] },
+            { kind: 'leading', text: "Let's ride a while", gives: [],
+              reply: ['Good. Look, the lake. Amble likes to walk past it slowly so it can see itself.', "Come and find me when you're ready. I'll be right here. I'm always right here now."] },
+          ] },
+        ] },
+      ], else: [
       { type: 'branch', ifFlag: 'town:quest', then: [
         { type: 'branch', ifFlag: 'town:met-tamsin', then: [
           { type: 'say', text: "Tamsin's ropes go all the way down to the meadow. Hold on with both hands. I do. Mostly." },
@@ -38,6 +52,7 @@ export const TOWN_SCRIPTS: Record<string, Script> = {
         { type: 'say', text: "Tamsin the Ropewright says its front foot's sore. She's up by the big rope on the front leg." },
         { type: 'say', text: "If Amble walks again, it'll take you anywhere you want to go. That's what Amble does." },
         { type: 'give', items: ['town:quest'] },
+      ] },
       ] },
     ],
   },
@@ -76,7 +91,7 @@ export const TOWN_SCRIPTS: Record<string, Script> = {
         { type: 'say', text: 'The vines from its antlers have grown right down over both eyes. Thick as curtains. My fault. I got slow.' },
         { type: 'ask', cards: [
           { kind: 'open', text: 'Can we cut them?', gives: ['town:met-bramwyn'],
-            reply: ['We can. Out along the neck, onto the head between the antlers. There is a plank walk.', 'You hold them, I snip. My shears are older than the Miller.'] },
+            reply: ['We can. Out along the neck, onto the head between the antlers. There is a plank walk.', 'Take my shears. They are older than the Miller, and sharper. I will be right behind you.'] },
           { kind: 'leading', text: 'Is it safe up there?', gives: ['town:met-bramwyn'],
             reply: ['Safer than falling out of the sky, child. There are rails all the way.', 'And Amble keeps its head very still for me. It always has.'] },
         ] },
@@ -119,17 +134,17 @@ export const TOWN_SCRIPTS: Record<string, Script> = {
     ],
   },
   moss1: { id: 'moss1', name: 'a Mossfolk gardener', title: 'who thinks it is sulking', start: { trust: 0.5, worry: 0.3, openness: 0.6 },
-    nodes: [{ type: 'say', text: "It's sulking, that's what. We forgot its birthday. Nobody knows when it is, mind." }, { type: 'say', text: 'Try singing to it. I did. It sulked harder.' }] },
+    nodes: [{ type: 'branch', ifFlag: 'town:eyes-done', then: [{ type: 'say', text: "It wasn't sulking! I take it all back. Look at it go." }, { type: 'say', text: "We're baking it a cake anyway. A walking cake." }], else: [{ type: 'say', text: "It's sulking, that's what. We forgot its birthday. Nobody knows when it is, mind." }, { type: 'say', text: 'Try singing to it. I did. It sulked harder.' }] }] },
   moss2: { id: 'moss2', name: 'a Mossfolk weaver', title: 'who thinks it is just old', start: { trust: 0.55, worry: 0.35, openness: 0.5 },
-    nodes: [{ type: 'say', text: "It's just old. Old things sit down. My granny sat down for a whole winter once." }, { type: 'say', text: 'Then one morning she got up and made pancakes. So you never know.' }] },
+    nodes: [{ type: 'branch', ifFlag: 'town:eyes-done', then: [{ type: 'say', text: "Old, and walking. My granny would say I told you so." }, { type: 'say', text: "Every step, the floor goes up and down a little. Like a slow boat." }], else: [{ type: 'say', text: "It's just old. Old things sit down. My granny sat down for a whole winter once." }, { type: 'say', text: 'Then one morning she got up and made pancakes. So you never know.' }] }] },
   moss3: { id: 'moss3', name: 'a Mossfolk baker', title: 'who thinks it misses the sea', start: { trust: 0.6, worry: 0.4, openness: 0.55 },
-    nodes: [{ type: 'say', text: 'It misses the sea. We used to walk to the coast every summer. It would stand in the shallows for days.' }, { type: 'say', text: "You can see the sea from the tail end, on a clear day. Amble looks that way a lot." }] },
+    nodes: [{ type: 'branch', ifFlag: 'town:eyes-done', then: [{ type: 'say', text: "I can smell the sea from here! Well, nearly. Ask Pip to take us down to the coast." }, { type: 'say', text: "My bucket is by the door. It has been by the door all year." }], else: [{ type: 'say', text: 'It misses the sea. We used to walk to the coast every summer. It would stand in the shallows for days.' }, { type: 'say', text: "You can see the sea from the tail end, on a clear day. Amble looks that way a lot." }] }] },
   moss4: { id: 'moss4', name: 'a Mossfolk fisher', title: 'who thinks it is waiting', start: { trust: 0.45, worry: 0.3, openness: 0.5 },
-    nodes: [{ type: 'say', text: "It's waiting. For what, I don't know. For someone. Maybe for you, fox and all." }, { type: 'say', text: "Don't let that go to your head. It also waited for a cloud once. Took a week." }] },
+    nodes: [{ type: 'branch', ifFlag: 'town:eyes-done', then: [{ type: 'say', text: "Told you it was waiting. It was waiting for you, fox and all." }, { type: 'say', text: "Look at the meadow going by. I never get tired of it." }], else: [{ type: 'say', text: "It's waiting. For what, I don't know. For someone. Maybe for you, fox and all." }, { type: 'say', text: "Don't let that go to your head. It also waited for a cloud once. Took a week." }] }] },
   moss5: { id: 'moss5', name: 'a Mossfolk potter', title: 'who thinks it is listening', start: { trust: 0.5, worry: 0.45, openness: 0.45 },
-    nodes: [{ type: 'say', text: 'It heard something far away and stopped to listen. Hush a moment. There. Did you hear it?' }, { type: 'say', text: "No. Me neither. But Amble's ears are bigger than ours." }] },
+    nodes: [{ type: 'branch', ifFlag: 'town:eyes-done', then: [{ type: 'say', text: "Hear that? Thump. Thump. That was what I was listening for." }, { type: 'say', text: "It hums when it walks. Low, like a cello. I was right about the cello." }], else: [{ type: 'say', text: 'It heard something far away and stopped to listen. Hush a moment. There. Did you hear it?' }, { type: 'say', text: "No. Me neither. But Amble's ears are bigger than ours." }] }] },
   moss6: { id: 'moss6', name: 'a Mossfolk carpenter', title: 'who thinks it is tired of us', start: { trust: 0.4, worry: 0.5, openness: 0.4 },
-    nodes: [{ type: 'say', text: "I think it's tired of carrying us. Forty houses, two windmills and Bramwyn's cabbages." }, { type: 'say', text: "I'd stop too. I've been building lighter chairs, just in case." }] },
+    nodes: [{ type: 'branch', ifFlag: 'town:eyes-done', then: [{ type: 'say', text: "I put the heavy chairs back. A promise is a promise." }, { type: 'say', text: "It carries all of us like it is nothing. Forty houses, and you." }], else: [{ type: 'say', text: "I think it's tired of carrying us. Forty houses, two windmills and Bramwyn's cabbages." }, { type: 'say', text: "I'd stop too. I've been building lighter chairs, just in case." }] }] },
 };
 
 export const TOWN_RETURN_LINES: Record<string, Set_[]> = {
@@ -259,10 +274,10 @@ export const TOWN_RETURN_LINES: Record<string, Set_[]> = {
       "Come back hungry one day. I'll have flour again, now the wheat fields come to us.",
     ] },
   ],
-  moss1: [{ lines: ["Sulking. Definitely sulking. Look at the way it holds its head.", "We could bake it a cake. A very big cake.", "It sighed this morning. Sulkers sigh."] }],
-  moss2: [{ lines: ["Old, I tell you. Old as the hills. Older. The hills were young when Amble was born.", "My knees know how Amble feels.", "Give it a nap, it'll be right as rain."] }],
-  moss3: [{ lines: ['Salt in the air, on a south wind. Amble lifts its nose when it comes.', "I bake sea-biscuits every summer for the trip. Nobody's eaten them this year.", 'One day we will walk to the coast again. I have my bucket ready.'] }],
-  moss4: [{ lines: ['Waiting is a thing big creatures are good at.', 'Some say it waited a hundred years for the first villagers to climb up.', 'If it was waiting for you, it is still waiting. So. Do something.'] }],
-  moss5: [{ lines: ['Shh. There. No. Maybe.', 'I hear it humming at night. Low, like a cello.', "Its ear turns to the east sometimes. Nothing's ever there."] }],
-  moss6: [{ lines: ['Lighter chairs. Lighter tables. Lighter everything.', "I've stopped eating bread. Every bit helps.", "If it ever walks again, I'll put the heavy chairs back. Promise."] }],
+  moss1: [{ lines: ["Sulking. Definitely sulking. Look at the way it holds its head.", "We could bake it a cake. A very big cake.", "It sighed this morning. Sulkers sigh."] }, { ...WALKING, lines: ["It wasn't sulking! I take it all back. Look at it go.", "We're baking it a cake anyway. A walking cake.", "Hold your cup level. The tea knows when we turn."] }],
+  moss2: [{ lines: ["Old, I tell you. Old as the hills. Older. The hills were young when Amble was born.", "My knees know how Amble feels.", "Give it a nap, it'll be right as rain."] }, { ...WALKING, lines: ["Old, and walking. My granny would say I told you so.", "Every step, the floor goes up and down a little. Like a slow boat.", "I wove a blanket while it stood still. Now I can watch the hills go by instead."] }],
+  moss3: [{ lines: ['Salt in the air, on a south wind. Amble lifts its nose when it comes.', "I bake sea-biscuits every summer for the trip. Nobody's eaten them this year.", 'One day we will walk to the coast again. I have my bucket ready.'] }, { ...WALKING, lines: ["I can smell the sea from here! Well, nearly. Ask Pip to take us down to the coast.", "My bucket is by the door. It has been by the door all year.", "Sea-biscuits, fresh this morning. Just in case."] }],
+  moss4: [{ lines: ['Waiting is a thing big creatures are good at.', 'Some say it waited a hundred years for the first villagers to climb up.', 'If it was waiting for you, it is still waiting. So. Do something.'] }, { ...WALKING, lines: ["Told you it was waiting. It was waiting for you, fox and all.", "Look at the meadow going by. I never get tired of it.", "Mind the ropes when it turns. They swing out like skirts."] }],
+  moss5: [{ lines: ['Shh. There. No. Maybe.', 'I hear it humming at night. Low, like a cello.', "Its ear turns to the east sometimes. Nothing's ever there."] }, { ...WALKING, lines: ["Hear that? Thump. Thump. That was what I was listening for.", "It hums when it walks. Low, like a cello. I was right about the cello.", "Its ear turns to the sea now. Something is there after all."] }],
+  moss6: [{ lines: ['Lighter chairs. Lighter tables. Lighter everything.', "I've stopped eating bread. Every bit helps.", "If it ever walks again, I'll put the heavy chairs back. Promise."] }, { ...WALKING, lines: ["I put the heavy chairs back. A promise is a promise.", "It carries all of us like it is nothing. Forty houses, and you.", "I am building a bench for the lookout. For watching where we go."] }],
 };

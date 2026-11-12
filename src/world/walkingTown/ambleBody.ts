@@ -513,11 +513,15 @@ function eyesPart() {
       const d = new THREE.Vector3().addScaledVector(fw, sx).addScaledVector(up, sy).addScaledVector(o, sz);
       const a = Math.acos(clamp(d.dot(o), -1, 1));
       const c = a < 0.5 ? PUPIL.clone().lerp(IRIS, smoothstep(0.34, 0.5, a)) : a < 1.05 ? IRIS.clone().lerp(RING, smoothstep(0.7, 1.0, a)) : RING.clone().lerp(WHITE, smoothstep(1.05, 1.3, a));
-      return { p: C.clone().addScaledVector(d, EYE_R), c, s: [0, 0, 0, KIND.eye], w: [[eb, 1]] };
+      // (the shader paints the eye from its place on the eyeball: across, up, and the angle off its axis)
+      return { p: C.clone().addScaledVector(d, EYE_R), c, s: [sx, sy, a, KIND.eye], w: [[eb, 1]] };
     });
-    // one small, soft catchlight, fixed to the head so it stays put while the eye looks about
-    const hl2 = C.clone().addScaledVector(o, EYE_R * 0.95).addScaledVector(up, -EYE_R * 0.12).addScaledVector(fw, EYE_R * 0.2);
-    blob(hl2, 8, 5, (sx, sy, sz) => ({ p: hl2.clone().add(new THREE.Vector3(sx, sy, sz).multiplyScalar(0.065)), c: col('#fff8ec'), s: [0, 0, 0, KIND.eye], w: [[BONE.head, 1]] }));
+    // catchlights, fixed to the head so they stay put while the eye looks about: a soft window of sky up and
+    // forward, and a small bright one under it
+    for (const [ux, uy, rr] of [[0.22, 0.3, 0.06], [0.38, -0.1, 0.03]] as const) {
+      const hl = C.clone().addScaledVector(o, EYE_R * 0.985).addScaledVector(up, EYE_R * uy).addScaledVector(fw, EYE_R * ux);
+      blob(hl, 8, 5, (sx, sy, sz) => ({ p: hl.clone().addScaledVector(fw, sx * rr).addScaledVector(up, sy * rr * 0.8).addScaledVector(o, sz * rr * 0.12), c: col('#fffaf0'), s: [0, 0, 9, KIND.eye], w: [[BONE.head, 1]] }));
+    }
     // the upper lid: a thin shell over the top of the eyeball, turning down about the eye's forward axis to blink
     {
       const pb = new PartB();

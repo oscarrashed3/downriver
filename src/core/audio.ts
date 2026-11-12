@@ -322,7 +322,7 @@ export class Sound {
   }
 
   /** Small sound effects. */
-  sfxPlay(kind: 'step' | 'stepSnow' | 'stepGrass' | 'stepWood' | 'stepStone' | 'jump' | 'land' | 'splash' | 'chime' | 'gift' | 'paper' | 'power' | 'build' | 'whoosh' | 'soft' | 'whistle' | 'bleat' | 'bump' | 'rumble') {
+  sfxPlay(kind: 'step' | 'stepSnow' | 'stepGrass' | 'stepWood' | 'stepStone' | 'jump' | 'land' | 'splash' | 'chime' | 'gift' | 'paper' | 'power' | 'build' | 'whoosh' | 'soft' | 'whistle' | 'bleat' | 'bump' | 'rumble' | 'thud') {
     const ctx = this.ctx; if (!ctx) return;
     const t = ctx.currentTime;
     const burst = (dur: number, freq: number, q: number, vol: number, type: BiquadFilterType = 'bandpass') => {
@@ -340,6 +340,8 @@ export class Sound {
       case 'bump': burst(0.25, 240, 1.5, 0.3, 'lowpass'); break;
       // a long, low, soft rumble (Old Amble's voice, and the ground under its first step)
       case 'rumble': burst(3.2, 110, 0.9, 0.42, 'lowpass'); this.note(38, t + 0.2, 'strings', 0.4, 3); break;
+      // one of Old Amble's footfalls: deep and soft, felt more than heard
+      case 'thud': burst(0.9, 80, 1.2, 0.3, 'lowpass'); this.note(29, t, 'strings', 0.22, 0.9); break;
       case 'whistle': {
         const o = ctx.createOscillator(); const g = ctx.createGain(); o.type = 'sine';
         o.frequency.setValueAtTime(1500, t); o.frequency.linearRampToValueAtTime(2300, t + 0.18); o.frequency.linearRampToValueAtTime(1900, t + 0.35); o.frequency.linearRampToValueAtTime(2500, t + 0.55);

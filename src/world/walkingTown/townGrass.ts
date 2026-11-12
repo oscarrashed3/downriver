@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { Planet } from '../planet';
 import { smoothstep } from '../noise';
-import { townFrame } from './meadow';
+import { townFrame, townDir } from './meadow';
 
 // World 3's long grass: thick and golden in the meadow round Old Amble, thinning out over the far hills (the
 // planet is big here, and the grass is only needed where you walk). Daisies and lupins all through it.
@@ -13,11 +13,13 @@ export function townGrassWeights(p: Planet): Float32Array {
   const pos = (p.terrain.geometry as THREE.BufferGeometry).attributes.position as THREE.BufferAttribute;
   const d = new THREE.Vector3();
   const ocean = p.cfg.ocean ?? 0;
+  // (none on the sand of the cove where Amble comes down to the Sea)
+  const sand = townDir(p, -28, -92);
   const h = (p.terrain.geometry as THREE.BufferGeometry).userData.heights as Float32Array;
   for (let i = 0; i < w.length; i++) {
     d.fromBufferAttribute(pos, i).normalize();
     const dist = Math.acos(Math.min(1, d.dot(A))) * p.R;
-    w[i] *= smoothstep(150, 95, dist) * smoothstep(ocean + 0.2, ocean + 0.8, h[i]);
+    w[i] *= smoothstep(150, 95, dist) * smoothstep(ocean + 0.2, ocean + 0.8, h[i]) * smoothstep(22, 30, Math.acos(Math.min(1, d.dot(sand))) * p.R);
   }
   return w;
 }

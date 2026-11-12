@@ -20,6 +20,7 @@ import { shellPolar } from './ambleShell';
 import { SHELL, FOOT_REST, LEGS } from './ambleRig';
 import { SeeThrough, SEE } from '../skyIsles/seeThrough';
 import { PaperUmbrella } from './umbrella';
+import type { AmbleWalker } from './ambleWalk';
 import { TOWN_MOVE } from '../../data/townWords';
 
 const clamp = (x: number, a = 0, b = 1) => Math.min(b, Math.max(a, x));
@@ -35,6 +36,8 @@ interface Line {
   out: THREE.Vector3;
   /** Where he stands on the walk at the top (creature space). */
   top: THREE.Vector3;
+  /** Which of the village's leg lines (for how far its free end reaches to the ground under it). */
+  i: number;
 }
 
 export class TownMove {
@@ -54,6 +57,11 @@ export class TownMove {
   private see: SeeThrough;
   private scanned = false;
   private hinted = false;
+  /** Metres in front of the lens that melt away whole in a close scene shot (0: the usual 2.6). */
+  cutMelt = 0;
+  readonly walker: AmbleWalker;
+  /** The footfalls' shake, 1 for a foot coming down right by the camera (dies away fast). */
+  private shake = 0;
   /** Set down on the walk already (the arrival scene sets this, so it is not done again on the way in). */
   placed = false;
 
@@ -76,15 +84,24 @@ export class TownMove {
     }
     this.syncNow();
     // the ropes and ladders down the legs: climb from the foot, or from the walk at the top
-    for (const L of this.town.legLines) {
+    this.walker = refs.walker as AmbleWalker;
+    // each footfall: a deep thud, and the ground shaking a little (more the nearer the foot)
+    this.walker.onStep = (_leg, at) => {
+      if (!this.active) return;
+      const d = at.distanceTo(this.g.camera.position);
+      const k = THREE.MathUtils.clamp(1.25 - d / 40, 0.15, 1);
+      this.shake = Math.max(this.shake, k);
+      this.g.sound.sfxPlay('thud');
+    };
+    for (const [li, L] of this.town.legLines.entries()) {
       const curve = new THREE.CatmullRomCurve3(L.pts, false, 'centripetal');
       const len = curve.getLength();
-      const at = (s: number) => curve.getPointAt(clamp(s / len));
+      const at = (s: number) => this.reach(li, curve.getPointAt(clamp(s / len)));
       // feet at the top: about 0.9 m under the pulley; at the foot: just off the grass
       let sTop = 0.5, sFoot = len - 0.3;
       for (let s = 0; s < len; s += 0.1) if (at(s).y < L.pts[0].y - 1.0) { sTop = s; break; }
       for (let s = len; s > 0; s -= 0.1) if (at(s).y > 0.35) { sFoot = s; break; }
-      const line: Line = { kind: L.kind, curve, len, sTop, sFoot, out: L.out.clone().setY(0).normalize(), top: L.top.clone() };
+      const line: Line = { kind: L.kind, curve, len, sTop, sFoot, out: L.out.clone().setY(0).normalize(), top: L.top.clone(), i: li };
       this.lines.push(line);
       const me = this;
       g.contents[idx].interactables.push({
@@ -102,6 +119,13 @@ export class TownMove {
     g.scene.add(this.umbrella.root);
     // the melt: the village (not its walks and floors), Amble's vines and the lookout
     this.see = new SeeThrough(g.scene, () => [this.town.group, this.town.neck, this.amble.growth], { keepShader: true });
+  }
+
+  /** A point of a rope's free end (creature space) where it reaches to the ground under it now (as its mesh does). */
+  private reach(li: number, c: THREE.Vector3) {
+    const w = clamp((4.5 - c.y) / (4.5 - 0.12));
+    c.y += w * (this.town.ropeGround.value[li] ?? 0);
+    return c;
   }
 
   /** Creature space (the village's own frame) to world. */
@@ -180,7 +204,7 @@ export class TownMove {
       if (rig.floor === this.floor) rig.floor = null;
       rig.smoothBlock = false;
       this.see.off();
-      SEE.uSeeCircle.value = 1;
+      SEE.uSeeCircle.value = 1; SEE.uSeeNear.value.set(2.6, 1.4);
       this.setClutter(false);
       this.umbrella.close(true);
       this.g.fold.root.visible = true;
@@ -285,7 +309,9 @@ export class TownMove {
     this.setClutter(this.g.mode !== 'ride' && this.g.skyView.k < 0.02);
     this.syncNow();
     const M = this.town.group.matrixWorld;
-    if (this.havePrev && (this.onAmble || this.climb)) {
+    // (a jump or a hop off a step keeps the shell's own going: he comes down where he took off, even as it turns)
+    const q0 = this.toCreature(pl.pos, _w), aloft = !pl.grounded && this.offT < 1.5 && q0.y > SHELL.yLip - 2 && shellPolar(q0.x, q0.z).rho < 1.15;
+    if (this.havePrev && (this.onAmble || this.climb || aloft)) {
       // carried along by the shell: move with it since the last frame
       _m.copy(this.prev).invert().premultiply(M);
       pl.pos.applyMatrix4(_m);
@@ -293,19 +319,46 @@ export class TownMove {
       pl.facing.applyQuaternion(_q);
       pl.sync();
     }
+    // the fox rides along too, when she is up on Amble with him
+    if (this.havePrev && this.g.fox.ground && (this.onAmble || this.climb || aloft)) {
+      const fx = this.g.fox, p = this.g.planets[this.idx];
+      const fp = fx.f.root.position;
+      if (fp.distanceTo(p.center) > p.surfaceRadius(fx.dir) + 2) {
+        fp.applyMatrix4(_m); fx.dir.copy(fp).sub(p.center).normalize();
+        fx.f.root.quaternion.premultiply(_q);
+      }
+    }
     this.prev.copy(M); this.havePrev = true;
+    // the ropes' and ladders' free ends reach down (or are pushed up) to the ground under them, wherever Amble is
+    {
+      const p = this.g.planets[this.idx], G = this.town.ropeGround.value, inv = _m.copy(M).invert();
+      this.town.endFeet.forEach((f, i) => {
+        const w = this.world(f, _v);
+        const gw = p.surfacePoint(_w.copy(w).sub(p.center).normalize(), 0, new THREE.Vector3());
+        G[i] = clamp(gw.applyMatrix4(inv).y - f.y + 0.1, -6, 3);
+      });
+    }
+    // the footfalls' shake, on top of wherever the camera is
+    if (this.shake > 0.002) {
+      const k = this.shake * this.shake, tt = this.g.time;
+      this.g.camera.position.addScaledVector(this.g.camera.up, Math.sin(tt * 38) * 0.05 * k).add(_v.set(Math.sin(tt * 31 + 1), 0, Math.sin(tt * 43 + 2)).multiplyScalar(0.025 * k));
+      this.shake *= Math.exp(-6 * dt);
+    }
     this.town.update(dt, t, this.g.camera);
     this.umbrella.update(dt, t, pl);
     if (this.umbrella.shown) { pl.pose = { ...pl.pose, holdUp: this.umbrella.k }; this.g.fold.root.visible = false; }
     else if (pl.pose.holdUp) { const { holdUp: _h, ...rest } = pl.pose; void _h; pl.pose = rest; this.g.fold.root.visible = true; }
     const free = this.g.mode === 'play' && !this.g.rig.override;
-    this.see.update(dt, free, this.g.camera, pl.pos.clone().addScaledVector(pl.up, 0.9), this.g.renderer);
+    // a close scene shot (or a framed view while working) melts whatever leafy stuff is near the lens
+    const melt = this.cutMelt > 0 && (this.g.mode === 'cut' || !!this.g.rig.override);
+    SEE.uSeeNear.value.set(melt ? this.cutMelt : 2.6, melt ? Math.max(1.4, this.cutMelt - 1.8) : 1.4);
+    this.see.update(dt, free || melt, this.g.camera, pl.pos.clone().addScaledVector(pl.up, 0.9), this.g.renderer);
   }
 
   // ------------------------------------------------------------------ the ropes and ladders
 
   private ropePos(line: Line, s: number, out = new THREE.Vector3()) {
-    const c = line.curve.getPointAt(clamp(s / line.len));
+    const c = this.reach(line.i, line.curve.getPointAt(clamp(s / line.len)));
     c.addScaledVector(line.out, line.kind === 'ladder' ? 0.28 : 0.32);
     return this.world(c, out);
   }

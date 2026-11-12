@@ -31,15 +31,11 @@ export default async (ctx) => {
     // hold E until this clump comes away (a held E goes on to the next clump, so let go as soon as it is done)
     const held = async (sec) => { for (let n = 0; n < sec * 10 && !(await ev(`__game.flags.has('town:vine-${i}')`)); n++) await T.sim(0.1, ['KeyE']); };
     if (i === 0) {
-      await T.sim(0.2, ['KeyE']);
-      // from out in front of the face on this side: the vine curtain over the eye, Nilo at it up on the brow
-      await ev(`(() => { const g = __game, pl = g.player, A = g.townMove.amble; const c = ${T.pos('townVine0')}.clone(); const h = A.rig.bone('head'); const V3 = pl.pos.constructor;
-        const sd = new V3(1, 0, 0).transformDirection(h.matrixWorld), f = new V3(0, 0, 1).transformDirection(h.matrixWorld);
-        const side = Math.sign(c.clone().sub(h.getWorldPosition(new V3())).dot(sd)) || 1;
-        const e = (side > 0 ? A.eyeL : A.eyeR).getWorldPosition(new V3());
-        g.rig.override = { pos: e.clone().addScaledVector(sd.clone().multiplyScalar(side * 0.6).add(f).normalize(), 6.5).addScaledVector(pl.up, 0.8), look: e.clone().lerp(pl.pos.clone().addScaledVector(pl.up, 1.0), 0.4), up: pl.up.clone() }; })()`);
+      // (at the real speed for this one: the view swings out to the side of the head while E is held)
+      await ev(`__game.fastWas = __game.fast; __game.fast = 1`);
+      await T.sim(1.0, ['KeyE']);
       await T.snap('5-trim-vines');
-      await ev(`__game.rig.override = null`);
+      await ev(`__game.fast = __game.fastWas`);
     }
     await held(3);
     if (!(await ev(`__game.flags.has('town:vine-${i}')`))) throw new Error('clump ' + i + ' was not trimmed');
@@ -48,8 +44,9 @@ export default async (ctx) => {
   }
   // the big moment (it starts a moment after the last clump falls)
   await page.waitForTimeout(1600);
-  await T.sim(3.4 + 3.4); await T.snap('6-amble-looks-at-nilo');
-  await T.sim(0.6 + 3.2 + 2.6); await T.snap('6b-first-step');
+  const toBeat = async (i, t) => { for (let n = 0; n < 600 && !(await ev(`__game.seq.running && (__game.seq.i > ${i} || (__game.seq.i === ${i} && __game.seq.t >= ${t}))`)); n++) await T.sim(0.1); };
+  await toBeat(1, 3.2); await T.snap('6-amble-looks-at-nilo');
+  await toBeat(3, 2.4); await T.snap('6b-first-step');
   await T.until(`__game.mode === 'play'`, 20);
   console.log('eyes done', await T.state());
   if (!(await ev(`__game.flags.has('town:eyes-done')`))) throw new Error('the eyes were not done');

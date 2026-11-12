@@ -25,6 +25,13 @@ import { SkyWhale } from '../skyIsles/whale';
 import { MOSSFOLK, folkLook } from './mossfolk';
 import { TOWN_GOALS, TOWN_LINES } from '../../data/townWords';
 import { TownTasks } from './townTasks';
+import { FarValley } from './farValley';
+import { TownGoodbye } from './townGoodbye';
+import type { AmbleWalker } from './ambleWalk';
+import { TOWN_MOVE } from '../../data/townWords';
+
+/** Where Pip stands once Amble walks: up on the lookout at the front of the neck (the neck's riding frame). */
+const PIP_LOOKOUT = new THREE.Vector3(0.8, 5.28, -0.2);
 
 const sm = (k: number) => k * k * (3 - 2 * k);
 const clamp = (x: number, a = 0, b = 1) => Math.min(b, Math.max(a, x));
@@ -45,10 +52,15 @@ export class TownStory {
   private beam: THREE.Mesh;
   private whale: SkyWhale;
   private clouds: THREE.InstancedMesh;
+  /** The painted distance behind the wow shot's long lens. */
+  private far: FarValley;
   /** Creature space: where Nilo lands (open moss on the crown), and where Pip comes from. */
   readonly landing: THREE.Vector3;
   private arriving = false;
   private folkOut = 1;
+  readonly walker: AmbleWalker;
+  /** The goodbye on the beach. */
+  readonly bye: TownGoodbye;
 
   constructor(private g: Game, private idx: number, private tm: TownMove) {
     this.town = tm.town;
@@ -107,8 +119,19 @@ export class TownStory {
     g.scene.add(this.whale.root);
     this.clouds = this.cloudDeck();
     g.scene.add(this.clouds);
-    tm.keepInSky.add(this.whale.root); tm.keepInSky.add(this.clouds); tm.keepInSky.add(this.root);
+    this.far = new FarValley();
+    g.scene.add(this.far.root);
+    tm.keepInSky.add(this.whale.root); tm.keepInSky.add(this.clouds); tm.keepInSky.add(this.root); tm.keepInSky.add(this.far.root);
     this.tasks = new TownTasks(g, idx, tm, this);
+    this.walker = g.contents[idx].refs.walker as AmbleWalker;
+    this.bye = new TownGoodbye(g, idx, tm, this, this.walker);
+    // after the goodbye: wade out into the Sea, when he chooses (never on by itself)
+    const me = this;
+    g.contents[idx].interactables.push({
+      id: 'townSea', world: idx, get pos() { return me.bye.site().S; }, radius: 4.5,
+      label: () => (this.has('town:goodbye') && !this.has('chapter3-complete') && g.mode === 'play' ? TOWN_MOVE.sea : null),
+      act: () => g.cut(this.bye.seaBeats()),
+    });
   }
 
   /** Open ground on the shell between r0 and r1 from `near` with `clear` metres free all round (creature space). */
@@ -176,6 +199,7 @@ export class TownStory {
     if (!this.has('town:arrived')) return null;
     if (!this.has('town:quest')) return TOWN_GOALS.pip;
     if (this.step() === 1 && !this.has('town:met-tamsin')) return TOWN_GOALS.tamsin;
+    if (this.step() === 4) return this.has('town:goodbye') ? TOWN_GOALS.sea : this.has('town:coast') ? TOWN_GOALS.toCoast : TOWN_GOALS.walk;
     return this.tasks.goal();
   }
   /** The three steps: ● for each done and the one in hand, ○ for those still ahead. */
@@ -185,6 +209,7 @@ export class TownStory {
     if (!this.has('town:arrived')) return null;
     if (!this.has('town:quest')) return this.npc('pip').root.position.clone();
     if (this.step() === 1 && !this.has('town:met-tamsin')) return this.npc('ropewright').root.position.clone();
+    if (this.step() === 4) return this.has('town:goodbye') ? this.bye.site().S : this.has('town:coast') ? null : this.npc('pip').root.position.clone();
     return this.tasks.guideTarget();
   }
 
@@ -193,6 +218,7 @@ export class TownStory {
   frame(dt: number) {
     const g = this.g, pl = g.player;
     this.active = true;
+    this.walking();
     this.sync();
     // the fox walks on the shell with him (at his height when he is on Amble, else on the meadow)
     g.fox.ground = (d, out) => {
@@ -211,7 +237,8 @@ export class TownStory {
     for (let i = 1; i <= 6; i++) this.npc('moss' + i).root.visible = this.folkOut > 0 || this.has('town:arrived');
     // nobody is drawn from far off (a body is ninety-odd little pieces, and at sixty metres a few pixels)
     const cam = g.camera.position;
-    for (const h of this.homes) if (h.npc.root.visible && h.npc.root.position.distanceToSquared(cam) > 60 * 60) h.npc.root.visible = false;
+    const far = this.bye.playing ? 120 : 60;
+    for (const h of this.homes) if (h.npc.root.visible && h.npc.root.position.distanceToSquared(cam) > far * far) h.npc.root.visible = false;
     // the beam
     const target = g.mode === 'play' ? this.guideTarget() : null;
     const u = (this.beam.material as THREE.ShaderMaterial).uniforms;
@@ -230,8 +257,36 @@ export class TownStory {
     if (!this.has('town:arrived') && !this.arriving && g.mode === 'play' && !g.seq.running) this.play();
   }
 
+  /**
+   * Old Amble walking: its slow loop once its eyes are clear; down to the coast once Pip asks it to; the goodbye
+   * when it gets there; and after, back to the loop. Pip waits up on the lookout at the front of the neck.
+   */
+  private walking() {
+    const g = this.g, W = this.walker, h = (f: string) => this.has(f);
+    const free = g.mode === 'play' || g.mode === 'talk';
+    if (free && !this.bye.playing) {
+      if (h('town:eyes-done') && !h('town:coast') && W.mode === 'stand') W.startLoop(0);
+      if (h('town:coast') && !h('town:goodbye')) { if (W.mode === 'stand') W.atCoast(); else if (W.mode === 'loop') W.toCoast(); }
+      if (h('town:goodbye') && W.mode === 'stand') W.startLoop(W.loop.nearest(-8, -6));
+    }
+    // Pip, up on the lookout (riding the neck), from the moment Amble walks
+    const pip = this.byId.pip;
+    if (h('town:eyes-done') && !this.bye.playing && !pip.npc.root.userData.byeHome) {
+      if (pip.ride !== this.tm.amble.neckRide) { pip.ride = this.tm.amble.neckRide; pip.pos.copy(PIP_LOOKOUT); pip.face.set(0, 0, 1); }
+      // (asked again every time, until Amble is sent off to the coast)
+      if (!h('town:coast') && g.mode === 'play') delete g.sigs.pip;
+    }
+    // there: the goodbye on the beach
+    if (W.mode === 'atCoast' && h('town:coast') && !h('town:goodbye') && g.mode === 'play' && !g.seq.running && !this.bye.playing) {
+      this.bye.playing = true;
+      g.cut(this.bye.beats(), () => { this.bye.playing = false; });
+    }
+    // the golden hour holds on the beach after the goodbye, until he goes
+    this.bye.setGolden(this.bye.playing || h('town:goodbye') && !h('chapter3-complete'));
+  }
+
   /** Leaving World 3: the fox goes back to the ground she knows. */
-  off() { if (this.active) { this.active = false; this.g.fox.ground = null; this.beam.visible = false; this.tasks.off(); } }
+  off() { if (this.active) { this.active = false; this.g.fox.ground = null; this.beam.visible = false; this.tasks.off(); this.bye.setGolden(false); } }
 
   // ------------------------------------------------------------------ the sky jump
 
@@ -330,6 +385,7 @@ export class TownStory {
     const landCam = this.clearView(Lw.clone().addScaledVector(up, 1.0), up, 9, 3.6, D.clone().multiplyScalar(11).addScaledVector(S, 7));
     const R = tm.amble.root;
     const AV = (x: number, y: number, z: number) => R.localToWorld(new THREE.Vector3(x, y, z));
+    const AD = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z).transformDirection(R.matrixWorld);
     const beats: Beat[] = [
       // 1. high over the meadow the whale levels out; Nilo and the fox on its back, the clouds below
       {
@@ -466,17 +522,28 @@ export class TownStory {
       // 8. the wow shot: back and back, to the whole of Amble standing still in the golden meadow
       {
         dur: 6.0,
-        enter: () => { const c = CHAPTERS[this.idx]; g.hud.showChapter(c.n, c.title, '', 5.5); },
+        enter: () => {
+          const c = CHAPTERS[this.idx]; g.hud.showChapter(c.n, c.title, '', 5.5); this.far.root.visible = true;
+          // (the painted far valley has its own little town on a hill: the real one over the curve stays out of it)
+          const ht = g.contents[this.idx].refs.hillTown as THREE.Object3D | undefined; if (ht) ht.visible = false;
+        },
         tick: k => {
           const s = sm(k);
-          // to three-quarters front, off Amble's right and a little over its shell: the golden plain, and past the
-          // head the river, the lake, the far hill town and the snowy mountains
-          const pos = wow.from.pos.clone().lerp(AV(-55, 27, 66), s).addScaledVector(up, Math.sin(Math.PI * s) * 12);
-          // (level with the ground out there: the camera's own up, so the far horizon lies flat across the frame)
-          const cu = up.clone().lerp(pos.clone().sub(p.center).normalize(), s).normalize();
-          g.cutCam = { pos, look: wow.from.look.clone().lerp(AV(25, 11, 10), sm(clamp(k * 1.4))), up: cu };
+          // up and away, far out into the meadow off Amble's right, a little ahead, as the lens closes in to a long
+          // one: Amble whole and huge on the golden rise, and beyond, the valley, the lake and the snowy mountains
+          // (the lens stays upright to Amble, so it stands tall on the crest of its meadow as in the picture)
+          const endPos = AV(-104, 5.5, 16), endLook = AV(0, 19, 7);
+          const pos = wow.from.pos.clone().lerp(endPos, s).addScaledVector(up, Math.sin(Math.PI * s) * 16);
+          const aUp = AD(0, 1, 0);
+          g.cutCam = { pos, look: wow.from.look.clone().lerp(endLook, sm(clamp(k * 1.3))), up: up.clone().lerp(aUp, s).normalize() };
+          const fov = 58 + (31 - 58) * sm(clamp((k - 0.1) / 0.8));
+          if (Math.abs(g.camera.fov - fov) > 0.01) { g.camera.fov = fov; g.camera.updateProjectionMatrix(); }
+          const dirH = endLook.clone().sub(endPos).projectOnPlane(aUp).normalize();
+          this.far.place(pos, dirH, aUp, p.center, p.R + 3);
         },
-        exit: () => { g.give('town:arrived'); g.flags.add('town:jump-seen'); this.arriving = false; g.save(); },
+        exit: () => {
+          const ht = g.contents[this.idx].refs.hillTown as THREE.Object3D | undefined; if (ht) ht.visible = true;
+          this.far.root.visible = false; g.camera.fov = 58; g.camera.updateProjectionMatrix(); g.give('town:arrived'); g.flags.add('town:jump-seen'); this.arriving = false; g.save(); },
       },
     ];
     // then Pip runs out to meet the stranger who fell from the sky, and the village comes out to stare

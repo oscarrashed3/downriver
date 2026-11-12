@@ -63,6 +63,7 @@ import { TownMove } from './world/walkingTown/townMove';
 import { TownStory } from './world/walkingTown/townStory';
 import { townGrassWeights, townFlowers, TOWN_FLOWERS } from './world/walkingTown/townGrass';
 import { SKY_MOVE } from './data/skyWords';
+import { TOWN_MOVE } from './data/townWords';
 import { CHAPTERS, MAIN_QUEST, NOT_YET, OPENING, WORLD_TASKS } from './data/story';
 import { ChapterOne } from './story/chapterOne';
 import { SkyChapter } from './story/skyChapter';
@@ -772,7 +773,11 @@ export class Game {
    * Whether the river may carry you on out of world i (the raft, the edge, the river's end). The Sky Isles are
    * only ever left on the whale's back after the goodbye, so there every other way on stays shut.
    */
-  mayLeave(i: number) { return WORLDS[i].id !== 'sky' || this.flags.has('chapter2-complete'); }
+  mayLeave(i: number) {
+    // (the Walking Town is left only by wading out into the Sea after the goodbye on the beach)
+    if (WORLDS[i].id === 'garden' && this.townStory) return this.flags.has('chapter3-complete');
+    return WORLDS[i].id !== 'sky' || this.flags.has('chapter2-complete');
+  }
 
   /** The whale has carried Nilo down through the clouds: on to the next world (under the cream fade). */
   leaveSky() {
@@ -787,6 +792,19 @@ export class Game {
     if (!this.worldReady(to)) this.hud.notify(NOTE.unbuilt(WORLDS[to].name));
     // the Walking Town: the whale carries on over the meadow and the arrival scene follows the goodbye
     if (WORLDS[to].id === 'garden' && this.townStory) this.townStory.arm();
+    this.save();
+  }
+
+  /** The goodbye on the beach is over and Nilo has waded out into the Sea: on to World 4 (under the cream fade). */
+  leaveTown() {
+    const to = WORLDS.findIndex(w => w.id === 'garden') + 1, pl = this.planets[to];
+    this.enterWorld(to);
+    this.player.placeAt(pl, this.arrivalDir(to));
+    this.player.facing.copy(pl.surfacePoint(pl.pathPoint(0.08)).sub(this.player.pos).projectOnPlane(this.player.up).normalize());
+    this.player.glider = null; this.player.forceOpen = false; this.player.pose = {};
+    this.rig.faceDir(this.player.up, this.player.facing); this.rig.smoothUp.copy(this.player.up); this.rig.snap();
+    if (this.flags.has('fox-joined')) { this.foxWorld = to; this.fox.place(pl, this.player.up.clone()); }
+    if (!this.worldReady(to)) this.hud.notify(NOTE.unbuilt(WORLDS[to].name));
     this.save();
   }
 
@@ -1017,7 +1035,7 @@ export class Game {
         if (!this.edgeWarned) { this.edgeWarned = true; this.hud.notify(NOT_YET.edgeEarly); }
       } else if (!this.mayLeave(this.cur)) {
         pl.raftT = 0.97;
-        if (!this.edgeWarned) { this.edgeWarned = true; this.hud.notify(SKY_MOVE.noExit); }
+        if (!this.edgeWarned) { this.edgeWarned = true; this.hud.notify(WORLDS[this.cur].id === 'garden' ? TOWN_MOVE.noExit : SKY_MOVE.noExit); }
       } else if (this.cur < this.planets.length - 1) {
         pl.raftT = 0.99;
         this.hud.setPrompt(`<b>R</b> ride the falling stream down to ${WORLDS[this.cur + 1].name} &nbsp; <b>E</b> step ashore`);
@@ -1245,7 +1263,7 @@ export class Game {
     return WORLDS.map((w, i) => ({ name: w.name, n: CHAPTERS[i].n,
       state: (i === this.cur ? 'here' : this.worldDone(i) ? 'done' : this.flags.has('visited:' + i) ? 'visited' : 'ahead') as 'here' | 'done' | 'visited' | 'ahead' }));
   }
-  worldDone(i: number) { return i === 0 ? this.flags.has('chapter1-complete') : this.isSky(i) ? this.flags.has('chapter2-complete') : false; }
+  worldDone(i: number) { return i === 0 ? this.flags.has('chapter1-complete') : this.isSky(i) ? this.flags.has('chapter2-complete') : WORLDS[i]?.id === 'garden' ? this.flags.has('chapter3-complete') : false; }
   /** Fly back to a world from the menu: close it, open the sky, and travel. */
   goBack(i: number) {
     if (i === this.cur || !this.flags.has('visited:' + i)) return;

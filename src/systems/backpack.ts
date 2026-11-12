@@ -25,6 +25,8 @@ export const ITEMS: Record<string, ItemDef> = {
   'item:racer-ribbon': { id: 'item:racer-ribbon', name: "Racer's ribbon", text: 'Blue and gold. It says you may race in the Sky Races. Zephy tied it on, scowling.', icon: 'ribbon' },
   'item:scarf': { id: 'item:scarf', name: "Lark's yellow scarf", text: 'It still smells of wind and honey pastry. Kept from the Sky Isles.', icon: 'scarf' },
   'item:kite': { id: 'item:kite', name: "Fold's kite frame", text: 'The light frame from the top of the big windmill. Fold folds round it into a paper glider whenever you jump off an edge and hold on. Kept from the Sky Isles.', icon: 'kite' },
+  'item:moss-jar': { id: 'item:moss-jar', name: "A jar of Amble's moss", text: "A sprig of the moss off Old Amble's back, in a little glass jar. Pip says it grows anywhere. Kept from the Walking Town.", icon: 'jar' },
+  'item:rope': { id: 'item:rope', name: "Tamsin's best rope", text: 'A coil of her best rope, greased with goose fat. It holds a cart.', icon: 'rope' },
   'item:frost': { id: 'item:frost', name: "Hollo's frost", text: 'A snowflake that does not melt. It fell from Hollo\'s cloud onto your hood. Kept from the Spring Peaks.', icon: 'frost' },
 };
 
@@ -42,6 +44,7 @@ export const TRADES: Trade[] = [
 export const KEPT: { world: string; flag: string; object: string; skill: string; friend: string }[] = [
   { world: 'The Spring Peaks', flag: 'peaks-healed', object: "Hollo's frost", skill: 'Skyreading', friend: 'Hollo, the cloud over the peaks' },
   { world: 'The Sky Isles', flag: 'chapter2-complete', object: "Lark's yellow scarf and Fold's kite frame", skill: 'Gliding', friend: 'Lark, who flies the yellow kite' },
+  { world: 'The Walking Town', flag: 'chapter3-complete', object: "A jar of Amble's moss", skill: 'Climbing', friend: 'Pip, who knows every stair in Mossrest' },
 ];
 
 export interface SkillDef { flag: string; name: string; key: string; text: string }
@@ -116,6 +119,8 @@ export interface BagCtx {
 }
 
 const ICONS: Record<string, string> = {
+  jar: '<rect x="14" y="16" width="20" height="24" rx="6" fill="#dcefe8" stroke="#2e2230" stroke-width="2"/><rect x="16" y="10" width="16" height="7" rx="2" fill="#a88a5a" stroke="#2e2230" stroke-width="2"/><path d="M18 34 Q20 26 24 30 Q26 22 30 28 Q31 33 30 36 Q24 38 18 36 Z" fill="#7fa64a" stroke="#2e2230" stroke-width="1.5"/>',
+  rope: '<ellipse cx="24" cy="26" rx="14" ry="10" fill="none" stroke="#b39668" stroke-width="5"/><ellipse cx="24" cy="26" rx="8" ry="5" fill="none" stroke="#a88456" stroke-width="4"/><path d="M36 30 Q42 38 38 42" fill="none" stroke="#b39668" stroke-width="4" stroke-linecap="round"/>',
   branch: '<path d="M8 40 L40 8" stroke="#7a5a34" stroke-width="4" stroke-linecap="round"/><path d="M26 22 l8 2 M18 30 l-2 -8" stroke="#6a8a3a" stroke-width="3" stroke-linecap="round"/>',
   bottle: '<rect x="16" y="16" width="16" height="24" rx="5" fill="#d8eef4" stroke="#2e2230" stroke-width="2"/><rect x="20" y="8" width="8" height="9" fill="#a88a5a" stroke="#2e2230" stroke-width="2"/>',
   cloud: '<rect x="16" y="16" width="16" height="24" rx="5" fill="#d8eef4" stroke="#2e2230" stroke-width="2"/><circle cx="22" cy="29" r="4" fill="#fff"/><circle cx="27" cy="27" r="5" fill="#fff"/><rect x="20" y="8" width="8" height="9" fill="#a88a5a" stroke="#2e2230" stroke-width="2"/>',

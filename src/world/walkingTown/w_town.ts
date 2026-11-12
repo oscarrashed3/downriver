@@ -12,6 +12,7 @@ import { townRng } from './rand';
 import { house, windmill } from './mossrestHouse';
 import { tree, shrub } from './mossrestKit';
 import { AMBLE_AT, PLACES, townDir, townFrame } from './meadow';
+import { AmbleWalker, COVE, RIDGE } from './ambleWalk';
 
 // World 3, the Walking Town (early afternoon). Old Amble stands in a golden meadow of daisies and lupins with
 // Mossrest on its back; the land rolls away in green hills to a lake, a little town on a far hill, a river with
@@ -33,6 +34,11 @@ export function prepareTown(p: Planet, f: Flat) {
   // the far town's hill: its top levelled for the houses
   const hd = townDir(p, ...PLACES.hill);
   p.flattens.push({ dir: hd, radius: 8.5, height: p.baseHeight(hd), blend: 5 });
+  // the sandy cove where Amble comes down to the Sea (its last rise over the beach, and the beach below its head)
+  p.flattens.push({ dir: townDir(p, ...COVE.at), radius: COVE.radius, height: COVE.height, blend: COVE.blend });
+  p.flattens.push({ dir: townDir(p, ...RIDGE.at), radius: RIDGE.radius, height: RIDGE.height, blend: RIDGE.blend });
+  // (all of it sand)
+  p.tints.push({ dir: townDir(p, -28, -92), r: 24, color: new THREE.Color('#e2cf9c'), k: 0.85 });
   // a worn cart track from the ford up to Amble's meadow
   const pts: THREE.Vector3[] = [];
   for (let k = 0; k <= 8; k++) pts.push(townDir(p, PLACES.ford[0] * (1 - k / 8) + 8 * (k / 8), PLACES.ford[1] * (1 - k / 8) - 14 * (k / 8)));
@@ -61,8 +67,11 @@ export function populateTown(k: WorldKit) {
   const town = new Mossrest(11);
   town.attach(amble.shellTop, amble.neckRide);
   amble.root.updateMatrixWorld(true);
-  c.animate.push((dt, t) => amble.update(dt, t));
-  c.refs.amble = amble; c.refs.town = town;
+  // Amble walking (once its eyes are clear): the walker moves the root on before the rig poses the legs
+  const walker = new AmbleWalker(p, amble);
+  scene.add(walker.kick.mesh);
+  c.animate.push((dt, t) => { walker.update(dt); amble.update(dt, t); });
+  c.refs.amble = amble; c.refs.town = town; c.refs.walker = walker;
   lm('Old Amble and Mossrest', AMBLE_AT.lat, AMBLE_AT.lon, 'tower');
 
   // ---- the meadow round Amble's feet: long golden grass, daisies and lupins (one mesh)
@@ -75,11 +84,13 @@ export function populateTown(k: WorldKit) {
     const gold = [new THREE.Color('#e0c868'), new THREE.Color('#cdbb58'), new THREE.Color('#b8c05a'), new THREE.Color('#d8d07a')];
     const d = new THREE.Vector3(), wp = new THREE.Vector3(), up = new THREE.Vector3();
     const nInv = new THREE.Matrix3().setFromMatrix4(inv);
+    const sandC = townDir(p, -28, -92);
     for (let i = 0; i < 14000; i++) {
       const a = r() * Math.PI * 2, dist = 3 + Math.pow(r(), 0.75) * 85;
       townDir(p, Math.cos(a) * dist, Math.sin(a) * dist, d);
       if (p.riverNearest(d).dist < p.cfg.riverWidth + 2.5) continue;
       if (p.height(d) < (p.cfg.ocean ?? 0) + 0.2) continue;
+      if (d.angleTo(sandC) * p.R < 30) continue;
       // keep the cards off the track and out from under Amble's feet
       p.surfacePoint(d, 0, wp).applyMatrix4(inv);
       up.copy(d).applyMatrix3(nInv).normalize();
@@ -180,6 +191,7 @@ export function populateTown(k: WorldKit) {
     g.add(mill.sails);
     hk.build(g, { outline: false });
     c.animate.push((_dt, t) => { mill.sails.rotation.z = -t * 0.4; });
+    c.refs.hillTown = g;
     const ll = latLon(p, hd);
     lm('The hill town', ll.lat, ll.lon, 'hut');
   }

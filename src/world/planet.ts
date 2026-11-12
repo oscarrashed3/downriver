@@ -33,8 +33,12 @@ function townHeight(p: Planet, d: THREE.Vector3): number {
   // (kept back from the river, so its valley stays an easy walk across)
   if (m > 0) m *= smoothstep(26, 58, p.riverNearest(d).dist);
   if (m > 0) {
-    const r = n.ridged(x * 2.6 + 3, y * 2.6, z * 2.6, 4);
-    h += m * (6 + 66 * Math.pow(r, 2.2) * smoothstep(Math.cos(0.74), Math.cos(0.35), d.dot(reg.mts)));
+    // broad massifs (a low, rounded swell under the range) carrying long ridges, so the peaks stand on wide
+    // shoulders, not up out of the plain like spikes
+    const core = smoothstep(Math.cos(0.76), Math.cos(0.3), d.dot(reg.mts));
+    const r = n.ridged(x * 1.9 + 3, y * 1.9, z * 1.9, 4);
+    const swell = n.fbm(x * 1.3 + 11, y * 1.3, z * 1.3, 2) * 0.5 + 0.5;
+    h += m * (6 + core * (14 + 12 * swell + 40 * Math.pow(r, 1.7)));
   }
   // the hill the far town stands on
   h += 11 * smoothstep(Math.cos(0.19), Math.cos(0.08), d.dot(reg.hill));

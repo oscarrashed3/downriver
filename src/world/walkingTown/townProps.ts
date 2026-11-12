@@ -146,19 +146,75 @@ export function pieceProp(L: number, r: R) {
 }
 
 /** The water's own material: clear running blue with pale streaks travelling along the channel (uT scrolls). */
+/**
+ * The channel's water: running. Each length carries its place along the channel (aFlow: where it starts and how
+ * long it is; aAlong: 0..1 down it), so the surface streams the right way all the way down, the front of the water
+ * is a lip of foam, and nothing shows past it (uFront: how far the water has got, metres).
+ */
 export function waterMaterial() {
   return new THREE.ShaderMaterial({
     transparent: true, depthWrite: false,
-    uniforms: { uT: { value: 0 } },
-    vertexShader: 'varying vec3 vW; varying vec2 vUv; void main(){ vUv = uv; vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
-    fragmentShader: `varying vec3 vW; varying vec2 vUv; uniform float uT;
+    uniforms: { uT: { value: 0 }, uFront: { value: 1e9 } },
+    vertexShader: `attribute vec2 aFlow; attribute float aAlong; attribute float aAcross;
+      varying float vS; varying float vX; varying vec3 vW;
+      void main(){ vS = aFlow.x + aAlong * aFlow.y; vX = aAcross; vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+    fragmentShader: `varying float vS; varying float vX; varying vec3 vW; uniform float uT, uFront;
+      float h1(float n){ return fract(sin(n) * 43758.5453); }
+      float n1(float x){ float i = floor(x), f = fract(x); return mix(h1(i), h1(i + 1.0), f * f * (3.0 - 2.0 * f)); }
       void main(){
-        float s = sin(dot(vW, vec3(1.7, 0.9, 1.3)) * 2.2 - uT * 6.0) * 0.5 + 0.5;
-        float s2 = sin(dot(vW, vec3(-1.1, 1.3, 2.1)) * 3.1 - uT * 8.0) * 0.5 + 0.5;
-        vec3 c = mix(vec3(0.36, 0.66, 0.82), vec3(0.86, 0.95, 1.0), smoothstep(0.75, 1.0, s * s2 + 0.25 * s));
-        gl_FragColor = vec4(c, 0.86);
+        if (vS > uFront) discard;
+        float s = vS - uT * 2.6;
+        // long streaks running down the channel, wobbling across it, and little flecks of foam riding on them
+        float w = n1(vX * 9.0 + n1(s * 0.7) * 3.0);
+        float streak = smoothstep(0.55, 0.95, n1(s * 2.3 + w * 4.0) * 0.7 + n1(s * 5.1 + vX * 13.0) * 0.45);
+        float fleck = smoothstep(0.8, 0.95, n1(s * 9.0 + floor(vX * 7.0) * 17.0)) * smoothstep(0.3, 0.45, abs(vX));
+        vec3 deep = vec3(0.24, 0.52, 0.72), light = vec3(0.62, 0.84, 0.95), foam = vec3(0.96, 0.98, 1.0);
+        vec3 c = mix(deep, light, streak * 0.8 + 0.12 * sin(s * 3.0 + vX * 6.0));
+        // white along the trough's sides, and a frothy lip at the very front of the water
+        c = mix(c, foam, max(fleck, smoothstep(0.38, 0.5, abs(vX)) * 0.6));
+        float lip = 1.0 - smoothstep(0.0, 0.9, uFront - vS);
+        c = mix(c, foam, lip * (0.6 + 0.4 * n1(vX * 20.0 + uT * 9.0)));
+        gl_FragColor = vec4(c, 0.9);
       }`,
   });
+}
+
+/** A water surface for one length of channel (x across, -0.25..0.25; z from 0 to 1 down it), flowing from s0. */
+export function waterLength(s0: number, len: number) {
+  const g = new THREE.BoxGeometry(0.5, 0.09, 1, 4, 1, 1).translate(0, 0, 0.5);
+  const pa = g.attributes.position as THREE.BufferAttribute;
+  const fl = new Float32Array(pa.count * 2), al = new Float32Array(pa.count), ac = new Float32Array(pa.count);
+  for (let i = 0; i < pa.count; i++) { fl[i * 2] = s0; fl[i * 2 + 1] = len; al[i] = pa.getZ(i); ac[i] = pa.getX(i) * 2; }
+  g.setAttribute('aFlow', new THREE.BufferAttribute(fl, 2));
+  g.setAttribute('aAlong', new THREE.BufferAttribute(al, 1));
+  g.setAttribute('aAcross', new THREE.BufferAttribute(ac, 1));
+  return g;
+}
+
+/** The same for a tube (the trickle into the mouth): along its length from s0. */
+export function waterTube(geo: THREE.BufferGeometry, s0: number, len: number) {
+  const uv = geo.attributes.uv as THREE.BufferAttribute, n = uv.count;
+  const fl = new Float32Array(n * 2), al = new Float32Array(n), ac = new Float32Array(n);
+  for (let i = 0; i < n; i++) { fl[i * 2] = s0; fl[i * 2 + 1] = len; al[i] = uv.getX(i); ac[i] = Math.sin(uv.getY(i) * Math.PI * 2) * 0.3; }
+  geo.setAttribute('aFlow', new THREE.BufferAttribute(fl, 2));
+  geo.setAttribute('aAlong', new THREE.BufferAttribute(al, 1));
+  geo.setAttribute('aAcross', new THREE.BufferAttribute(ac, 1));
+  return geo;
+}
+
+/** Bramwyn's old garden shears, lent to Nilo for the vines (in the hand: the blades point down local -y). */
+export function shearsProp() {
+  const k = new Kit();
+  for (const sd of [-1, 1]) {
+    const blade = new THREE.BoxGeometry(0.03, 0.2, 0.008).translate(0, -0.1, 0);
+    const bp = blade.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < bp.count; i++) if (bp.getY(i) < -0.15) bp.setX(i, bp.getX(i) * 0.25);
+    blade.computeVertexNormals();
+    k.add(blade, 'plain', '#c9ccd2', T(0, -0.02, 0, 0, 0, sd * 0.16));
+    k.add(new THREE.TorusGeometry(0.035, 0.011, 5, 10), 'plain', '#8a4a2a', T(sd * 0.04, 0.035, 0, 0, 0, 0));
+  }
+  k.add(new THREE.CylinderGeometry(0.012, 0.012, 0.02, 6).rotateX(Math.PI / 2), 'plain', '#6e6a66', T(0, -0.02, 0));
+  return k.build(new THREE.Group(), { outline: false });
 }
 
 /** The sluice: a board gate between two posts with a little wheel to wind it up (local: across x, the water

@@ -179,6 +179,12 @@ export class AmbleRig {
   /** Idle inputs set by Amble each frame. */
   breath = 0; shellBreath = 0;
   idle = { headYaw: 0, headPitch: 0, earL: 0, earR: 0, earFlickL: 0, earFlickR: 0, lookX: 0, lookY: 0, blink: 0, lid: 0.22, tail: 0 };
+  /** The feet that came down this frame (walking), for the thud, the dust and the shake. */
+  planted: Leg[] = [];
+  /** How fast the legs are walking now (the eased walk), and the ground speed that keeps the planted feet still. */
+  get walkNow() { return this.cur.walk; }
+  get groundSpeed() { const w = this.cur.walk; return w > 1e-3 ? 6.476 * w * Math.min(1, w * 4) : 0; }
+  private lastPh: Record<Leg, number> = { FL: 0, FR: 0, BL: 0, BR: 0 };
   /** The ground under each foot when standing (creature space y); the game can set it to follow the planet. */
   groundY: Record<Leg, number> = { FL: 0, FR: 0, BL: 0, BR: 0 };
 
@@ -221,8 +227,11 @@ export class AmbleRig {
     if (C.walk > 1e-3) this.gaitPhase = (this.gaitPhase + dt * C.walk / (T * 0.25)) % 1;
     const offs: Record<Leg, number> = { BL: 0, FL: 0.25, BR: 0.5, FR: 0.75 };
     let bob = 0, sway = 0;
+    this.planted.length = 0;
     for (const L of this.legs) {
       const ph = (this.gaitPhase + offs[L.l]) % 1;
+      if (wk > 0.3 && this.lastPh[L.l] < duty && ph >= duty && ph - this.lastPh[L.l] < 0.5) this.planted.push(L.l);
+      this.lastPh[L.l] = ph;
       const home = L.home.clone(); home.y = this.groundY[L.l] + REST[legBones(L.l)[2]].y;
       let dz = 0, lift = 0;
       if (ph < duty) { const u = ph / duty; dz = (-0.5 + u) * stride; lift = Math.sin(Math.PI * u) * 1.3; }
