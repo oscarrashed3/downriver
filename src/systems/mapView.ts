@@ -27,7 +27,7 @@ export const FOG_W = 180, FOG_H = 90;
 const KW = 256, KH = 128;
 const D2R = Math.PI / 180;
 
-export type GlobeIcon = Landmark['icon'] | 'village' | 'bridge' | 'ridge' | 'meadow' | 'cliffs' | 'edge' | 'terraces';
+export type GlobeIcon = Landmark['icon'] | 'village' | 'bridge' | 'ridge' | 'meadow' | 'cliffs' | 'edge' | 'terraces' | 'amble' | 'shore';
 const AREA_ICON: Record<string, GlobeIcon> = { spring: 'spring', village: 'village', terraces: 'terraces', ridge: 'ridge', meadow: 'meadow', cliffs: 'cliffs', bridge: 'bridge', edge: 'edge' };
 
 interface Marker {
@@ -163,6 +163,8 @@ export class MapView {
   areas: { id?: string; name: string; at: { lat: number; lonOff: number }; outline: { lat: number; lonOff: number }[] }[] | null = null;
   /** The current task, as the gold pin. */
   task: { dir: THREE.Vector3; label: string } | null = null;
+  /** Things that move or are not built into the model (World 3: Old Amble where it is right now, the coast). */
+  extra: { name: string; dir: THREE.Vector3; icon: GlobeIcon; big?: boolean }[] = [];
 
   private stage: HTMLElement;
   private markerLayer: HTMLElement;
@@ -866,6 +868,8 @@ export class MapView {
       case 'pole': return S(`<path d="M0 9 V-9" stroke="#c4524a" stroke-width="3"/>`);
       case 'fire': return S(`<path d="M0 -9 C6 -2 6 6 0 8 C-6 6 -6 -2 0 -9 Z" fill="#e88a3a" stroke="#7a3a14"/>`);
       case 'tower': return S(`<rect x="-3" y="-9" width="6" height="17" class="ink fillw"/>`);
+      case 'amble': return S(`<path d="M-11 4 Q-10 -6 0 -7 Q10 -6 11 4 Z" class="ink fillr"/><path d="M-6 -6 v-4 h3 v3 M2 -7 v-4 h3 v4" class="ink fillw"/><path d="M-8 4 v5 M-3 4 v5 M3 4 v5 M8 4 v5" class="ink" stroke-width="2.2"/><path d="M10 0 q4 -3 3 -8 M13 -8 l-2 -3 M13 -8 l2 -3" class="ink"/><path d="M-9 1 q9 -4 18 0" class="grass"/>`);
+      case 'shore': return S(`<path d="M-11 2 q3 -3 6 0 t6 0 t6 0 t5 0" class="water"/><path d="M-11 7 q3 -3 6 0 t6 0 t6 0 t5 0" class="water"/><path d="M-10 -3 Q0 -8 10 -3" class="ink"/>`);
       case 'person': return S(`<circle cy="-4" r="3.5" class="ink fillw"/><path d="M-6 8 q6 -12 12 0 Z" class="ink fillw"/>`);
     }
   }
@@ -899,6 +903,7 @@ export class MapView {
         this.add(`${this.icon(lm.icon)}<span class="gl">${esc(lm.name)}</span>`, 'place', p.dirRiver(lm.lat, lm.lon), undefined, { prio: 3 });
       }
     }
+    for (const x of this.extra) this.add(`${this.icon(x.icon)}<span class="gl">${esc(x.name)}</span>`, x.big ? 'place big' : 'place', this.localDir(x.dir), undefined, { prio: x.big ? 4 : 3 });
     for (const pp of this.people) this.add(`<span class="face${pp.invited ? ' invited' : ''}">${esc(pp.name.slice(0, 1))}</span><span class="gl small">${esc(pp.name)}</span>`, 'person', p.dirRiver(pp.lat, pp.lonOff), undefined, { prio: 2 });
     const mine = this.customPin(p.cfg.id);
     if (mine) this.add(`<svg viewBox="-12 -30 24 32" class="pinsvg"><path d="M0 0 C-3 -9 -10 -13 -10 -20 a10 10 0 0 1 20 0 C10 -13 3 -9 0 0 Z" fill="#d8665c" stroke="#5a2420" stroke-width="1.6"/><circle cy="-20" r="4" fill="#fff4ea"/></svg><span class="gl">Your pin</span>`, 'pin custom', mine, 0.004, { prio: 4 });

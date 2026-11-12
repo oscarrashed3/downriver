@@ -27,6 +27,7 @@ import { TOWN_GOALS, TOWN_LINES } from '../../data/townWords';
 import { TownTasks } from './townTasks';
 import { FarValley } from './farValley';
 import { TownGoodbye } from './townGoodbye';
+import { TownExtras } from './townExtras';
 import type { AmbleWalker } from './ambleWalk';
 import { TOWN_MOVE } from '../../data/townWords';
 
@@ -61,6 +62,8 @@ export class TownStory {
   readonly walker: AmbleWalker;
   /** The goodbye on the beach. */
   readonly bye: TownGoodbye;
+  /** The postman on his bird, the swaps, the hidden sketch spots. */
+  readonly extras: TownExtras;
 
   constructor(private g: Game, private idx: number, private tm: TownMove) {
     this.town = tm.town;
@@ -125,6 +128,7 @@ export class TownStory {
     this.tasks = new TownTasks(g, idx, tm, this);
     this.walker = g.contents[idx].refs.walker as AmbleWalker;
     this.bye = new TownGoodbye(g, idx, tm, this, this.walker);
+    this.extras = new TownExtras(g, idx, tm, this);
     // after the goodbye: wade out into the Sea, when he chooses (never on by itself)
     const me = this;
     g.contents[idx].interactables.push({
@@ -213,6 +217,19 @@ export class TownStory {
     return this.tasks.guideTarget();
   }
 
+  /** For the map: Old Amble (and Mossrest on its back) where it is right now, and the coast it walks down to. */
+  mapMarks() {
+    const A = this.tm.amble.root.position.clone();
+    const marks: { name: string; dir: THREE.Vector3; icon: 'amble' | 'shore'; big?: boolean }[] = [{ name: 'Old Amble and Mossrest, now', dir: A, icon: 'amble', big: true }];
+    if (this.has('town:eyes-done')) marks.push({ name: 'The Sea', dir: this.bye.site().S.clone(), icon: 'shore' });
+    return marks;
+  }
+  /** For the compass: Old Amble, when Nilo is off its back (down on the meadow or the beach). */
+  compassMark(): THREE.Vector3 | null {
+    if (this.tm.onAmble || this.tm.climb || this.tasks.high || !this.has('town:arrived')) return null;
+    return this.tm.amble.root.position.clone();
+  }
+
   // ------------------------------------------------------------------ each frame in World 3
 
   frame(dt: number) {
@@ -253,6 +270,7 @@ export class TownStory {
       this.beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), up);
     }
     this.tasks.frame(dt);
+    this.extras.frame(dt);
     // never arrived (a save from before the scene, or the stream ride in): the scene plays now
     if (!this.has('town:arrived') && !this.arriving && g.mode === 'play' && !g.seq.running) this.play();
   }
@@ -285,8 +303,40 @@ export class TownStory {
     this.bye.setGolden(this.bye.playing || h('town:goodbye') && !h('chapter3-complete'));
   }
 
+  /** What a save keeps of World 3 beyond the flags: Nilo on Amble's back (creature space), Amble on its loop. */
+  saveState() {
+    const pl = this.g.player, q = pl.pos.clone().applyMatrix4(this.town.group.matrixWorld.clone().invert());
+    return { on: this.tm.onAmble || !!this.tm.climb || this.tasks.high, local: [q.x, q.y + 0.05, q.z] as [number, number, number], s: this.walker.s, mode: this.walker.mode };
+  }
+  /** Continue: Amble back where it was (on its loop, at the coast), and Nilo on its back, or on the beach. */
+  restore(t?: { on: boolean; local: [number, number, number]; s: number; mode: string }) {
+    const g = this.g, pl = g.player, W = this.walker, p = g.planets[this.idx];
+    if (!this.has('town:arrived')) return;
+    const A = this.tm.amble.root;
+    if (this.has('town:goodbye')) {
+      // after the goodbye: on the sand by the water, Amble gone back to its loop
+      W.resume(W.loop.nearest(-8, -6));
+      const { S, toSea } = this.bye.site();
+      this.tm.placed = true; this.tm.onAmble = false;
+      pl.placeAt(p, S.clone().addScaledVector(toSea, -2.5).sub(p.center).normalize());
+      pl.facing.copy(toSea).projectOnPlane(pl.up).normalize(); pl.sync();
+      return;
+    }
+    if (this.has('town:coast')) W.atCoast();
+    else if (this.has('town:eyes-done')) W.resume(t && t.mode === 'loop' ? t.s : 0);
+    A.updateMatrixWorld(true);
+    if (!t) return;
+    this.tm.placed = true;
+    if (t.on) {
+      const at = this.w(new THREE.Vector3(...t.local));
+      pl.pos.copy(at); pl.up.copy(at).sub(p.center).normalize(); pl.vel.set(0, 0, 0);
+      pl.facing.projectOnPlane(pl.up).normalize(); pl.sync();
+      this.tm.onAmble = true;
+    }
+  }
+
   /** Leaving World 3: the fox goes back to the ground she knows. */
-  off() { if (this.active) { this.active = false; this.g.fox.ground = null; this.beam.visible = false; this.tasks.off(); this.bye.setGolden(false); } }
+  off() { if (this.active) { this.active = false; this.g.fox.ground = null; this.beam.visible = false; this.tasks.off(); this.extras.off(); this.bye.setGolden(false); } }
 
   // ------------------------------------------------------------------ the sky jump
 

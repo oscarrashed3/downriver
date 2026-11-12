@@ -136,6 +136,15 @@ export class AmbleWalker {
   /** On the loop at s (by default from where Amble stood). */
   startLoop(s = 0) { this.path = this.loop; this.s = s; this.mode = 'loop'; this.steer = []; }
 
+  /** Back on the loop at s, where a save left it (placed at once). */
+  resume(s: number) {
+    this.startLoop(s);
+    const { p: q, t } = this.path.at(s);
+    this.f = q.x; this.l = q.z;
+    const n = Math.hypot(t.x, t.z) || 1; this.hx = t.x / n; this.hz = t.z / n;
+    this.place(true);
+  }
+
   /** Off the loop and down to the coast: it turns, slow as it does everything, and makes for the last rise over
    * the beach, coming in square to the Sea. */
   toCoast() {

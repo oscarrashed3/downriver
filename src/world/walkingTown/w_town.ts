@@ -64,6 +64,8 @@ export function populateTown(k: WorldKit) {
   p.surfacePoint(A, -0.05, amble.root.position);
   orientTo(amble.root, A, F);
   scene.add(amble.root);
+  // (it walks: the map leaves it out of the model and pins it where it is when the map is opened)
+  amble.root.userData.mapSkip = true;
   const town = new Mossrest(11);
   town.attach(amble.shellTop, amble.neckRide);
   amble.root.updateMatrixWorld(true);
@@ -72,7 +74,7 @@ export function populateTown(k: WorldKit) {
   scene.add(walker.kick.mesh);
   c.animate.push((dt, t) => { walker.update(dt); amble.update(dt, t); });
   c.refs.amble = amble; c.refs.town = town; c.refs.walker = walker;
-  lm('Old Amble and Mossrest', AMBLE_AT.lat, AMBLE_AT.lon, 'tower');
+  lm("Old Amble's long sleep", AMBLE_AT.lat, AMBLE_AT.lon, 'tower');
 
   // ---- the meadow round Amble's feet: long golden grass, daisies and lupins (one mesh)
   {

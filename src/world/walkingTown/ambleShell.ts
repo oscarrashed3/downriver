@@ -132,4 +132,22 @@ export function flankRadius(th: number, yq: number) {
   return null;
 }
 
+/**
+ * Where a post dropped from (x, z) meets the plates: straight down if the flank bulges out as far as the
+ * post, otherwise in at the widest point of the flank below it (so the post is raked in to the shell and
+ * never hangs past the rim). sink pushes the foot a little into the plates. Creature space.
+ */
+export function plateFoot(x: number, z: number, sink = 0.3) {
+  const { th, rho } = shellPolar(x, z);
+  const pr = shellProfile(th);
+  let best = pr.face[0];
+  for (let q = pr.face[0]; q <= pr.face[1]; q++) {
+    if (pr.rho[q] >= rho - 0.004) return { x, z, y: pr.y[q] - sink, raked: false };
+    if (pr.rho[q] > pr.rho[best]) best = q;
+  }
+  // a touch inside the widest point and a little above it, so the pad sits on the plates' upper face
+  const rr = pr.rho[best] - 0.004, q = Math.max(pr.face[0], best - 2);
+  return { x: pr.E.x * rr, z: SHELL.cz + pr.E.z * rr, y: pr.y[q] - sink, raked: true };
+}
+
 export { clamp };

@@ -35,7 +35,9 @@ export function stoneProp(r: R) {
     pa.setXYZ(i, pa.getX(i) * 0.85 + j.x, pa.getY(i) * 1.5 + j.y + (pa.getY(i) > 0.3 ? 0.18 : 0), pa.getZ(i) * 0.7 + j.z);
   }
   g.computeVertexNormals();
-  k.add(g, 'rough', '#8e8a82');
+  k.add(g, 'rough', '#aaa292');
+  // Tamsin's rope lashed twice round it (bright, so the stone and the rope read from up on the walk)
+  for (const [y, s] of [[-0.05, 1], [0.25, 0.85]] as const) k.add(new THREE.TorusGeometry(0.42 * s, 0.06, 6, 16).scale(0.95, 1, 0.8).rotateX(Math.PI / 2), 'plain', '#d8902e', T(0, y, 0));
   for (let q = 0; q < 3; q++) k.add(new THREE.IcosahedronGeometry(0.09 + r() * 0.05, 0), 'plain', pk(r, PAL.leaf), T((r() - 0.5) * 0.5, -0.2 + r() * 0.3, 0.25));
   const grp = k.build(new THREE.Group(), { outline: true });
   grp.name = 'ambleStone';
@@ -68,8 +70,11 @@ export function pulleyProp(r: R) {
 export class RopeSpan {
   mesh: THREE.Mesh;
   private static mat = new THREE.MeshToonMaterial({ color: '#c2a476' });
-  constructor(r = 0.045) {
-    this.mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 1, 6, 1, true).translate(0, 0.5, 0), RopeSpan.mat);
+  private static mats = new Map<string, THREE.MeshToonMaterial>();
+  constructor(r = 0.045, color?: string) {
+    let m = RopeSpan.mat;
+    if (color) { m = RopeSpan.mats.get(color) ?? new THREE.MeshToonMaterial({ color }); RopeSpan.mats.set(color, m); }
+    this.mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 1, 8, 1, true).translate(0, 0.5, 0), m);
     this.mesh.frustumCulled = false; this.mesh.visible = false; this.mesh.castShadow = true;
   }
   set(a: THREE.Vector3, b: THREE.Vector3) {

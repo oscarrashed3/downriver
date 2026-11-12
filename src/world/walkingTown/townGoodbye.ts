@@ -25,20 +25,42 @@ const clamp = (x: number, a = 0, b = 1) => Math.min(b, Math.max(a, x));
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const CREAM = '#fff8ee';
 
-/** A little glass jar with a sprig of moss in it and a cork (one small group, held in a hand). */
+/** A little glass jar with a sprig of moss in it and a cork: clear glass with a bright rim of light, the moss inside
+ * glowing softly green (one small group, held in a hand). */
 export function mossJar() {
   const g = new THREE.Group(); g.name = 'mossJar';
-  const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.065, 0.13, 14, 1, true), new THREE.MeshPhongMaterial({ color: '#dff2f0', transparent: true, opacity: 0.38, shininess: 120, specular: '#ffffff', side: THREE.DoubleSide, depthWrite: false }));
-  const bottom = new THREE.Mesh(new THREE.CircleGeometry(0.065, 14).rotateX(-Math.PI / 2), glass.material);
-  bottom.position.y = -0.064;
-  const moss = new THREE.Mesh(new THREE.IcosahedronGeometry(0.055, 1).scale(1, 0.7, 1), new THREE.MeshToonMaterial({ color: '#6f9a3e' }));
-  moss.position.y = -0.03;
-  const sprig = new THREE.Mesh(new THREE.ConeGeometry(0.022, 0.08, 6), new THREE.MeshToonMaterial({ color: '#8cbf4a' }));
-  sprig.position.set(0.012, 0.03, 0);
-  const cork = new THREE.Mesh(new THREE.CylinderGeometry(0.058, 0.05, 0.045, 12), new THREE.MeshToonMaterial({ color: '#b98a5a' }));
-  cork.position.y = 0.083;
-  glass.renderOrder = 3;
-  g.add(moss, sprig, glass, bottom, cork);
+  const R = 0.1, H = 0.19;
+  const glassM = new THREE.MeshPhongMaterial({ color: '#e6f6f2', transparent: true, opacity: 0.32, shininess: 140, specular: '#ffffff', side: THREE.DoubleSide, depthWrite: false });
+  const glass = new THREE.Mesh(new THREE.LatheGeometry([new THREE.Vector2(0.0, -H / 2), new THREE.Vector2(R * 0.92, -H / 2), new THREE.Vector2(R, -H / 2 + 0.03), new THREE.Vector2(R, H / 2 - 0.05), new THREE.Vector2(R * 0.8, H / 2 - 0.01), new THREE.Vector2(R * 0.8, H / 2 + 0.01)], 20), glassM);
+  // the glass's edges catch the light: a bright rim at the lip and the base, and a long highlight down one side
+  const rimM = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.75 });
+  const lip = new THREE.Mesh(new THREE.TorusGeometry(R * 0.8, 0.008, 5, 22).rotateX(Math.PI / 2), rimM); lip.position.y = H / 2;
+  const base = new THREE.Mesh(new THREE.TorusGeometry(R * 0.96, 0.007, 5, 22).rotateX(Math.PI / 2), rimM); base.position.y = -H / 2 + 0.01;
+  const hi = new THREE.Mesh(new THREE.PlaneGeometry(0.018, H * 0.7), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.6, side: THREE.DoubleSide }));
+  hi.position.set(R * 0.62, 0, R * 0.76); hi.rotation.y = 0.7;
+  // the moss: a soft green cushion and a few sprigs, lit from inside
+  const mossM = new THREE.MeshToonMaterial({ color: '#79b043', emissive: '#4f8a22', emissiveIntensity: 0.75 });
+  const moss = new THREE.Mesh(new THREE.IcosahedronGeometry(R * 0.85, 2).scale(1, 0.55, 1), mossM); moss.position.y = -H / 2 + 0.06;
+  const sprigM = new THREE.MeshToonMaterial({ color: '#9fd060', emissive: '#6aa83a', emissiveIntensity: 0.7 });
+  const sprigs: THREE.Mesh[] = [];
+  for (let i = 0; i < 5; i++) {
+    const a = i * 1.26, r = i ? R * 0.42 : 0;
+    const sp = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.09 + (i % 2) * 0.03, 6), sprigM);
+    sp.position.set(Math.cos(a) * r, -H / 2 + 0.11, Math.sin(a) * r); sp.rotation.set(Math.sin(a) * 0.3, 0, Math.cos(a) * 0.3);
+    sprigs.push(sp);
+  }
+  const cork = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.78, R * 0.7, 0.06, 14), new THREE.MeshToonMaterial({ color: '#b98a5a' }));
+  cork.position.y = H / 2 + 0.03;
+  const string = new THREE.Mesh(new THREE.TorusGeometry(R * 0.82, 0.009, 4, 20).rotateX(Math.PI / 2), new THREE.MeshToonMaterial({ color: '#c8443a' })); string.position.y = H / 2 - 0.035;
+  // a soft green glow round it (a camera-facing halo, added light)
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+  const cx = cv.getContext('2d')!; const gr = cx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, 'rgba(190,255,150,0.9)'); gr.addColorStop(0.35, 'rgba(150,230,110,0.35)'); gr.addColorStop(1, 'rgba(120,200,90,0)');
+  cx.fillStyle = gr; cx.fillRect(0, 0, 64, 64);
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.55 }));
+  halo.scale.setScalar(0.55); halo.position.y = -0.02;
+  glass.renderOrder = 3; halo.renderOrder = 4;
+  g.add(moss, ...sprigs, glass, lip, base, hi, cork, string, halo);
   g.traverse(o => { o.userData.noOutline = true; });
   return g;
 }
@@ -155,7 +177,7 @@ export class TownGoodbye {
     const head = (y = 1.15) => pl.pos.clone().addScaledVector(pl.up, y);
     const npcAt = (id: string) => this.story.npc(id).root.position;
     const folk = ['pip', 'bramwyn', 'ropewright'];
-    const hold = (obj: THREE.Object3D, hand: THREE.Object3D) => { hand.add(obj); obj.position.set(0, -0.09, 0.05); obj.rotation.set(0, 0, 0); obj.scale.setScalar(1 / Math.max(1e-3, hand.getWorldScale(V()).x)); obj.visible = true; };
+    const hold = (obj: THREE.Object3D, hand: THREE.Object3D) => { hand.add(obj); const big = obj === this.jar; obj.position.set(0, big ? -0.16 : -0.09, big ? 0.08 : 0.05); obj.rotation.set(0, 0, 0); obj.scale.setScalar(1 / Math.max(1e-3, hand.getWorldScale(V()).x)); obj.visible = true; };
     // two people side by side, from the sea side and a little along the beach (Amble's head beyond them)
     const pair = (other: THREE.Vector3, r: number, k: number) => {
       const mid = pl.pos.clone().lerp(other, 0.5), up = this.upAt(mid);
@@ -170,6 +192,19 @@ export class TownGoodbye {
       tick: k => { this.setGolden(true); P.headLift = -1; const c = pair(npcAt(id), r, k); cam(c.pos, c.look); },
       exit: () => { this.story.npc(id).pose = {}; after?.(); },
     });
+    // a look point that puts world point P at screen position (nx, ny) from camera C, near the first guess Q0
+    const tmpCam = new THREE.PerspectiveCamera();
+    const frameOn = (C: THREE.Vector3, P: THREE.Vector3, nx: number, ny: number, Q0: THREE.Vector3, up: THREE.Vector3) => {
+      tmpCam.fov = g.camera.fov; tmpCam.aspect = g.camera.aspect; tmpCam.near = 0.1; tmpCam.far = 1000; tmpCam.updateProjectionMatrix();
+      const Q = Q0.clone(), tY = Math.tan(THREE.MathUtils.degToRad(tmpCam.fov) / 2);
+      for (let i = 0; i < 8; i++) {
+        tmpCam.position.copy(C); tmpCam.up.copy(up); tmpCam.lookAt(Q); tmpCam.updateMatrixWorld(true);
+        const s = P.clone().project(tmpCam), d = Q.distanceTo(C);
+        const r = V(1, 0, 0).applyQuaternion(tmpCam.quaternion), u = V(0, 1, 0).applyQuaternion(tmpCam.quaternion);
+        Q.addScaledVector(r, (s.x - nx) * tY * tmpCam.aspect * d * 0.8).addScaledVector(u, (s.y - ny) * tY * d * 0.8);
+      }
+      return Q;
+    };
     const W = TOWN_BYE;
     const beats: Beat[] = [
       { dur: 0.8, tick: k => g.hud.setFade(sm(k), CREAM) },
@@ -215,29 +250,42 @@ export class TownGoodbye {
         exit: () => { g.give('item:rope'); g.sound.sfxPlay('gift'); this.coil.visible = false; this.coil.removeFromParent(); g.scene.add(this.coil); pl.pose = {}; },
       },
       say('pip', 'Pip', W.pip1, {}, undefined, 3.2),
-      // the keepsake: a sprig of Amble's moss in a little glass jar
+      // the keepsake: a sprig of Amble's moss in a little glass jar. Pip comes close and holds it out; a close
+      // two-shot from the side away from the fox, the jar glowing between them
       {
         line: { who: 'Pip', text: W.pip2 },
         enter: () => {
-          const n = this.story.npc('pip'); n.pose = { touchChest: 1 }; n.smileT = 6;
+          const n = this.story.npc('pip'); n.smileT = 6;
+          const across = npcAt('pip').clone().sub(pl.pos).projectOnPlane(pl.up).normalize();
+          this.standAt('pip', this.ground(pl.pos.clone().addScaledVector(across, 1.15).sub(this.p.center)), pl.pos);
+          n.pose = { holdUp: 0.5, smile: 1 } as typeof n.pose;
           hold(this.jar, n.person.arms[1].hand);
-          pl.lookAt = null;
+          pl.pose = { smile: 1 };
         },
         tick: k => {
           this.setGolden(true); P.headLift = -1;
-          const pip = npcAt('pip');
-          if (k > 0.5 && this.jar.parent !== pl.person.arms[1].hand) { hold(this.jar, pl.person.arms[1].hand); this.story.npc('pip').pose = {}; pl.pose = { touchChest: 1, smile: 1 }; }
-          // close on the two of them and the little jar between, Amble's great head low in the gold beyond
+          const n = this.story.npc('pip'), pip = npcAt('pip');
+          stand(pl.pos.clone(), pip.clone().sub(pl.pos), pl.pose);
+          pl.lookAt = this.jar.getWorldPosition(V());
+          // (the jar stays upright in the world, whatever the hand holding it does)
+          const jp = this.jar.parent;
+          if (jp) { jp.updateMatrixWorld(true); const wq = new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), this.upAt(this.jar.getWorldPosition(V()))); this.jar.quaternion.copy(jp.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(wq)); }
+          n.lookAt = head(1.0);
+          if (k > 0.35 && k <= 0.62) pl.pose = { holdUp: 0.45 * sm((k - 0.35) / 0.2), smile: 1 };
+          if (k > 0.62 && this.jar.parent !== pl.person.arms[1].hand) { hold(this.jar, pl.person.arms[1].hand); n.pose = { touchChest: 1, smile: 1 } as typeof n.pose; pl.pose = { holdUp: 0.45, smile: 1 }; }
+          if (k > 0.8) pl.pose = { touchChest: sm((k - 0.8) / 0.2), smile: 1 };
           const mid = pl.pos.clone().lerp(pip, 0.5), up = this.upAt(mid);
           const across = pip.clone().sub(pl.pos).projectOnPlane(up).normalize();
-          const o2 = out.clone().projectOnPlane(across).normalize();
-          cam(mid.clone().addScaledVector(o2, 2.3 - 0.25 * k).addScaledVector(up, 0.95).addScaledVector(site.toSea, 0.5), mid.clone().addScaledVector(up, 0.95).addScaledVector(o2, -0.4));
+          const perp = V().crossVectors(up, across).normalize();
+          const others = npcAt('bramwyn').clone().add(npcAt('ropewright')).multiplyScalar(0.5).add(g.fox.f.root.position).multiplyScalar(0.5);
+          if (perp.dot(others.sub(mid)) > 0) perp.negate();
+          cam(mid.clone().addScaledVector(perp, 2.7 - 0.2 * k).addScaledVector(up, 1.0), mid.clone().addScaledVector(up, 0.88));
         },
         exit: () => { g.give('item:moss-jar'); g.give('friend:pip'); g.sound.sfxPlay('gift'); },
       },
       {
         line: { text: W.kept }, dur: 4,
-        enter: () => { pl.pose = { touchChest: 1, smile: 1 }; },
+        enter: () => { pl.pose = { touchChest: 1, smile: 1 }; g.give('power:climb'); },
         tick: k => { this.setGolden(true); P.headLift = -1; cam(pl.pos.clone().addScaledVector(site.toSea, 2.6 - k * 0.3).addScaledVector(site.side, 0.9).addScaledVector(pl.up, 1.4), head(1.0)); },
         exit: () => { this.jar.visible = false; this.jar.removeFromParent(); g.scene.add(this.jar); pl.pose = {}; },
       },
@@ -293,7 +341,7 @@ export class TownGoodbye {
       // Old Amble turns and walks slowly back across the meadow, the village waving
       {
         dur: 12, line: { text: W.away },
-        enter: () => { g.camera.fov = 45; g.camera.updateProjectionMatrix(); },
+        enter: () => { g.camera.fov = 60; g.camera.updateProjectionMatrix(); },
         tick: (k, dt) => {
           this.setGolden(true);
           const to = this.ground(site.S.clone().addScaledVector(site.toSea, -1.2).sub(this.p.center));
@@ -303,7 +351,10 @@ export class TownGoodbye {
           for (const h of this.story.homes) h.npc.pose = { wave: 1 };
           // from the water's edge, low, past Nilo waving: Amble going away up the rise and over the meadow
           const ar = A.root.position;
-          cam(to.clone().addScaledVector(site.toSea, 8).addScaledVector(out, 5).addScaledVector(site.up, 3.6), to.clone().lerp(ar, 0.8).addScaledVector(site.up, 11));
+          // (high over the water behind Nilo and the fox, wide: they stand small low on the right, clear of the
+          // caption, and Old Amble walks away over the dune and the meadow beyond, legs, village and all)
+          const C = to.clone().addScaledVector(site.toSea, 30 + k * 2).addScaledVector(site.up, 17 + k * 1.5);
+          cam(C, frameOn(C, to.clone().addScaledVector(site.up, 0.6), 0.6, -0.62, ar.clone().addScaledVector(site.up, 14), site.up));
         },
         exit: () => {
           g.camera.fov = 58; g.camera.updateProjectionMatrix();

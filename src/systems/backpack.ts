@@ -3,6 +3,7 @@
 import { esc } from '../ui/hud';
 import { FOLD_FORMS } from '../player/fold';
 import { SKY_LETTER, SKY_TRADES } from '../data/skyStory';
+import { TOWN_LETTER, TOWN_TRADES } from '../data/townLetter';
 
 export const SLOTS = 8;
 
@@ -27,6 +28,11 @@ export const ITEMS: Record<string, ItemDef> = {
   'item:kite': { id: 'item:kite', name: "Fold's kite frame", text: 'The light frame from the top of the big windmill. Fold folds round it into a paper glider whenever you jump off an edge and hold on. Kept from the Sky Isles.', icon: 'kite' },
   'item:moss-jar': { id: 'item:moss-jar', name: "A jar of Amble's moss", text: "A sprig of the moss off Old Amble's back, in a little glass jar. Pip says it grows anywhere. Kept from the Walking Town.", icon: 'jar' },
   'item:rope': { id: 'item:rope', name: "Tamsin's best rope", text: 'A coil of her best rope, greased with goose fat. It holds a cart.', icon: 'rope' },
+  'item:loaf': { id: 'item:loaf', name: 'A warm loaf', text: 'From the bakery window in Mossrest. Someone up here is always hungry.', icon: 'loaf' },
+  'item:wool': { id: 'item:wool', name: 'A ball of wool', text: 'Moss-green, the weaver\'s best. Soft as a sleeping cat.', icon: 'wool' },
+  'item:honey': { id: 'item:honey', name: 'A jar of honey', text: 'From the bees in the gardener\'s hive on the crown. It tastes of clover and moss.', icon: 'honey' },
+  'item:trowel': { id: 'item:trowel', name: 'An old trowel', text: 'Worn smooth. It has dug more moss than anyone, the potter says.', icon: 'trowel' },
+  'item:posy': { id: 'item:posy', name: 'A posy of moss flowers', text: 'Tiny white stars on red stalks, from the crown. Old Bramwyn says they are very rare.', icon: 'posy' },
   'item:frost': { id: 'item:frost', name: "Hollo's frost", text: 'A snowflake that does not melt. It fell from Hollo\'s cloud onto your hood. Kept from the Spring Peaks.', icon: 'frost' },
 };
 
@@ -38,6 +44,7 @@ export const TRADES: Trade[] = [
   { npc: 'nima', want: 'item:ribbon', give: 'item:cloudcard', line: "Red ribbon! The clouds will see me now. Here, my cloud card. Don't lose it." },
   { npc: 'odo', want: 'item:cloudcard', give: 'item:flower', line: "Nima's card! I have wanted one for years. Have a flower from my window box." },
   ...SKY_TRADES,
+  ...TOWN_TRADES,
 ];
 
 /** What you keep from each world: one object, one skill, one friend. */
@@ -52,6 +59,7 @@ export const SKILLS: SkillDef[] = [
   { flag: 'power:skyreading', name: 'Skyreading', key: 'Q', text: 'See where the wind goes, and where it drops its snow.' },
   { flag: 'power:glide', name: 'Gliding', key: 'Hold Space', text: 'Off an edge, Fold opens into a paper wing. Hold C to dive, let go to land.' },
   { flag: 'power:kite', name: 'Fold the kite', key: 'Hold Space', text: 'While falling, Fold opens into a kite and you glide.' },
+  { flag: 'power:climb', name: 'Climbing', key: 'W / S on a rope', text: 'Up any rope or rope ladder, hand over hand, and down again. Kept from the Walking Town.' },
   { flag: 'read-letter', name: 'Whistle', key: 'F', text: 'Animals look up. Fold hops.' },
 ];
 
@@ -71,6 +79,7 @@ export const LETTERS: LetterDef[] = [
   },
   { id: SKY_LETTER.id, from: SKY_LETTER.from, lines: SKY_LETTER.lines, answers: SKY_LETTER.answers, sign: SKY_LETTER.sign,
     replies: ["I'm building a kite.", 'Who needs a friend?', 'I will fly anyway.'] },
+  { id: TOWN_LETTER.id, from: TOWN_LETTER.from, lines: TOWN_LETTER.lines, answers: TOWN_LETTER.answers, sign: TOWN_LETTER.sign, replies: TOWN_LETTER.replies },
 ];
 
 /** A letter's lines as Nilo reads them: the answer to his reply first, when it has one. */
@@ -135,6 +144,11 @@ const ICONS: Record<string, string> = {
   chime: '<path d="M24 6 V12" stroke="#2e2230" stroke-width="2"/><rect x="18" y="12" width="12" height="4" rx="1" fill="#c8a050" stroke="#2e2230" stroke-width="2"/><path d="M20 16 V36 M24 16 V40 M28 16 V34" stroke="#d8b860" stroke-width="3" stroke-linecap="round"/>',
   streamer: '<path d="M10 10 V42" stroke="#7a5a34" stroke-width="3" stroke-linecap="round"/><path d="M11 12 Q24 8 26 16 Q28 24 40 20" fill="none" stroke="#f2c24a" stroke-width="4" stroke-linecap="round"/><path d="M11 20 Q22 18 24 26 Q26 34 38 32" fill="none" stroke="#4a7cc8" stroke-width="4" stroke-linecap="round"/>',
   kite: '<path d="M24 6 L38 20 L24 40 L10 20 Z" fill="#f6efe0" stroke="#2e2230" stroke-width="2" stroke-linejoin="round"/><path d="M24 6 V40 M10 20 H38" stroke="#a8784a" stroke-width="2"/><path d="M24 40 Q20 44 26 46 Q32 47 28 42" fill="none" stroke="#c8443a" stroke-width="2.5" stroke-linecap="round"/>',
+  loaf: '<path d="M8 32 Q8 16 24 15 Q40 16 40 32 Z" fill="#d89a50" stroke="#2e2230" stroke-width="2"/><path d="M15 22 l4 4 M22 19 l4 4 M29 20 l4 4" stroke="#f2d49a" stroke-width="2.4" stroke-linecap="round"/><path d="M8 32 H40" stroke="#2e2230" stroke-width="2"/>',
+  wool: '<circle cx="24" cy="25" r="13" fill="#7fa64a" stroke="#2e2230" stroke-width="2"/><path d="M13 20 Q24 30 35 20 M12 27 Q24 36 36 27 M17 14 Q22 26 33 34" fill="none" stroke="#5c8434" stroke-width="2"/><path d="M34 34 Q40 40 36 44" fill="none" stroke="#7fa64a" stroke-width="2.4" stroke-linecap="round"/>',
+  honey: '<rect x="13" y="16" width="22" height="24" rx="6" fill="#f0b840" stroke="#2e2230" stroke-width="2"/><rect x="15" y="10" width="18" height="7" rx="2" fill="#d8c8a0" stroke="#2e2230" stroke-width="2"/><path d="M19 24 h10 M19 30 h8" stroke="#c88a20" stroke-width="2"/>',
+  trowel: '<path d="M14 34 L30 14 Q38 12 36 20 L20 38 Z" fill="#b8b8b0" stroke="#2e2230" stroke-width="2"/><path d="M15 33 L8 42" stroke="#8a5a34" stroke-width="5" stroke-linecap="round"/>',
+  posy: '<path d="M24 26 L18 42 M24 26 L24 42 M24 26 L30 42" stroke="#b8443a" stroke-width="2"/><g fill="#fffaf0" stroke="#2e2230" stroke-width="1"><circle cx="18" cy="18" r="4"/><circle cx="28" cy="15" r="4"/><circle cx="24" cy="24" r="4"/><circle cx="31" cy="23" r="3.5"/><circle cx="16" cy="26" r="3.5"/></g><path d="M16 36 Q24 30 32 36" fill="none" stroke="#7fa64a" stroke-width="3"/>',
   frost: '<g stroke="#7ac8f0" stroke-width="3" stroke-linecap="round"><path d="M24 8 V40 M10 16 L38 32 M10 32 L38 16"/></g><circle cx="24" cy="24" r="4" fill="#e8f8ff" stroke="#7ac8f0" stroke-width="2"/>',
 };
 const icon = (k: string) => `<svg viewBox="0 0 48 48" width="48" height="48">${ICONS[k] ?? ''}</svg>`;

@@ -42,6 +42,14 @@ export class Sound {
    */
   sky = { on: false, race: false, flap: 0 };
   private flapT = 0;
+  /**
+   * World 3 (the Walking Town), set by the game each frame: on adds the warm acoustic band (soft accordion, a little
+   * fiddle, plucked guitar) over the calm piano and strings, and the village's own sounds (Old Amble's slow
+   * breathing, creaking timber, the windmills, laundry in the wind, villagers chatting, now and then a kettle);
+   * walk (0..1) plays the fuller theme while Amble walks; near (0..1) is how close to the village Nilo is.
+   */
+  town = { on: false, walk: 0, near: 1 };
+  private breathT = 0; private creakT = 0; private millT = 0; private chatT = 0; private kettleT = 0;
   private nb: AudioBuffer | null = null;
   /** One shared noise buffer for the World 2 layers (made once). */
   private noise() { return this.nb ??= this.noiseBuffer(); }
@@ -114,15 +122,17 @@ export class Sound {
 
   private scheduleBeat(when: number) {
     const s = this.step++;
-    const scale = SCALES[this.voice], root = ROOT[this.voice];
+    const voice: Voice = this.town.on ? 'lyre' : this.voice;
+    const scale = SCALES[voice], root = ROOT[voice];
     const density = 0.18 + this.health * 0.45;
     const r = (n: number) => { const x = Math.sin((s + 1) * 12.9898 + n * 78.233) * 43758.5453; return x - Math.floor(x); };
     if (r(1) < density) {
       const deg = Math.floor(r(2) * scale.length);
-      this.note(root + scale[deg], when, this.voice, 0.5 + r(3) * 0.3);
+      if (!this.town.on || r(11) < 0.55) this.note(root + scale[deg], when, voice, (0.5 + r(3) * 0.3) * (this.town.on ? 0.7 : 1));
     }
-    if (s % 16 === 0) this.note(root - 12 + scale[s % 32 === 0 ? 0 : 4 % scale.length], when, this.voice === 'bells' ? 'strings' : this.voice, 0.35, 5.5);
-    if (this.health > 0.6 && r(4) < 0.25) this.note(root + 12 + scale[Math.floor(r(5) * scale.length)], when + 0.12, this.voice, 0.25);
+    if (s % 16 === 0) this.note(root - 12 + scale[s % 32 === 0 ? 0 : 4 % scale.length], when, voice === 'bells' || this.town.on ? 'strings' : voice, 0.35, 5.5);
+    if (this.health > 0.6 && r(4) < 0.25) this.note(root + 12 + scale[Math.floor(r(5) * scale.length)], when + 0.12, voice, 0.25);
+    if (this.town.on) this.townBeat(s, when, r);
     if (this.sky.on) {
       // the Sky Isles: an airy flute floating over the piano and strings, and now and then a high chime
       const pent = [0, 2, 4, 7, 9, 12, 14];
@@ -130,6 +140,65 @@ export class Sound {
       if (r(9) < 0.07) this.note(86 + pent[Math.floor(r(10) * 5)], when + 0.2, 'bells', 0.18);
       if (this.sky.race && s % 2 === 0) this.note(48 + (s % 8 < 4 ? 0 : 5), when, 'marimba', 0.45);
     }
+  }
+
+  /**
+   * The Walking Town's band, one half-beat at a time: D, B minor, G, A round and round (a chord every eight
+   * beats). The accordion breathes the chords, the guitar picks a slow pattern, the fiddle sings now and then;
+   * while Amble walks the guitar picks every half-beat, a low bass walks under it and the fiddle sings the theme.
+   */
+  private townBeat(s: number, when: number, r: (n: number) => number) {
+    const CH = [[62, 66, 69], [59, 62, 66], [55, 59, 62], [57, 61, 64]];
+    const ci = Math.floor(s / 16) % 4, ch = CH[ci], beatLen = 60 / 66 / 2;
+    const w = this.town.walk;
+    if (s % 16 === 0) for (const m of ch) this.accordion(m - 12, when, beatLen * 15, 0.5 + 0.3 * w);
+    else if (s % 16 === 8 && r(12) < 0.6) this.accordion(ch[0] - 12, when, beatLen * 7, 0.35);
+    // the guitar: root, fifth, third, fifth (every beat; every half-beat when Amble walks)
+    const pat = [ch[0] - 12, ch[2] - 12, ch[1], ch[2]];
+    if (s % 2 === 0 || w > 0.3) this.guitar(pat[(s >> (w > 0.3 ? 0 : 1)) % 4], when, 0.45 + 0.2 * w);
+    if (w > 0.3 && s % 4 === 0) this.guitar(ch[0] - 24 + (s % 8 === 4 ? 7 : 0), when, 0.6);
+    // the fiddle: a long note from the chord now and then, the theme (D major, rising and falling) when walking
+    const THEME = [74, 76, 78, 81, 78, 76, 74, 71, 74, 76, 74, 69, 71, 74, 76, 74];
+    if (w > 0.3) { if (s % 4 === 0) this.fiddle(THEME[(s >> 2) % THEME.length], when, beatLen * 3.6, 0.55 * w); }
+    else if (s % 4 === 0 && r(13) < 0.16) this.fiddle(ch[Math.floor(r(14) * 3)] + 12, when, beatLen * 6, 0.4);
+  }
+
+  /** A soft accordion note: two reeds a hair apart, the bellows swelling in and out. */
+  private accordion(m: number, when: number, dur: number, vel: number) {
+    const ctx = this.ctx!, f = midi(m);
+    const g = ctx.createGain(); g.connect(this.music);
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1500; lp.Q.value = 0.5; lp.connect(g);
+    const os = [f * 0.9977, f * 1.0023].map(fr => { const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = fr; o.connect(lp); return o; });
+    const trem = ctx.createOscillator(); trem.frequency.value = 5.3; const tg = ctx.createGain(); tg.gain.value = vel * 0.004; trem.connect(tg).connect(g.gain);
+    g.gain.setValueAtTime(0, when); g.gain.linearRampToValueAtTime(vel * 0.022, when + 0.35); g.gain.setValueAtTime(vel * 0.02, when + dur * 0.7); g.gain.linearRampToValueAtTime(0, when + dur);
+    for (const o of [...os, trem]) { o.start(when); o.stop(when + dur + 0.1); }
+  }
+  /** A fiddle note: bowed (a slow attack), bright, the vibrato coming in late. */
+  private fiddle(m: number, when: number, dur: number, vel: number) {
+    const ctx = this.ctx!, f = midi(m);
+    const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f;
+    const vib = ctx.createOscillator(); vib.frequency.value = 5.8; const vg = ctx.createGain();
+    vg.gain.setValueAtTime(0, when); vg.gain.linearRampToValueAtTime(f * 0.007, when + Math.min(0.6, dur * 0.5));
+    vib.connect(vg).connect(o.frequency);
+    const bp = ctx.createBiquadFilter(); bp.type = 'peaking'; bp.frequency.value = 2400; bp.gain.value = 6;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3200;
+    const g = ctx.createGain(); g.connect(this.music);
+    o.connect(bp).connect(lp).connect(g);
+    g.gain.setValueAtTime(0, when); g.gain.linearRampToValueAtTime(vel * 0.03, when + 0.18); g.gain.setValueAtTime(vel * 0.026, when + dur * 0.75); g.gain.linearRampToValueAtTime(0, when + dur);
+    for (const x of [o, vib]) { x.start(when); x.stop(when + dur + 0.1); }
+  }
+  /** A plucked guitar string: bright at the pluck, mellowing as it rings. */
+  private guitar(m: number, when: number, vel: number) {
+    const ctx = this.ctx!, f = midi(m);
+    const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f;
+    const o2 = ctx.createOscillator(); o2.type = 'triangle'; o2.frequency.value = f * 2.003;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 1.2;
+    lp.frequency.setValueAtTime(Math.min(5000, f * 9), when); lp.frequency.exponentialRampToValueAtTime(Math.max(200, f * 1.5), when + 0.6);
+    const g = ctx.createGain(); g.connect(this.music);
+    const g2 = ctx.createGain(); g2.gain.value = 0.3;
+    o.connect(lp); o2.connect(g2).connect(lp); lp.connect(g);
+    g.gain.setValueAtTime(vel * 0.11, when); g.gain.exponentialRampToValueAtTime(0.0001, when + 1.6);
+    for (const x of [o, o2]) { x.start(when); x.stop(when + 1.7); }
   }
 
   /** A breathy flute note: a sine with a little vibrato and a puff of air at the start. */
@@ -256,6 +325,7 @@ export class Sound {
       const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.06 * this.sky.flap * (0.4 + Math.random() * 0.6), t + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
       src.connect(f).connect(g).connect(this.sfx); src.start(t); src.stop(t + 0.09);
     }
+    if (this.town.on) this.townAmbient(t);
     if (t < this.ambT) return;
     this.ambT = t + 0.25;
     // birdsong by day: short falling and rising sine chirps
@@ -282,6 +352,84 @@ export class Sound {
     if (a.chimes > 0.05 && t > this.chimeT) {
       this.chimeT = t + 0.6 + Math.random() * 1.8;
       this.note(93 + [0, 3, 5, 7, 10][Math.floor(Math.random() * 5)], t, 'bells', 0.25 * a.chimes);
+    }
+  }
+
+  /** A filtered noise swell (the shared buffer), routed to the effects. */
+  private nswell(t: number, dur: number, freq: number, q: number, vol: number, type: BiquadFilterType = 'bandpass', rate = 1) {
+    const ctx = this.ctx!;
+    const src = ctx.createBufferSource(); src.buffer = this.noise(); src.playbackRate.value = rate; src.loop = true;
+    const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vol, t + dur * 0.45); g.gain.linearRampToValueAtTime(0.0001, t + dur);
+    src.connect(f).connect(g).connect(this.sfx); src.start(t); src.stop(t + dur + 0.05);
+    return f;
+  }
+  /** The Walking Town's own sounds. */
+  private townAmbient(t: number) {
+    const ctx = this.ctx!, n = this.town.near;
+    // Old Amble breathing: a long, slow, low breath in and out, deep under everything
+    if (t > this.breathT) {
+      this.breathT = t + 6.5 + Math.random() * 1.5;
+      const f = this.nswell(t, 2.6, 170, 0.7, 0.07 * (0.5 + 0.5 * n), 'lowpass', 0.5);
+      f.frequency.setValueAtTime(120, t); f.frequency.linearRampToValueAtTime(260, t + 1.2); f.frequency.linearRampToValueAtTime(110, t + 2.6);
+      this.nswell(t + 2.9, 3.2, 140, 0.7, 0.06 * (0.5 + 0.5 * n), 'lowpass', 0.45);
+      if (this.town.walk > 0.3 && Math.random() < 0.3) this.note(33, t + 0.4, 'strings', 0.3, 3);
+    }
+    // creaking timber (more while it walks)
+    if (t > this.creakT) {
+      this.creakT = t + (this.town.walk > 0.3 ? 0.9 : 2.4) + Math.random() * 2.5;
+      const o = ctx.createOscillator(); o.type = 'sawtooth';
+      const f0 = 140 + Math.random() * 120; o.frequency.setValueAtTime(f0, t); o.frequency.linearRampToValueAtTime(f0 * (0.8 + Math.random() * 0.5), t + 0.35);
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 900 + Math.random() * 600; bp.Q.value = 6;
+      const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.02 * n, t + 0.08); g.gain.linearRampToValueAtTime(0.012 * n, t + 0.25); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.42);
+      // (a creak is a run of little sticks, not a smooth tone)
+      const am = ctx.createOscillator(); am.frequency.value = 28 + Math.random() * 20; const ag = ctx.createGain(); ag.gain.value = 0.5;
+      const amp = ctx.createGain(); amp.gain.value = 0.5; am.connect(ag).connect(amp.gain);
+      o.connect(bp).connect(amp).connect(g).connect(this.sfx);
+      for (const x of [o, am]) { x.start(t); x.stop(t + 0.45); }
+    }
+    // the windmills: a soft whoosh each time a sail sweeps past; laundry snapping in the wind now and then
+    if (t > this.millT) {
+      this.millT = t + 1.55 + Math.random() * 0.2;
+      this.nswell(t, 0.9, 520, 0.8, 0.016 * n);
+      if (Math.random() < 0.3) for (let i = 0; i < 3 + Math.floor(Math.random() * 4); i++) {
+        const w = t + 0.2 + i * (0.07 + Math.random() * 0.06);
+        const src = ctx.createBufferSource(); src.buffer = this.noise();
+        const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 700 + Math.random() * 600; f.Q.value = 1.6;
+        const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, w); g.gain.linearRampToValueAtTime(0.025 * n, w + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, w + 0.06);
+        src.connect(f).connect(g).connect(this.sfx); src.start(w); src.stop(w + 0.08);
+      }
+    }
+    // villagers chatting, somewhere along the walk: soft murmured syllables, two voices, back and forth
+    if (t > this.chatT) {
+      this.chatT = t + 3 + Math.random() * 6;
+      if (n > 0.5) {
+        let w = t;
+        for (let turn = 0; turn < 2 + Math.floor(Math.random() * 3); turn++) {
+          const pitch = turn % 2 ? 190 + Math.random() * 40 : 125 + Math.random() * 30;
+          for (let i = 0; i < 3 + Math.floor(Math.random() * 5); i++) {
+            const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = pitch * (0.92 + Math.random() * 0.16);
+            const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 500 + Math.random() * 900; f.Q.value = 4;
+            const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, w); g.gain.linearRampToValueAtTime(0.006, w + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, w + 0.13);
+            o.connect(f).connect(g).connect(this.sfx); o.start(w); o.stop(w + 0.15);
+            w += 0.1 + Math.random() * 0.07;
+          }
+          w += 0.25 + Math.random() * 0.4;
+        }
+      }
+    }
+    // a kettle singing in someone's kitchen, now and then
+    if (t > this.kettleT) {
+      this.kettleT = t + 40 + Math.random() * 50;
+      if (n > 0.5) {
+        const o = ctx.createOscillator(); o.type = 'sine';
+        o.frequency.setValueAtTime(1500, t); o.frequency.linearRampToValueAtTime(2300, t + 1.6); o.frequency.setValueAtTime(2300, t + 2.6);
+        const vib = ctx.createOscillator(); vib.frequency.value = 7; const vg = ctx.createGain(); vg.gain.value = 25; vib.connect(vg).connect(o.frequency);
+        const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.008, t + 1.2); g.gain.linearRampToValueAtTime(0.0001, t + 3);
+        o.connect(g).connect(this.sfx);
+        for (const x of [o, vib]) { x.start(t); x.stop(t + 3.1); }
+        this.nswell(t, 3, 4000, 1, 0.004, 'highpass');
+      }
     }
   }
 

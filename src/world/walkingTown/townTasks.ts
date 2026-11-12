@@ -48,7 +48,10 @@ export class TownTasks {
   private stoneFly: { v: THREE.Vector3; t: number } | null = null;
   private pulley: THREE.Group;
   private wheel: THREE.Vector3;
-  private pullRope = new RopeSpan(0.045);
+  /** The way the pull rope goes up the outside of the shell (creature space, from the foot up): beside the climbing rope. */
+  private pullGuide: THREE.Vector3[] = [];
+  private pullSpans: RopeSpan[] = [];
+  private pullRope = new RopeSpan(0.14, '#d8902e');
   private pullLine: RopeSpan[] = [];
   private walkBase: THREE.Vector3;
   private o: THREE.Vector3; private side: THREE.Vector3;
@@ -95,7 +98,7 @@ export class TownTasks {
     // ---- 1. the stone and Tamsin's pulley
     this.stone = stoneProp(r);
     this.stone.rotation.set(0.3, 0.4, -0.5);
-    this.stone.scale.setScalar(1.4);
+    this.stone.scale.setScalar(2.1);
     A.stoneSlot.add(this.stone);
     const front = T.legLines.find(l => l.kind === 'rope' && l.leg[0] === 'F') ?? T.legLines[0];
     this.o = front.out.clone().setY(0).normalize();
@@ -107,8 +110,17 @@ export class TownTasks {
     this.pulley.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(this.side, V(0, 1, 0), this.side.clone().cross(V(0, 1, 0)).negate()));
     this.wheel = pu.wheel;
     T.group.add(this.pulley);
+    {
+      // (straight from the toes to the wheel the rope would run through the bulging shell: it goes up the outside,
+      // beside the climbing rope, over a few chafing points on the plates)
+      const c = new THREE.CatmullRomCurve3(front.pts);
+      const side = V(-front.out.z, 0, front.out.x).normalize();
+      for (const t of [0.42, 0.62, 0.8, 0.93]) this.pullGuide.push(c.getPointAt(t).addScaledVector(front.out, 0.35).addScaledVector(side, 0.55));
+      if (this.pullGuide[0].y < this.pullGuide[this.pullGuide.length - 1].y === false) this.pullGuide.reverse();
+      for (let i = 0; i < this.pullGuide.length; i++) { const s = new RopeSpan(0.14, '#d8902e'); g.scene.add(s.mesh); this.pullSpans.push(s); }
+    }
     g.scene.add(this.pullRope.mesh);
-    for (let i = 0; i < this.pullers.length + 1; i++) { const s = new RopeSpan(0.04); g.scene.add(s.mesh); this.pullLine.push(s); }
+    for (let i = 0; i < this.pullers.length + 1; i++) { const s = new RopeSpan(0.09, '#d8902e'); g.scene.add(s.mesh); this.pullLine.push(s); }
 
     // ---- 2. the sail, the channel, the pieces, the sluice
     this.mill = T.mills.findIndex(m => m.broken);
@@ -479,7 +491,14 @@ export class TownTasks {
     // ---- the rope from the stone up over the pulley and along to the pullers
     const roped = h('town:stone-roped') && !h('town:foot-done') && !this.stoneFly;
     const wheelW = this.pulley.localToWorld(this.wheel.clone());
-    if (roped) this.pullRope.set(this.stone.getWorldPosition(V()), wheelW); else this.pullRope.mesh.visible = false;
+    if (roped) {
+      let a = this.stone.getWorldPosition(V());
+      const guide = this.pullGuide.map(q => this.tm.world(q, V())).filter(q => q.distanceTo(a) > 1.5);
+      const pts = [...guide, wheelW];
+      this.pullRope.set(a, pts[0]);
+      this.pullSpans.forEach((s, i) => { if (i + 1 < pts.length) s.set(pts[i], pts[i + 1]); else s.mesh.visible = false; });
+      void a; a = pts[0];
+    } else { this.pullRope.mesh.visible = false; for (const s of this.pullSpans) s.mesh.visible = false; }
     const showLine = roped && (g.mode === 'cut' || this.pull > 0);
     let prev = wheelW;
     this.pullers.forEach((id, i) => {
@@ -561,13 +580,19 @@ export class TownTasks {
         const head = A.rig.bone('head'), hd = (x: number, y: number, z: number) => headDir(x, y, z).transformDirection(head.matrixWorld);
         const cw = c.g.parent.localToWorld(c.at.clone());
         const sd = Math.sign(cw.clone().sub(head.getWorldPosition(V())).dot(hd(1, 0, 0))) || 1;
-        const want = cw.clone().addScaledVector(hd(sd, -0.1, 0.6).normalize(), 7.5);
-        const look = cw.clone().lerp(pl.pos.clone().addScaledVector(pl.up, 0.9), 0.45);
+        // (over his shoulder from up on the middle of the head: Nilo kneeling at the edge with the shears in his
+        // hand, the clump of vine hanging over the eye below him, the meadow far beyond; the antler roots and
+        // their brow tines, which hide him from out in front or from the side, stand off to either side)
+        const upN = pl.up, outC = cw.clone().sub(pl.pos).projectOnPlane(upN).normalize();
+        const rightC = V().crossVectors(outC, upN).normalize();
+        const want = pl.pos.clone().addScaledVector(outC, -2.6).addScaledVector(upN, 3.3).addScaledVector(rightC, 1.3 * sd);
+        const look = pl.pos.clone().addScaledVector(upN, 0.3).lerp(cw, 0.62);
+        void hd;
         if (!this.trimCam) this.trimCam = g.camera.position.distanceTo(want) > 12 ? want.clone() : g.camera.position.clone();
         this.trimHold = 0.35;
         this.trimCam.lerp(want, 1 - Math.exp(-3.5 * dt));
         g.rig.override = { pos: this.trimCam.clone(), look, up: this.upAt(look) };
-        this.tm.cutMelt = 5.5;
+        this.tm.cutMelt = 2.2;
         pl.pose = { ...pl.pose, kneel: 0.5, lookAt: cw };
         // (turned to the clump, the shears out to it)
         const toC = cw.clone().sub(pl.pos).projectOnPlane(pl.up);
@@ -590,7 +615,7 @@ export class TownTasks {
 
   off() {
     this.pullRope.mesh.visible = false;
-    for (const l of this.pullLine) l.mesh.visible = false;
+    for (const l of [...this.pullLine, ...this.pullSpans]) l.mesh.visible = false;
     this.high = false;
   }
 
@@ -781,9 +806,15 @@ export class TownTasks {
           const wheel = this.pulley.localToWorld(this.wheel.clone()), st = this.stone.getWorldPosition(V());
           // (out in front of the face and off to the left, low: the leg whole, the stone at its toes, the rope
           // straight up to the pulley and the row of pullers along the walk above it)
-          const midR = wheel.clone().lerp(st, 0.5);
-          if (!pullCam) pullCam = this.AV(31, 6, 40);
-          this.cam(pullCam.clone().addScaledVector(this.upAt(mid), -k * 0.3), midR.clone().lerp(look, 0.12));
+          // (now: out beside the front left foot, far enough off that the foot sits at the bottom of the frame, the
+          // rope rises straight up the middle, and the row of pullers leans back along the walk at the top)
+          // (framed so the pulley sits near the top and the stone about three quarters down, over the caption)
+          const upR = this.upAt(st);
+          const H = Math.max(8, wheel.clone().sub(st).dot(upR));
+          const outF = this.AD(0.45, 0, 0.89).projectOnPlane(upR).normalize();
+          if (!pullCam) pullCam = st.clone().addScaledVector(outF, H * 1.45).addScaledVector(upR, H * 0.5);
+          this.cam(pullCam.clone().addScaledVector(outF, -k * 0.8), st.clone().addScaledVector(upR, H * 0.36).lerp(wheel.clone().addScaledVector(upR, -H * 0.64), 0.5));
+          void look;
           void inW;
         },
       },

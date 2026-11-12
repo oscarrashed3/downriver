@@ -1,6 +1,6 @@
 // World 3, the goodbye on the beach (Phase F): TOWNOUT=/dir node tools/play.mjs town-goodbye
 import { townSetup } from './townE.mjs';
-const DONE = ['town:arrived', 'town:jump-seen', 'town:quest', 'town:met-tamsin', 'town:stone-roped', 'town:foot-done', 'town:met-miller', 'town:sail-fitted', 'town:gap-0', 'town:gap-1', 'town:gap-2', 'town:water-done', 'town:met-bramwyn', ...[0, 1, 2, 3, 4, 5].map(i => 'town:vine-' + i), 'town:eyes-done', 'town:coast'];
+const DONE = ['town:arrived', 'town:jump-seen', 'town:quest', 'town:met-tamsin', 'town:stone-roped', 'town:foot-done', 'town:met-miller', 'town:sail-fitted', 'town:gap-0', 'town:gap-1', 'town:gap-2', 'town:water-done', 'town:met-bramwyn', ...[0, 1, 2, 3, 4, 5].map(i => 'town:vine-' + i), 'town:eyes-done', 'town:coast', 'letter:3'];
 export default async (ctx) => {
   const T = await townSetup(ctx, DONE);
   const { ev } = ctx;

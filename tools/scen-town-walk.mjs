@@ -21,7 +21,9 @@ export default async (ctx) => {
   };
   await view('7-walk-meadow', `[AV(-62, 14, 46), AV(0, 13, 4)]`, 46);
   await T.sim(40);
-  console.log('later', await W());
+  // (the postman's bird may come by now, after half a minute of riding along: let the scene play out)
+  await T.until(`__game.mode === 'play'`, 60);
+  console.log('later', await W(), await ev(`__game.flags.has('letter:3')`));
   await view('8-walk-front', `[AV(50, 12, -48), AV(0, 14, 6)]`, 46);
   // Nilo walking along the walk as Amble walks (the usual camera)
   await ev(`__game.townMove.dropOnShell()`);

@@ -11,6 +11,8 @@ export interface CompassInfo {
   task: THREE.Vector3 | null;
   taskLabel: string | null;
   pins: { customPin(worldId: string): THREE.Vector3 | null; clearPin(worldId: string): void; pinVersion: number };
+  /** Someone big to keep track of (World 3: Old Amble, when you are off its back), world position. */
+  friend?: { pos: THREE.Vector3; label: string } | null;
 }
 
 /** Half the angle the strip spans, in degrees. */
@@ -27,6 +29,7 @@ export class Compass {
   private track: HTMLElement;
   private task: { mk: HTMLElement; arrow: HTMLElement; dist: HTMLElement };
   private mine: { mk: HTMLElement; arrow: HTMLElement; dist: HTMLElement };
+  private friend: { mk: HTMLElement; arrow: HTMLElement; dist: HTMLElement };
   private ticks: { el: HTMLElement; deg: number }[] = [];
   private lastLabel: string | null = null;
   private pinArmed = false;
@@ -53,7 +56,7 @@ export class Compass {
       this.el.append(m, a);
       return { mk: m, arrow: a, dist: m.querySelector('span') as HTMLElement };
     };
-    this.task = mk('task'); this.mine = mk('mine');
+    this.task = mk('task'); this.mine = mk('mine'); this.friend = mk('friend');
   }
 
   update(_dt: number, c: CompassInfo) {
@@ -101,10 +104,15 @@ export class Compass {
       this.state.pinRel = rel; this.state.pinDist = dist;
       this.state.pinBehind = this.setMarker(this.mine, rel, dist, !(this.pinArmed && dist < ARRIVE));
     } else this.setMarker(this.mine, 0, 0, false);
+    // a friend to keep track of: a green mark with their name
+    if (c.friend) {
+      const { rel, dist } = place(c.friend.pos.clone().sub(c.center).normalize());
+      this.setMarker(this.friend, rel, dist, dist > 12, c.friend.label);
+    } else this.setMarker(this.friend, 0, 0, false);
   }
 
   /** Returns -1 / 1 when the marker is off the strip and the arrow points left / right, else 0. */
-  private setMarker(m: { mk: HTMLElement; arrow: HTMLElement; dist: HTMLElement }, rel: number, dist: number, on: boolean): number {
+  private setMarker(m: { mk: HTMLElement; arrow: HTMLElement; dist: HTMLElement }, rel: number, dist: number, on: boolean, label = ''): number {
     const inside = Math.abs(rel) <= SPAN;
     m.mk.classList.toggle('on', on && inside);
     const side = on && !inside ? Math.sign(rel) : 0;
@@ -113,10 +121,10 @@ export class Compass {
     m.arrow.classList.toggle('right', side > 0);
     if (on && inside) {
       m.mk.style.left = `${50 + rel / SPAN * 50}%`;
-      const txt = `${Math.round(dist)} m`;
+      const txt = `${label ? label + ' ' : ''}${Math.round(dist)} m`;
       if (m.dist.textContent !== txt) m.dist.textContent = txt;
     }
-    if (side) m.arrow.textContent = `${side < 0 ? '◀' : ''} ${Math.round(dist)} m ${side > 0 ? '▶' : ''}`;
+    if (side) m.arrow.textContent = `${side < 0 ? '◀' : ''} ${label ? label + ' ' : ''}${Math.round(dist)} m ${side > 0 ? '▶' : ''}`;
     return side;
   }
 }

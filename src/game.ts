@@ -622,6 +622,7 @@ export class Game {
       dir: [d.x, d.y, d.z], poles: [...this.polesRead], journal: this.journal, pins: this.map.pins,
       day: this.day.t, flowers: this.flowers, sigs: this.sigs,
       bag: this.bag, sketches: this.sketches, sent: this.sent, seen: this.map.exportSeen(),
+      town: this.townStory?.active ? this.townStory.saveState() : undefined,
     };
     writeSave(data);
   }
@@ -641,6 +642,9 @@ export class Game {
     this.enterWorld(w, false);
     const dir = w !== d.world || d.arrive ? this.arrivalDir(w) : new THREE.Vector3(...d.dir).normalize();
     this.player.placeAt(this.planets[w], dir);
+    // the Walking Town walks: Amble back where it was, and Nilo back on its back (or on the beach)
+    if (WORLDS[w].id === 'garden' && this.townStory) this.townStory.restore(d.town);
+    this.rig.faceDir(this.player.up, this.player.facing);
     this.rig.snap();
   }
 
@@ -1220,7 +1224,16 @@ export class Game {
           this.map.areas = null;
           const t = this.ch2!.guideTarget(), label = this.ch2!.goal();
           this.map.task = t ? { dir: t, label: (label ?? 'Next').replace(/\s*\(\d+ of \d+\)\s*$/, '') } : null;
+        } else if (this.townStory?.active) {
+          // the Walking Town: the people you have talked to, Old Amble where it is right now, the coast, the task
+          const ts = this.townStory;
+          this.map.people = this.contents[this.cur].npcs.filter(n => this.flags.has('talked:' + n.id)).map(n => ({ name: SCRIPTS[n.id].name, ...toLL(n.root.position), invited: false }));
+          this.map.areas = null;
+          const t = ts.guideTarget(), label = ts.goal();
+          this.map.task = t ? { dir: t, label: (label ?? 'Next').replace(/\s*\(\d+ of \d+\)\s*$/, '') } : null;
+          this.map.extra = ts.mapMarks();
         } else { this.map.people = []; this.map.areas = null; this.map.task = null; }
+        if (!this.townStory?.active) this.map.extra = [];
         this.map.draw(this.planet, this.flags, { dir: this.player.up.clone(), facing: this.player.facing.clone() });
         this.map.show(true); break;
       }
@@ -2062,6 +2075,15 @@ export class Game {
     }
     // World 2's layers (flute and chimes, gusting wind, the quicker race theme, kite cloth flapping in flight)
     this.sound.sky.on = this.isSky() && this.mode !== 'title';
+    {
+      const ts = this.townStory, on = !!ts?.active && this.mode !== 'title';
+      this.sound.town.on = on;
+      if (on) {
+        const wm = ts!.walker.mode, walking = wm === 'loop' || wm === 'coast' || wm === 'away';
+        this.sound.town.walk += ((walking ? 1 : 0) - this.sound.town.walk) * Math.min(1, dt * 0.5);
+        this.sound.town.near = this.townMove?.onAmble || this.townMove?.climb ? 1 : 0.35;
+      }
+    }
     this.sound.sky.race = !!this.ch2?.race.active;
     this.sound.sky.flap = this.sound.sky.on && this.player.glider?.open ? Math.min(1, 0.35 + this.player.glider.speed / 22) : 0;
     this.sound.update(riverK, flowArrivingAt(this.river, this.cur), windK);
@@ -2074,7 +2096,7 @@ export class Game {
     const ember = this.cur === 0 ? this.ch1.lanterns.meter() : '';
     const lit = this.isSky() && this.ch2 ? this.ch2.meter() : this.townStory?.active ? this.townStory.meter() : ember ? ember : this.cur === 0 && this.flags.has('quest:hollo') && !this.flags.has('chapter1-complete') ? `Lanterns  ${'●'.repeat(lanternsLit(qc))}${'○'.repeat(3 - lanternsLit(qc))}` : '';
     this.hud.setGoal(showGoal && goal ? goal : null, lit);
-    this.hud.compass.update(dt, { show: (this.mode === 'play' || this.mode === 'raft') && !this.hud.goalHidden && this.flags.has('read-letter') && (!this.isSky() || !this.ch2 || this.flags.has('sky:arrived')), center: this.planet.center, radius: this.planet.R, worldId: this.planet.cfg.id, pos: this.player.pos, camera: this.camera, task: goal ? (this.cur === 0 ? this.ch1.guideTarget() : this.skyStory() ? this.ch2!.guideTarget() : this.townStory?.active ? this.townStory.guideTarget() : null) : null, taskLabel: goal ? goal.replace(/\s*\(\d+ of \d+\)\s*$/, '') : null, pins: this.map });
+    this.hud.compass.update(dt, { show: (this.mode === 'play' || this.mode === 'raft') && !this.hud.goalHidden && this.flags.has('read-letter') && (!this.isSky() || !this.ch2 || this.flags.has('sky:arrived')), center: this.planet.center, radius: this.planet.R, worldId: this.planet.cfg.id, pos: this.player.pos, camera: this.camera, task: goal ? (this.cur === 0 ? this.ch1.guideTarget() : this.skyStory() ? this.ch2!.guideTarget() : this.townStory?.active ? this.townStory.guideTarget() : null) : null, taskLabel: goal ? goal.replace(/\s*\(\d+ of \d+\)\s*$/, '') : null, pins: this.map, friend: this.townStory?.active ? (() => { const a = this.townStory!.compassMark(); return a ? { pos: a, label: 'Amble' } : null; })() : null });
     // A new task: a toast with the same words as the goal line, once the conversation or scene is over.
     if (goal && (this.mode === 'play' || this.mode === 'raft')) {
       const key = goal.replace(/\(\d+ of \d+\)\s*$/, '').trim();

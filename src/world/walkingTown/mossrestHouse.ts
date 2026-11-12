@@ -26,6 +26,8 @@ export interface HouseOpts {
   balcony?: boolean;
   /** The shell's height under a local point (x, z), relative to the floor (negative below it). */
   ground?: (x: number, z: number) => number;
+  /** Where a post from local (x, z) lands on the plates (local, y relative to the floor), when it must rake in. */
+  foot?: (x: number, z: number) => THREE.Vector3 | null;
 }
 export interface Box2 { x: number; z: number; hw: number; hd: number; h: number; rot: number; y0?: number }
 export interface DeckSpec { x: number; z: number; rot: number; span: number; width: number; y0: number; y1: number }
@@ -247,7 +249,7 @@ const SMALL_STONE = 0.8;
  * runs under the walls; where the shell drops away below it, each stretch of the edge gets a dry-stone retaining
  * wall if it is shallow, or a stout timber post on a flat stone with knee braces up to a sill beam if it is deep.
  */
-function footing(kit: Kit, w: number, d: number, ground: (x: number, z: number) => number, r: R, stoneC: THREE.ColorRepresentation) {
+function footing(kit: Kit, w: number, d: number, ground: (x: number, z: number) => number, r: R, stoneC: THREE.ColorRepresentation, foot?: (x: number, z: number) => THREE.Vector3 | null) {
   const base = 0.45;
   kit.add(slab(w + 0.3, base, d + 0.3, SMALL_STONE), 'stone', shadeC(stoneC, 0.9), T(0, -base, 0));
   const dk = pk(r, PAL.timberDark);
@@ -277,6 +279,16 @@ function footing(kit: Kit, w: number, d: number, ground: (x: number, z: number) 
   for (const p of posts) {
     const top = -base - 0.3, len = top - p.y + 0.2;
     if (len < 0.2) continue;
+    const f = foot?.(p.x, p.z);
+    if (f && Math.hypot(f.x - p.x, f.z - p.z) > 0.25) {
+      // past the rim: a raking post from the sill in to the plates, on its flat stone, with a brace back up
+      const head = new THREE.Vector3(p.x, top + 0.15, p.z), fo = f.clone();
+      kit.add(taperTube([fo, head], 0.18, 0.16, 5, 1), 'wood', dk);
+      kit.add(new THREE.DodecahedronGeometry(0.42, 0).scale(1, 0.4, 1), 'rough', pk(r, PAL.stone), T(fo.x, fo.y + 0.25, fo.z));
+      const mid = fo.clone().lerp(head, 0.5), inn = new THREE.Vector3(p.x - Math.sign(p.x) * 1.1, top + 0.05, p.z - Math.sign(p.z) * 0.6);
+      kit.add(taperTube([mid, inn], 0.08, 0.08, 4, 1), 'wood', dk);
+      continue;
+    }
     kit.add(slab(0.3, len, 0.3, WOOD_TILE, true), 'wood', dk, T(p.x, p.y - 0.2, p.z));
     kit.add(new THREE.DodecahedronGeometry(0.42, 0).scale(1, 0.4, 1), 'rough', pk(r, PAL.stone), T(p.x, p.y + 0.05, p.z));
     // knee braces in towards the house
@@ -322,7 +334,7 @@ export function house(kit: Kit, o: HouseOpts): HouseOut {
   const solids: Box2[] = [], decks: DeckSpec[] = [];
   // ---- the footing: a low course of stone under the walls; below it, where the shell falls away, dry-stone
   // retaining walls where it is shallow and stout timber posts with knee braces on flat stones where it is deep
-  footing(kit, w, d, o.ground ?? (() => -o.plinth), r, stoneC);
+  footing(kit, w, d, o.ground ?? (() => -o.plinth), r, stoneC, o.foot);
   // ---- the ground floor: stone walls with the door, round and square windows
   const dOpen: Opening = { kind: 'door', x: doorX, y: 0, w: 1.05, h: 2.05 };
   const frontWin: Opening[] = [];

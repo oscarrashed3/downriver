@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Kit } from '../skyIsles/sailtownKit';
 import type { Solid, Deck } from '../collide';
 import { SHELL, REST, BONE, FOOT_REST, type Leg } from './ambleRig';
-import { outlinePoint, shellPolar, shellTopY, shellProfile, ledges } from './ambleShell';
+import { outlinePoint, shellPolar, shellTopY, shellProfile, ledges, plateFoot } from './ambleShell';
 import {
   PAL, pk, rnd, type R, barrel, vegTub, bench, crate, lantern, posy, ropeLadder, rope, laundry, bunting, tree, shrub, vine,
   FC, STONE_TILE, WOOD_TILE, T, boxM, taperTube, slab,
@@ -295,20 +295,27 @@ export class Mossrest {
       const o = P(i, 0.97), m = P(i, 0.5);
       const pr = shellProfile(th);
       const rhoO = shellPolar(o.x, o.z).rho;
-      // the flank is under this post where it bulges out to the post's radius
-      let yb = o.y - 1.0;
-      for (let q = pr.face[0]; q <= pr.face[1]; q++) if (pr.rho[q] >= rhoO - 0.004) { yb = pr.y[q] - 0.35; break; }
-      yb = Math.min(yb, o.y - 0.5);
-      k.add(slab(0.28, o.y - yb, 0.28, WOOD_TILE, true), 'wood', pk(r, PAL.timberDark), T(o.x, yb, o.z, (r() - 0.5) * 0.03, 0, (r() - 0.5) * 0.03));
+      // the post goes down to the plates: straight down where the flank bulges out under it, otherwise raked in
+      // to the widest point of the flank (never hanging past the rim)
+      const ft = plateFoot(o.x, o.z, 0.35);
+      const yb = Math.min(ft.y, o.y - 0.5);
+      const foot = new THREE.Vector3(ft.x, yb, ft.z);
+      if (!ft.raked) k.add(slab(0.28, o.y - yb, 0.28, WOOD_TILE, true), 'wood', pk(r, PAL.timberDark), T(o.x, yb, o.z, (r() - 0.5) * 0.03, 0, (r() - 0.5) * 0.03));
+      else {
+        // a stout raking post from under the deck edge in to the plates, and a stub from the deck to its head
+        const head = new THREE.Vector3(o.x, o.y - 0.3, o.z);
+        k.add(taperTube([foot, head], 0.17, 0.15, 5, 1), 'wood', pk(r, PAL.timberDark));
+        k.add(slab(0.28, 0.4, 0.28, WOOD_TILE, true), 'wood', pk(r, PAL.timberDark), T(o.x, o.y - 0.4, o.z));
+      }
       // a big flat stone where the post meets the plates
-      k.add(new THREE.DodecahedronGeometry(0.42, 0).scale(1, 0.45, 1), 'rough', pk(r, PAL.stone), T(o.x, yb + 0.12, o.z));
+      k.add(new THREE.DodecahedronGeometry(0.42, 0).scale(1, 0.45, 1), 'rough', pk(r, PAL.stone), T(foot.x, yb + 0.12, foot.z));
       // the railing post
       if (!(nearStilt(i) && nearStilt(i - 1))) {
         k.add(slab(0.2, 1.22, 0.2, WOOD_TILE, true), 'wood', pk(r, PAL.timber), T(o.x, o.y - 0.05, o.z));
         k.add(new THREE.ConeGeometry(0.15, 0.16, 4), 'wood', pk(r, PAL.timberDark), T(o.x, o.y + 1.25, o.z, 0, Math.PI / 4, 0));
       }
       // a brace from the post up under the middle of the deck
-      if (o.y - yb > 1.6) k.add(taperTube([new THREE.Vector3(o.x, yb + (o.y - yb) * 0.45, o.z), new THREE.Vector3(m.x, m.y - 0.25, m.z)], 0.09, 0.09, 4, 2), 'wood', pk(r, PAL.timberDark));
+      if (o.y - yb > 1.6) { const bq = foot.clone().lerp(new THREE.Vector3(o.x, o.y, o.z), 0.45); k.add(taperTube([bq, new THREE.Vector3(m.x, m.y - 0.25, m.z)], 0.09, 0.09, 4, 2), 'wood', pk(r, PAL.timberDark)); }
       // the inner edge sits on short posts on the shell
       const ii = P(i, 0.04), gi = groundAt(ii.x, ii.z);
       if (ii.y - gi > 0.2) k.add(slab(0.24, ii.y - gi + 0.3, 0.24, WOOD_TILE, true), 'wood', pk(r, PAL.timberDark), T(ii.x, gi - 0.3, ii.z));
@@ -537,7 +544,13 @@ export class Mossrest {
       return pr.yLip;
     };
     this.kit.push(T(at.x, at.y, at.z, 0, rot, 0));
-    const out = house(this.kit, { w, d, floors: 1 + (r() < 0.5 ? 1 : 0), walkIn: false, seed, plinth: 3, doorDrop: 0.05, doorX: 0, balcony: false, ground: (lx, lz) => { const q = L(lx, lz); return Math.min(groundAt(q.x, q.z), flank(q.x, q.z)) - at.y; } });
+    const out = house(this.kit, { w, d, floors: 1 + (r() < 0.5 ? 1 : 0), walkIn: false, seed, plinth: 3, doorDrop: 0.05, doorX: 0, balcony: false, ground: (lx, lz) => { const q = L(lx, lz); return Math.min(groundAt(q.x, q.z), flank(q.x, q.z)) - at.y; },
+      foot: (lx, lz) => {
+        const q = L(lx, lz), f = plateFoot(q.x, q.z, 0.25);
+        if (!f.raked) return null;
+        const dx = f.x - at.x, dz = f.z - at.z;
+        return new THREE.Vector3(dx * cs - dz * sn, f.y - at.y, dx * sn + dz * cs);
+      } });
     this.kit.pop();
     for (const s of out.solids) this.solid(s, at, rot);
     const world = (v: THREE.Vector3) => { const q = L(v.x, v.z); q.y = at.y + v.y; return q; };

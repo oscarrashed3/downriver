@@ -30,6 +30,8 @@ export interface SaveData {
   seen: Record<string, string>;
   /** Set when the saved spot no longer fits the world (it was redrawn): start at its arrival point instead of dir. */
   arrive?: boolean;
+  /** World 3: whether Nilo was on Old Amble's back and where (creature space), and where Amble was on its loop. */
+  town?: { on: boolean; local: [number, number, number]; s: number; mode: string };
 }
 
 const KEY = 'nilo-save-v5';
