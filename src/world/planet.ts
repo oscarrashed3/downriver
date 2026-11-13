@@ -13,6 +13,7 @@ import { townDir, PLACES } from './walkingTown/meadow';
 export interface Flatten { dir: THREE.Vector3; radius: number; height: number; blend: number }
 
 const tmpV = new THREE.Vector3();
+const TOWN_SHORE = new THREE.Color('#cfc996'), TOWN_GREEN = new THREE.Color('#86a84a'), TOWN_GOLD = new THREE.Color('#dcb54c');
 const TOWN_FAR_ROCK = new THREE.Color('#8697bd');
 
 /**
@@ -301,6 +302,15 @@ export class Planet {
     if (this.cfg.shape === 'sea' || this.cfg.ocean) {
       const og = new THREE.IcosahedronGeometry(this.R + this.cfg.ocean!, 24);
       const om = makeWaterMaterial(this.cfg.palette.water, this.cfg.palette.waterDeep, true);
+      if (this.cfg.shape === 'garden') {
+        // the Walking Town's lake: still and shiny, the sky in it (more at a glancing look), the sun's glint
+        om.uniforms.uSkyRef = { value: new THREE.Color(this.cfg.palette.skyHorizon).lerp(new THREE.Color(this.cfg.palette.skyTop), 0.35) };
+        om.fragmentShader = om.fragmentShader.replace('uniform float uNarrow;', 'uniform float uNarrow; uniform vec3 uSkyRef;')
+          .replace('a = 0.82 + fres * 0.15;', `a = 0.82 + fres * 0.15;
+          { vec3 Rf = reflect(-V, N); col = mix(col, uSkyRef, 0.3 + 0.55 * pow(1.0 - abs(dot(N, V)), 2.0));
+            float gl = pow(max(dot(Rf, normalize(uSun)), 0.0), 180.0) * (0.6 + 0.8 * w);
+            col += vec3(1.0, 0.95, 0.85) * gl * 1.4; a = 0.9 + fres * 0.1; }`);
+      }
       this.ocean = new THREE.Mesh(og, om);
       this.ocean.renderOrder = 1;
       this.group.add(this.ocean);
@@ -380,6 +390,17 @@ export class Planet {
       if (shape === 'desert') desertBand(heights[i] + big * 0.25 + jitter * 1.2, c);
       // painted dabs of brighter grass
       c.lerp(dab, smoothstep(0.25, 0.55, big) * 0.35 * smoothstep(0.6, 0.3, h));
+      if (shape === 'garden') {
+        // the Walking Town's meadow: green underneath the gold, greener in the damp ground near the water, warmer
+        // gold on the rises, in soft broad patches
+        const pat = this.noise.n3(d.x * 18 + 7, d.y * 18, d.z * 18), pat2 = this.noise.n3(d.x * 41 - 3, d.y * 41, d.z * 41);
+        const wet = smoothstep(this.cfg.riverWidth + 16, this.cfg.riverWidth + 3, rd[i]) + smoothstep(1.2, -0.4, heights[i]);
+        c.lerp(TOWN_GREEN, clamp(wet * 0.55 + smoothstep(0.05, 0.45, pat) * 0.4 + smoothstep(0.3, 0.6, pat2) * 0.12));
+        c.lerp(TOWN_GOLD, smoothstep(-0.05, -0.45, pat) * 0.45 * smoothstep(2.4, 4.5, heights[i] + big * 1.5));
+        c.multiplyScalar(0.94 + 0.1 * pat2);
+        // a soft pale shore round the lake
+        c.lerp(TOWN_SHORE, smoothstep(1.5, 0.75, heights[i]) * smoothstep(-0.1, 0.5, heights[i]) * 0.55);
+      }
       for (const t of this.tints) { const a = angleBetween(d, t.dir) * this.R; if (a < t.r + 6) c.lerp(t.color, smoothstep(t.r + 6, t.r - 2, a) * t.k); }
       const rocky = smoothstep(0.86, 0.6, flat);
       const rk = rock.clone().lerp(moss, smoothstep(0.62, 0.8, flat) * 0.55 * (peaks ? 1 : 0.3));

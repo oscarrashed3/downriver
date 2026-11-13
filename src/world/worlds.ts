@@ -76,9 +76,10 @@ export const WORLDS: WorldConfig[] = [
     riverStartLat: 4, meander: 14, meanderWaves: 2, riverWidth: 2.8, riverBed: 0.8, bankWidth: 4.5, waterDepth: 0.5,
     palette: {
       // a golden meadow on green rolling hills, blue rock and snow on the far mountains (planet.ts)
-      low: '#d6b84e', mid: '#b4b450', high: '#7fa456', rock: '#8e98ae', bank: '#d9cc96', dab: '#e6cc62', path: '#e0cf9c',
-      snow: '#f4f6fb', water: '#8ccbe0', waterDeep: '#3f7fa8',
-      light: '#ffeac4', ambient: '#a6bcd8', fog: '#d6e4f0', skyTop: '#5c9ae6', skyHorizon: '#cfe4f6',
+      low: '#c4b04e', mid: '#a4ac4c', high: '#78a052', rock: '#8e98ae', bank: '#c8c48a', dab: '#d8c25a', path: '#e0cf9c',
+      snow: '#f4f6fb', water: '#7fc4e0', waterDeep: '#2f6f9e',
+      // warm early-afternoon sun, a soft warm haze towards the horizon
+      light: '#ffe2b0', ambient: '#aab8cc', fog: '#e2e6e2', skyTop: '#5896e4', skyHorizon: '#dce8ee',
     },
     music: 'marimba', hour: { elev: 0.62 },
   },

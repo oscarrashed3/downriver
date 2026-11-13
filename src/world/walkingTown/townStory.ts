@@ -235,6 +235,7 @@ export class TownStory {
   frame(dt: number) {
     const g = this.g, pl = g.player;
     this.active = true;
+    this.skyPuffs(true);
     this.walking();
     this.sync();
     // the fox walks on the shell with him (at his height when he is on Amble, else on the meadow)
@@ -336,7 +337,25 @@ export class TownStory {
   }
 
   /** Leaving World 3: the fox goes back to the ground she knows. */
-  off() { if (this.active) { this.active = false; this.g.fox.ground = null; this.beam.visible = false; this.tasks.off(); this.extras.off(); this.bye.setGolden(false); } }
+  /** While Nilo is in this world, the shared sky's hard round puffs near it are put away (this world has its own
+   * soft painted cumulus); they come back as they were when he leaves. */
+  private hidSky: { i: number; m: THREE.Matrix4 }[] | null = null;
+  private skyPuffs(hide: boolean) {
+    const cl = this.g.sky.clouds;
+    if (hide && !this.hidSky) {
+      const c = this.g.planets[this.idx].center, M = new THREE.Matrix4(), P = new THREE.Vector3(), Z = new THREE.Matrix4().makeScale(0, 0, 0);
+      this.hidSky = [];
+      for (let i = 0; i < cl.count; i++) {
+        cl.getMatrixAt(i, M); P.setFromMatrixPosition(M);
+        if (Math.abs(P.y - c.y) < 260 && Math.hypot(P.x - c.x, P.z - c.z) < 700) { this.hidSky.push({ i, m: M.clone() }); cl.setMatrixAt(i, Z); }
+      }
+      cl.instanceMatrix.needsUpdate = true;
+    } else if (!hide && this.hidSky) {
+      for (const h of this.hidSky) cl.setMatrixAt(h.i, h.m);
+      cl.instanceMatrix.needsUpdate = true; this.hidSky = null;
+    }
+  }
+  off() { this.skyPuffs(false); if (this.active) { this.active = false; this.g.fox.ground = null; this.beam.visible = false; this.tasks.off(); this.extras.off(); this.bye.setGolden(false); } }
 
   // ------------------------------------------------------------------ the sky jump
 

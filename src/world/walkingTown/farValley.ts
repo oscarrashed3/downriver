@@ -26,16 +26,23 @@ export class FarValley {
     this.root.name = 'farValley';
     this.root.visible = false;
     const W = 46; // half the width covered, degrees (the long lens sees about +-26)
-    // ---- the far range: tall and pale, mostly snow
+    // ---- the farthest range: faint and pale, nearly lost in the haze
+    const peaksFarthest: [number, number, number][] = [[-42, 10.5, 0.7], [-30, 14.0, 0.75], [-14, 12.0, 0.7], [0, 15.5, 0.8], [12, 18.0, 0.85], [26, 13.5, 0.8], [42, 16.0, 0.8]];
+    this.mountains(1000, W, peaksFarthest, 0.66, { rock: C('#b4c0de'), rockShade: C('#a2b0d4'), snow: C('#f6f8fc'), snowShade: C('#d6deef'), haze: C('#d2dcec') }, 5);
+    // ---- the far range: tall, mostly snow
     const peaksFar: [number, number, number][] = [[-38, 9.5, 0.8], [-24, 12.0, 0.85], [-9, 10.0, 0.8], [5, 13.5, 0.9], [19, 21.0, 1.05], [33, 15.0, 0.95], [45, 12.0, 0.9]];
-    this.mountains(860, W, peaksFar, 0.62, { rock: C('#9aa8d2'), rockShade: C('#8291c2'), snow: C('#f6f8fc'), snowShade: C('#c4cfea'), haze: C('#c3d1e8') }, 1);
-    // ---- the near range: bluer, darker, the snow only on the tops
+    this.mountains(860, W, peaksFar, 0.74, { rock: C('#93a2c8'), rockShade: C('#71819f'), snow: C('#fbfcff'), snowShade: C('#b9c5e2'), haze: C('#c3d1e8') }, 1);
+    // ---- the near range: blue-grey, darker, the snow only on the tops
     const peaksNear: [number, number, number][] = [[-40, 6.5, 0.7], [-28, 8.0, 0.75], [-15, 6.2, 0.7], [-2, 8.5, 0.75], [11, 9.5, 0.8], [27, 12.0, 0.85], [40, 8.5, 0.8]];
-    this.mountains(640, W, peaksNear, 0.66, { rock: C('#7487bb'), rockShade: C('#5d6fa2'), snow: C('#f1f4fa'), snowShade: C('#b7c4e2'), haze: C('#a7b9d8') }, 2);
-    // ---- the blue-green hills in front of the mountains
-    this.band(470, W, az => 3.0 + 2.6 * fbm(az * 0.11 + 4) + 1.2 * Math.sin(az * 0.07 + 1), C('#86a68e'), C('#a6bfc0'), 3);
-    // ---- the valley: rolling green and gold, a darker line of trees along its fields
-    this.band(330, W, az => 1.0 + 0.9 * fbm(az * 0.12 + 9) + (az > 15 && az < 30 ? 1.4 * Math.sin(((az - 15) / 15) * Math.PI) : 0), C('#97b061'), C('#adc184'), 4, C('#6f8f4a'));
+    this.mountains(640, W, peaksNear, 0.8, { rock: C('#7688a8'), rockShade: C('#55637f'), snow: C('#f4f6fb'), snowShade: C('#aebbd8'), haze: C('#a9bad4') }, 2);
+    // ---- the blue-green hills in front of the mountains, with woods on them
+    const hillSil: Sil = az => 3.0 + 2.6 * fbm(az * 0.11 + 4) + 1.2 * Math.sin(az * 0.07 + 1);
+    this.band(470, W, hillSil, C('#7a9c80'), C('#9ab8b0'), 3);
+    this.copses(470, W, hillSil, 3, 26, 0.38, C('#58785e'), C('#8aa890'));
+    // ---- the valley: rolling green and gold, copses and hedgerows of round trees along its fields
+    const valSil: Sil = az => 1.0 + 0.9 * fbm(az * 0.12 + 9) + (az > 15 && az < 30 ? 1.4 * Math.sin(((az - 15) / 15) * Math.PI) : 0);
+    this.band(330, W, valSil, C('#8fae58'), C('#b2c47e'), 4, C('#5f8240'));
+    this.copses(330, W, valSil, 4, 34, 0.45, C('#4f7536'), C('#9cbc5c'));
     // ---- the lake, the river winding to it, catching the sky (just over the valley floor)
     this.lake(320, 10, 12, 0.35, 0.75);
     this.river(318);
@@ -48,6 +55,7 @@ export class FarValley {
     mesh.frustumCulled = false; mesh.renderOrder = -1; mesh.userData.noOutline = true;
     this.root.add(mesh);
     this.root.add(this.town(312, 21, 0.6));
+    this.root.add(this.cloudLayer());
   }
 
   /**
@@ -121,35 +129,123 @@ export class FarValley {
       }
       return h + 0.35 * (fbm(az * 0.9 + seed * 5) - 0.5) + 0.12 * (vnoise(az * 4 + seed) - 0.5);
     };
-    // the lit side faces left (the sun is off to that side of the lens), the far side in soft blue shade
+    // the lit side faces left (the sun is off to that side of the lens), the far side in soft blue shade; the
+    // light turns over the ridges softly, gullies streak down the faces, the snow lies in a soft-edged cap, and the
+    // range's foot sinks into the blue haze of the distance
     this.strip(d, W, sil, (az, el, top, slope) => {
-      const lit = slope > 0 ? 1 : 0;
-      // the snow comes down further in the gullies and on the lit faces, ragged at its edge
-      const line = top * snowLine + 0.9 * (vnoise(az * 1.6 + seed * 3) - 0.5) - (top > 7 ? 0.8 : 0);
-      const snow = el > line ? 1 : 0;
-      const c = snow ? (lit ? P.snow.clone() : P.snowShade.clone()) : (lit ? P.rock.clone() : P.rockShade.clone());
-      // ridges and streaks of rock showing through the snow, lighter rock low down in the haze
-      if (snow && vnoise(az * 3.2 + el * 0.8 + seed) > 0.78) c.lerp(lit ? P.rock : P.rockShade, 0.5);
-      return c.lerp(P.haze, THREE.MathUtils.clamp(0.55 - (el + 1) * 0.08, 0, 0.55));
-    }, 260, [0, 0.3, 0.45, 0.55, 0.62, 0.68, 0.74, 0.8, 0.85, 0.9, 0.94, 0.97, 1]);
+      const lit = THREE.MathUtils.smoothstep(slope + 0.9 * (vnoise(az * 1.3 + seed * 9) - 0.5), -0.5, 0.5);
+      const gully = THREE.MathUtils.smoothstep(vnoise(az * 3.1 + el * 0.25 + seed * 2), 0.55, 0.85);
+      const line = top * snowLine + 1.1 * (vnoise(az * 1.6 + seed * 3) - 0.5) - (top > 7 ? 0.8 : 0) - gully * 0.9;
+      const snow = THREE.MathUtils.smoothstep(el, line - 0.25, line + 0.35);
+      const rock = P.rockShade.clone().lerp(P.rock, lit * 0.9).multiplyScalar(1 - 0.12 * gully);
+      const sn = P.snowShade.clone().lerp(P.snow, lit).lerp(P.snowShade, gully * 0.35 * (1 - lit));
+      const c = rock.lerp(sn, snow);
+      // a little darker towards the top of the rock (the haze thins with height)
+      const f = THREE.MathUtils.clamp((el + 1) / (top + 1), 0, 1);
+      return c.lerp(P.haze, THREE.MathUtils.clamp(0.7 - f * 0.75, 0, 0.7));
+    }, 320, [0, 0.2, 0.32, 0.42, 0.5, 0.56, 0.62, 0.67, 0.72, 0.76, 0.8, 0.84, 0.87, 0.9, 0.93, 0.95, 0.97, 0.985, 1]);
   }
 
-  /** The lake: a long soft oval lying on the valley floor, with a glint across it. */
-  private lake(d: number, az0: number, half: number, el0: number, h: number) {
-    const base = this.pos.length / 3, n = 40;
-    const mid = this.v(d, az0, el0, C('#bfe0ee'));
+  /** Round painterly trees: a dark crown with a sunlit cap, a soft shadow under it (a flat fan facing the lens). */
+  private treeBlob(d: number, az: number, el: number, r: number, dark: THREE.Color, light: THREE.Color) {
+    const base = this.pos.length / 3, n = 14;
+    const ctr = this.v(d - 0.5, az - r * 0.15, el + r * 0.35, light);
     for (let i = 0; i <= n; i++) {
       const a = (i / n) * Math.PI * 2;
-      const az = az0 + Math.cos(a) * half * (1 + 0.12 * Math.sin(a * 3));
-      const el = el0 + Math.sin(a) * h * (Math.sin(a) > 0 ? 0.7 : 1);
-      this.v(d, az, el, Math.sin(a) > 0.3 ? C('#9cc6dc') : C('#8ab8d2'));
+      const wob = 1 + 0.12 * Math.sin(a * 5 + az);
+      const up = Math.sin(a);
+      this.v(d - 0.5, az + Math.cos(a) * r * wob, el + up * r * 0.85 * wob, up > 0.2 && Math.cos(a) < 0.3 ? dark.clone().lerp(light, 0.45) : dark);
     }
-    for (let i = 0; i < n; i++) this.idx.push(mid, base + 1 + i, base + 2 + i);
-    // a glint
-    const g0 = this.pos.length / 3;
-    this.v(d - 1, az0 - half * 0.6, el0 + 0.04, C('#f4fbff')); this.v(d - 1, az0 + half * 0.5, el0 + 0.04, C('#f4fbff'));
-    this.v(d - 1, az0 + half * 0.5, el0 + 0.1, C('#e8f6ff')); this.v(d - 1, az0 - half * 0.6, el0 + 0.1, C('#e8f6ff'));
-    this.idx.push(g0, g0 + 1, g0 + 2, g0, g0 + 2, g0 + 3);
+    for (let i = 0; i < n; i++) this.idx.push(ctr, base + 1 + i, base + 2 + i);
+  }
+
+  /** Copses and hedgerows over a band: clumps of round trees, and lines of them along field edges. */
+  private copses(d: number, W: number, sil: Sil, seed: number, count: number, size: number, dark: THREE.Color, light: THREE.Color) {
+    let s = seed * 9301 + 7;
+    const r = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+    for (let k = 0; k < count; k++) {
+      const az = -W + r() * 2 * W, top = sil(az);
+      const el = top - 0.2 - r() * Math.min(2.2, top + 0.8);
+      const hedge = r() < 0.4;
+      const m = hedge ? 7 : 2 + Math.floor(r() * 5);
+      for (let j = 0; j < m; j++) {
+        const rr = size * (0.6 + r() * 0.6);
+        const a2 = hedge ? az + j * rr * 1.3 : az + (r() - 0.5) * size * 3;
+        const e2 = hedge ? el + j * 0.03 : el + (r() - 0.5) * size;
+        if (e2 > sil(a2) - 0.05) continue;
+        this.treeBlob(d - j * 0.01, a2, e2 + rr * 0.5, rr, dark.clone().multiplyScalar(0.9 + r() * 0.2), light);
+      }
+    }
+  }
+
+  /** A big soft cumulus, painted once into a texture. */
+  static cloudTexture() {
+    const S = 256, cv = document.createElement('canvas'); cv.width = S * 2; cv.height = S;
+    const g = cv.getContext('2d')!;
+    let s = 11; const r = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+    // puffs: big ones low and wide, smaller ones heaped on top; each lit from the upper left, shaded underneath
+    for (let pass = 0; pass < 2; pass++) for (let k = 0; k < 46; k++) {
+      const t = k / 46;
+      const x = S * (0.25 + 1.5 * r()), base = S * 0.78;
+      const rad = S * (0.12 + 0.16 * r()) * (1 - 0.5 * Math.abs(x / S - 1));
+      const y = base - rad * 0.4 - (1 - Math.abs(x / S - 1)) * S * 0.42 * r() * (0.4 + t);
+      const gr = g.createRadialGradient(x - rad * 0.3, y - rad * 0.35, rad * 0.1, x, y, rad);
+      if (pass === 0) { gr.addColorStop(0, 'rgba(206,214,232,0.9)'); gr.addColorStop(1, 'rgba(206,214,232,0)'); g.fillStyle = gr; g.beginPath(); g.arc(x, y + rad * 0.25, rad * 1.05, 0, Math.PI * 2); g.fill(); }
+      else { gr.addColorStop(0, 'rgba(255,253,248,1)'); gr.addColorStop(0.6, 'rgba(246,244,244,0.85)'); gr.addColorStop(1, 'rgba(236,238,246,0)'); g.fillStyle = gr; g.beginPath(); g.arc(x, y, rad, 0, Math.PI * 2); g.fill(); }
+    }
+    // a flat, soft, shaded underside
+    const ug = g.createLinearGradient(0, S * 0.6, 0, S * 0.9);
+    ug.addColorStop(0, 'rgba(190,200,222,0)'); ug.addColorStop(1, 'rgba(190,200,222,0.55)');
+    g.globalCompositeOperation = 'source-atop'; g.fillStyle = ug; g.fillRect(0, 0, S * 2, S);
+    g.globalCompositeOperation = 'destination-out';
+    const cut = g.createLinearGradient(0, S * 0.8, 0, S * 0.95); cut.addColorStop(0, 'rgba(0,0,0,0)'); cut.addColorStop(1, 'rgba(0,0,0,1)');
+    g.fillStyle = cut; g.fillRect(0, S * 0.8, S * 2, S * 0.2);
+    const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
+  private cloudLayer() {
+    const tex = FarValley.cloudTexture();
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, fog: false, toneMapped: false });
+    const grp = new THREE.Group();
+    const at: [number, number, number, number][] = [[-30, 9, 70, 720], [-6, 14, 110, 900], [16, 8, 60, 700], [34, 15, 95, 920], [-44, 13, 80, 900], [4, 22, 80, 1100], [26, 24, 70, 1100]];
+    for (const [az, el, w, d] of at) {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, w * 0.5), mat);
+      m.position.set(d * Math.tan(az * deg), d * Math.tan(el * deg), -d);
+      m.renderOrder = -1; m.frustumCulled = false; m.userData.noOutline = true;
+      grp.add(m);
+    }
+    return grp;
+  }
+
+  /** The lake: a long soft oval lying on the valley floor, a pale shore round it, the sky in it (lighter at its far
+   * side, deeper blue near), the far hills' dark reflection along its back edge, and glints across it. */
+  private lake(d: number, az0: number, half: number, el0: number, h: number) {
+    const ring = (sc: number, cIn: (up: number) => THREE.Color, dz: number) => {
+      const base = this.pos.length / 3, n = 48;
+      const mid = this.v(d - dz, az0, el0, cIn(0));
+      for (let i = 0; i <= n; i++) {
+        const a = (i / n) * Math.PI * 2;
+        const az = az0 + Math.cos(a) * half * sc * (1 + 0.12 * Math.sin(a * 3));
+        const el = el0 + Math.sin(a) * h * sc * (Math.sin(a) > 0 ? 0.7 : 1);
+        this.v(d - dz, az, el, cIn(Math.sin(a)));
+      }
+      for (let i = 0; i < n; i++) this.idx.push(mid, base + 1 + i, base + 2 + i);
+    };
+    ring(1.12, () => C('#b9c890'), 0);
+    ring(1.0, up => C('#7fb2d2').lerp(C('#d4ecf6'), THREE.MathUtils.smoothstep(up, -0.6, 0.9)), 0.3);
+    // the far hills mirrored along its back edge
+    const b0 = this.pos.length / 3;
+    this.v(d - 0.6, az0 - half * 0.85, el0 + h * 0.45, C('#7f9ea2')); this.v(d - 0.6, az0 + half * 0.85, el0 + h * 0.45, C('#7f9ea2'));
+    this.v(d - 0.6, az0 + half * 0.7, el0 + h * 0.62, C('#93b4bc')); this.v(d - 0.6, az0 - half * 0.7, el0 + h * 0.62, C('#93b4bc'));
+    this.idx.push(b0, b0 + 1, b0 + 2, b0, b0 + 2, b0 + 3);
+    // glints
+    for (const [a0, a1, e] of [[-0.6, 0.5, 0.04], [-0.3, 0.2, -0.22], [0.1, 0.6, 0.2]] as const) {
+      const g0 = this.pos.length / 3;
+      this.v(d - 1, az0 + half * a0, el0 + e, C('#f4fbff')); this.v(d - 1, az0 + half * a1, el0 + e, C('#f4fbff'));
+      this.v(d - 1, az0 + half * a1, el0 + e + 0.05, C('#e8f6ff')); this.v(d - 1, az0 + half * a0, el0 + e + 0.05, C('#e8f6ff'));
+      this.idx.push(g0, g0 + 1, g0 + 2, g0, g0 + 2, g0 + 3);
+    }
   }
 
   /** The river, winding from the right across the valley into the lake. */

@@ -9,6 +9,8 @@ import { Mossrest } from './mossrest';
 import { CardBuilder } from './ambleGrowth';
 import { CELL, ambleCardMaterial } from './ambleMaterials';
 import { townRng } from './rand';
+import { smoothstep } from '../noise';
+import { FarValley } from './farValley';
 import { house, windmill } from './mossrestHouse';
 import { tree, shrub } from './mossrestKit';
 import { AMBLE_AT, PLACES, townDir, townFrame } from './meadow';
@@ -83,12 +85,13 @@ export function populateTown(k: WorldKit) {
     scene.add(g); g.updateMatrixWorld(true);
     const inv = new THREE.Matrix4().copy(g.matrixWorld).invert();
     const cb = new CardBuilder();
-    const gold = [new THREE.Color('#e0c868'), new THREE.Color('#cdbb58'), new THREE.Color('#b8c05a'), new THREE.Color('#d8d07a')];
+    const gold = [new THREE.Color('#e0c868'), new THREE.Color('#cdbb58'), new THREE.Color('#b8c05a'), new THREE.Color('#d8d07a'), new THREE.Color('#a8b850'), new THREE.Color('#94ac4a')];
+    const lupins = [new THREE.Color('#ffffff'), new THREE.Color('#e8d0ff'), new THREE.Color('#ffd8ec')];
     const d = new THREE.Vector3(), wp = new THREE.Vector3(), up = new THREE.Vector3();
     const nInv = new THREE.Matrix3().setFromMatrix4(inv);
     const sandC = townDir(p, -28, -92);
-    for (let i = 0; i < 14000; i++) {
-      const a = r() * Math.PI * 2, dist = 3 + Math.pow(r(), 0.75) * 85;
+    for (let i = 0; i < 24000; i++) {
+      const a = r() * Math.PI * 2, dist = 3 + Math.pow(r(), 1.15) * 88;
       townDir(p, Math.cos(a) * dist, Math.sin(a) * dist, d);
       if (p.riverNearest(d).dist < p.cfg.riverWidth + 2.5) continue;
       if (p.height(d) < (p.cfg.ocean ?? 0) + 0.2) continue;
@@ -96,14 +99,17 @@ export function populateTown(k: WorldKit) {
       // keep the cards off the track and out from under Amble's feet
       p.surfacePoint(d, 0, wp).applyMatrix4(inv);
       up.copy(d).applyMatrix3(nInv).normalize();
+      // flowers grow in drifts and clumps (daisies in broad drifts, lupins in tight stands), grass everywhere
       const r0 = r();
-      const cell = r0 < 0.7 ? CELL.grass : r0 < 0.88 ? CELL.flowers : CELL.lupin;
+      const dz = p.noise.n3(d.x * 60 + 1, d.y * 60, d.z * 60), lz = p.noise.n3(d.x * 140 - 4, d.y * 140, d.z * 140);
+      const cell = r0 < 0.42 * smoothstep(0.05, 0.45, dz) ? CELL.flowers : r0 > 1 - 0.3 * smoothstep(0.25, 0.55, lz) ? CELL.lupin : CELL.grass;
       const sz = cell === CELL.grass ? 0.55 + r() * 0.4 : cell === CELL.lupin ? 0.55 + r() * 0.35 : 0.3 + r() * 0.15;
       const side = new THREE.Vector3(1, 0, 0).applyAxisAngle(up, r() * Math.PI).projectOnPlane(up).normalize().multiplyScalar(sz);
-      const col = cell === CELL.grass ? gold[Math.floor(r() * gold.length)] : new THREE.Color('#ffffff');
+      const col = cell === CELL.grass ? gold[Math.floor(r() * gold.length)] : cell === CELL.lupin ? lupins[Math.floor(r() * lupins.length)] : new THREE.Color('#ffffff');
       const cc = wp.clone().addScaledVector(up, sz * (cell === CELL.flowers ? 0.6 : 0.95) - 0.05);
-      cb.quad(cc, side, up.clone().multiplyScalar(sz), up, cell, col, [0, 0.03], r() * 10, [[0, 1]]);
-      if (cell !== CELL.flowers) cb.quad(cc, side.clone().applyAxisAngle(up, Math.PI / 2), up.clone().multiplyScalar(sz), up, cell, col.clone().multiplyScalar(0.92), [0, 0.03], r() * 10, [[0, 1]]);
+      const sw: [number, number] = [0, cell === CELL.grass ? 0.14 : 0.08], ph = (wp.x + wp.z) * 0.15 + r() * 0.6;
+      cb.quad(cc, side, up.clone().multiplyScalar(sz), up, cell, col, sw, ph, [[0, 1]]);
+      if (cell !== CELL.flowers) cb.quad(cc, side.clone().applyAxisAngle(up, Math.PI / 2), up.clone().multiplyScalar(sz), up, cell, col.clone().multiplyScalar(0.92), sw, ph, [[0, 1]]);
     }
     const mg = cb.geometry(); mg.deleteAttribute('skinIndex'); mg.deleteAttribute('skinWeight');
     const meadow = new THREE.Mesh(mg, ambleCardMaterial());
@@ -146,7 +152,44 @@ export function populateTown(k: WorldKit) {
       { const o = new THREE.Object3D(); o.position.copy(at).add(p.center); orientTo(o, d); p.solids.push({ obj: o, shape: { kind: 'circle', r: 0.6 }, h: 6 }); }
       n++;
     }
+    // copses of round trees and hedgerows of bushes out across the meadow and over the near hills
+    const plant = (d: THREE.Vector3, big: boolean) => {
+      if (p.riverNearest(d).dist < p.cfg.riverWidth + 6) return;
+      const h = p.height(d);
+      if (h < (p.cfg.ocean ?? 0) + 0.8 || h > 20 || p.slope(d) > 0.35) return;
+      if (d.angleTo(A) * p.R < 42) return;
+      const at = d.clone().multiplyScalar(p.R + h - 0.2);
+      const sx = new THREE.Vector3().crossVectors(d, F).normalize();
+      tk.push(new THREE.Matrix4().makeBasis(sx, d, new THREE.Vector3().crossVectors(sx, d)).setPosition(at));
+      if (big) tree(tk, T(0, 0, 0, 0, r() * 6, 0), r, 4.5 + r() * 3.5, 1.1 + r() * 0.3); else shrub(tk, T(0, 0, 0, 0, r() * 6, 0), r, 1.6 + r() * 1.0);
+      tk.pop();
+      if (big) { const o = new THREE.Object3D(); o.position.copy(at).add(p.center); orientTo(o, d); p.solids.push({ obj: o, shape: { kind: 'circle', r: 0.6 }, h: 6 }); }
+    };
+    for (let g = 0; g < 9; g++) {
+      const a = r() * Math.PI * 2, dist = 48 + r() * 70;
+      const m = 3 + Math.floor(r() * 4);
+      for (let j = 0; j < m; j++) plant(townDir(p, Math.cos(a) * dist + (r() - 0.5) * 12, Math.sin(a) * dist + (r() - 0.5) * 12), r() < 0.7);
+    }
+    for (let hgr = 0; hgr < 6; hgr++) {
+      const a = r() * Math.PI * 2, dist = 50 + r() * 60, along = a + Math.PI / 2 + (r() - 0.5) * 0.8;
+      const x0 = Math.cos(a) * dist, z0 = Math.sin(a) * dist;
+      for (let j = 0; j < 12; j++) plant(townDir(p, x0 + Math.cos(along) * j * 2.6, z0 + Math.sin(along) * j * 2.6), j % 5 === 2);
+    }
     tk.build(holder, { outline: false });
+  }
+
+  // ---- big soft cumulus over the meadow world (painted sprites, always facing you)
+  {
+    const mat = new THREE.SpriteMaterial({ map: FarValley.cloudTexture(), transparent: true, depthWrite: false, fog: false, toneMapped: false });
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2 + r() * 0.4, dist = 120 + r() * 120;
+      const d = townDir(p, Math.cos(a) * dist, Math.sin(a) * dist);
+      const sp = new THREE.Sprite(mat);
+      sp.position.copy(p.center).addScaledVector(d, p.R + 60 + r() * 40);
+      const w = 70 + r() * 60; sp.scale.set(w, w * 0.5, 1);
+      sp.userData.noOutline = true; sp.renderOrder = -1;
+      scene.add(sp);
+    }
   }
 
   // ---- the ford: a line of flat stepping stones across the river by the cart track

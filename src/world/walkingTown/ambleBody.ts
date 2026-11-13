@@ -335,7 +335,7 @@ function neckPart(pb: PartB) {
   const NN = 120, NA = 64;
   const fr = curveFrames(pts, NN, new THREE.Vector3(0, 1, 0));
   const S = fr.ctlS;
-  const rad = mono(S, [6.9, 6.6, 5.8, 4.8, 3.9, 3.05, 2.45]);
+  const rad = mono(S, [6.9, 6.3, 5.5, 4.72, 3.88, 3.03, 2.43]);
   const bones = [BONE.body, BONE.neck0, BONE.neck1, BONE.neck2, BONE.neck3, BONE.head, BONE.head];
   const start = pb.count, p = new THREE.Vector3();
   // fold coordinate: heavy folds every ~0.9 m at the base, finer creases up the throat
@@ -362,7 +362,7 @@ function neckPart(pb: PartB) {
       const baseK = 1 - sm(0.12, 0.38, t);
       // where the neck bends, the hide bunches into deeper folds: over the top where it rises out of the shell,
       // and under the throat where it turns into the head
-      const bendK = gauss((t - 0.8) / 0.09) * sm(0.0, 0.8, under) + gauss((t - 0.16) / 0.08) * sm(0.0, 0.8, Math.max(0, up)) * 0.8;
+      const bendK = gauss((t - 0.8) / 0.09) * sm(0.0, 0.8, under) + gauss((t - 0.16) / 0.08) * sm(0.0, 0.8, Math.max(0, up)) * 0.3;
       const gA = (0.014 + 0.04 * baseK * (0.6 + 0.4 * under) + 0.045 * bendK) * (1 - pale);
       const r = rad(s) * (1 + m + gA * foldBump(ff));
       p.copy(fr.C[i]).addScaledVector(fr.N[i], up * r * (up < 0 ? 1.06 : 1)).addScaledVector(fr.B[i], sd * r * 0.92);

@@ -202,7 +202,7 @@ export class TownTasks {
     });
     this.clumps.forEach((c, i) => {
       it.push({
-        id: 'townVine' + i, world: idx, get pos() { return c.g.parent ? c.g.parent.localToWorld(c.at.clone()) : V(1e9, 0, 0); }, radius: 3.8, hold: 1.4,
+        id: 'townVine' + i, world: idx, get pos() { return c.g.parent ? c.g.parent.localToWorld(c.at.clone()) : V(1e9, 0, 0); }, radius: 4.8, hold: 1.4,
         label: () => (this.has('town:met-bramwyn') && !this.has('town:vine-' + i) && this.high ? TOWN_DO.trim : null),
         act: () => this.trim(i),
       });

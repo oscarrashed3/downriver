@@ -311,7 +311,10 @@ export class TownMove {
     this.syncNow();
     // Amble's eyes find Nilo when he is down near its head (not when he rides on its back), and its head follows
     const hd = this.amble.rig.bone('head').getWorldPosition(this.lookPt).distanceTo(pl.pos);
-    this.amble.lookAt = hd < 55 && !this.onAmble && !this.climb ? this.lookPt.copy(pl.pos) : null;
+    // (only while he is down on the meadow: up on the walk along its neck a turning head would carry the planks
+    // out from under him)
+    const P = this.g.planets[this.idx], dn = pl.pos.clone().sub(P.center), gh = dn.length() - P.R - P.height(dn.normalize());
+    this.amble.lookAt = hd < 55 && !this.onAmble && !this.climb && gh < 2.5 && !pl.onDeck ? this.lookPt.copy(pl.pos) : null;
     const M = this.town.group.matrixWorld;
     // (a jump or a hop off a step keeps the shell's own going: he comes down where he took off, even as it turns)
     const q0 = this.toCreature(pl.pos, _w), aloft = !pl.grounded && this.offT < 1.5 && q0.y > SHELL.yLip - 2 && shellPolar(q0.x, q0.z).rho < 1.15;

@@ -103,8 +103,8 @@ export function headPart(pb: PartB) {
       const bendV = nv / 0.12 + 0.9 * (nu / 0.3) ** 2 - 0.5;
       const nost = Math.exp(-((nu / 0.3) ** 2) - bendV * bendV - (nZ / 0.28) ** 2) * (ax > 0.12 ? 1 : 0);
       const nrim = Math.exp(-((nu / 0.42) ** 2) - (nv / 0.24) ** 2 - (nZ / 0.34) ** 2) * (ax > 0.1 ? 1 : 0);
-      dx += nrim * 0.05 - nost * 0.12;
-      z += nrim * 0.07 - nost * 0.2;
+      dx += nrim * 0.05 - nost * 0.07;
+      z += nrim * 0.07 - nost * 0.1;
       ao += nost * 0.6;
       const nostW = clamp(Math.exp(-((nu / 0.45) ** 2) - (nv / 0.34) ** 2 - (nZ / 0.55) ** 2) * 1.3);
       x += sx * dx * (ax > 0.05 ? 1 : 0);
