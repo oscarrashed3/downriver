@@ -1,6 +1,8 @@
 import { skySkip } from './story/skySkip';
+import { townSkip } from './world/walkingTown/townSkip';
+import type { AmbleWalker } from './world/walkingTown/ambleWalk';
 
-/** Tryout-only buttons ("Try World 2", "Skip task") show only in a preview build made with VITE_TRYOUT=1. The real game makes you play everything. */
+/** Tryout-only buttons ("Try World 2", "Try World 3", "Skip task") show only in a preview build made with VITE_TRYOUT=1. The real game makes you play everything. */
 const TRYOUT = import.meta.env.VITE_TRYOUT === '1';
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -661,7 +663,7 @@ export class Game {
     el.className = 'title';
     el.innerHTML = `<h1 class="hand">The Light<br>Below the Clouds</h1><div class="tag">a long way from home, and a river that knows the way back</div>
       ${saved.notice ? `<div class="notice">${esc(saved.notice)}</div>` : ''}
-      <div>${has ? '<button data-a="continue">Continue</button>' : ''}<button data-a="new">${has ? 'Begin again' : 'Begin'}</button>${TRYOUT ? '<button data-a="try2" class="try2">Try World 2</button>' : ''}</div>
+      <div>${has ? '<button data-a="continue">Continue</button>' : ''}<button data-a="new">${has ? 'Begin again' : 'Begin'}</button>${TRYOUT ? '<button data-a="try2" class="try2">Try World 2</button><button data-a="try3" class="try2">Try World 3</button>' : ''}</div>
       <button class="tset" data-a="settings" aria-label="Settings (Esc)">${TITLE_GEAR}<span>Settings</span></button>
       <div class="foot">Chapter One &middot; best with headphones &middot; <b>Esc</b> settings</div>`;
     document.getElementById('ui')!.append(el);
@@ -686,6 +688,12 @@ export class Game {
         this.hud.setFade(0, '#fff8ee', true);
         this.mode = 'play';
         this.ch2?.arrive();
+        this.addSkipButton();
+      } else if ((b as HTMLElement).dataset.a === 'try3') {
+        // A quick tryout of the Walking Town: as if Worlds 1 and 2 were done (their keepsakes in the backpack, the
+        // fox along), straight into the sky-jump arrival. Nothing is saved.
+        this.saveOff = true;
+        this.tryWorld3();
         this.addSkipButton();
       } else if ((b as HTMLElement).dataset.a === 'continue' && saved.data) {
         this.load(saved.data);
@@ -712,6 +720,22 @@ export class Game {
     else { this.menu.hidePage(); this.sound.sfxPlay('soft'); }
   }
 
+  /** Tryout only (the "Try World 3" start): Worlds 1 and 2 done, then the Walking Town's own arrival scene. */
+  tryWorld3() {
+    for (const k of ['read-letter', 'chapter1-complete', 'peaks-healed', 'power:skyreading', 'item:frost', 'letter:2', 'map:sky',
+      'sky:arrived', 'sky:quest-kite', 'sky:part-frame', 'sky:part-cloth', 'sky:part-string', 'sky:ribbon', 'sky:won', 'form:glider', 'power:glide',
+      'fox-joined', 'item:scarf', 'item:kite', 'friend:lark', 'chapter2-complete', 'journal:sky-isles', 'visited:0', 'visited:1']) this.flags.add(k);
+    for (const i of [0, 1]) for (const n of this.contents[i].npcs) this.flags.add('met:' + n.id);
+    this.fox.free();
+    this.meet = null; this.cutCam = null; this.rig.override = null;
+    this.mode = 'play';
+    this.leaveSky();
+    // (the arrival scene itself, rather than the hand-on from World 2's goodbye)
+    this.nextCut = null;
+    this.townStory?.play();
+    this.hud.setFade(0, '#fff8ee', true);
+  }
+
   /** Tryout only (the "Try World 2" start): a button that moves the Sky Isles story on by one task per click. */
   addSkipButton() {
     const b = document.createElement('button');
@@ -722,7 +746,9 @@ export class Game {
     b.addEventListener('mousedown', e => e.preventDefault());
     b.addEventListener('click', e => {
       e.stopPropagation(); b.blur();
-      if (!this.isSky() || !this.ch2) { this.hud.notify('Skip works in the Sky Isles.'); return; }
+      const town = this.townStory?.active && this.townMove && WORLDS[this.cur].id === 'garden';
+      if (town) { const said = townSkip(this, this.townStory!, this.townMove!, this.contents[this.cur].refs.walker as AmbleWalker); if (said) this.hud.notify(said); return; }
+      if (!this.isSky() || !this.ch2) { this.hud.notify('Skip works in the Sky Isles and the Walking Town.'); return; }
       const said = skySkip(this, this.ch2);
       if (said) this.hud.notify(said);
     });

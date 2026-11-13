@@ -458,7 +458,8 @@ export function house(kit: Kit, o: HouseOpts): HouseOut {
     solids.push({ x: w / 2 - TS - 0.65, z: -d / 2 + TS + 0.55, hw: 0.5, hd: 0.4, h: 0.9, rot: 0 });
     decks.push({ x: 0, z: 0, rot: 0, span: w - TS * 2, width: d - TS * 2, y0: 0, y1: 0 });
   } else {
-    solids.push({ x: 0, z: 0, hw: w / 2 + 0.15, hd: d / 2 + 0.15, h: eave + 1, rot: 0 });
+    // (up to the ridge and out to the jettied upper floor, so no camera ends up inside one)
+    solids.push({ x: 0, z: 0, hw: Math.max(w, upW) / 2 + 0.15, hd: Math.max(d, floors > 1 ? upD : d) / 2 + 0.15, h: Math.max(eave + 1, ridge), rot: 0 });
   }
   decks.push({ x: doorX, z: dz + (o.doorDrop < 0.4 ? 0.3 : 0.18 * nSteps + 0.1), rot: Math.PI / 2, span: (o.doorDrop < 0.4 ? 0.6 : 0.36 * nSteps) + 0.3, width: 1.4, y0: -o.doorDrop, y1: 0 });
   return { solids, decks, chimney: chim, door: new THREE.Vector3(doorX, 0, dz), ridge: [new THREE.Vector3(-upW / 2, ridge + 0.15, 0), new THREE.Vector3(upW / 2, ridge + 0.15, 0)], eave, top: ridge };
