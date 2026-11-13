@@ -37,6 +37,8 @@ export interface Solid {
   off?: [number, number];
   /** Only stops the camera, not Nilo (the bridge, which you walk on). */
   camOnly?: boolean;
+  /** Ignored by the follow camera (it melts instead: the Walking Town's houses, trees and railings), not by Nilo. */
+  camSkip?: boolean;
   /** Extra room the camera keeps from it (Hollo's fur reaches well past where he is solid). */
   camPad?: number;
 }

@@ -127,14 +127,17 @@ export class TownTasks {
     const sails = T.sails[this.mill];
     const rot = sails.rotation.y, fwd = V(Math.sin(rot), 0, Math.cos(rot));
     const tower = sails.position.clone().addScaledVector(fwd, -(1.55 + 1.25) * 1.45);
-    this.fitSpot = tower.clone().addScaledVector(fwd, (2.3 + 1.3) * 1.45); this.fitSpot.y = groundAt(this.fitSpot.x, this.fitSpot.z);
+    this.fitSpot = tower.clone().addScaledVector(fwd, (2.3 + 1.3) * 1.45);
+    // (in on the crown's square, where he can stand to fit it)
+    for (let q = 0; q < 40 && !T.onPlaza(this.fitSpot.x, this.fitSpot.z, 0.8); q++) this.fitSpot.lerp(V(0, 0, SHELL.cz), 0.04);
+    this.fitSpot.y = groundAt(this.fitSpot.x, this.fitSpot.z);
     this.lostSail = sailArm(r);
     this.lostSail.scale.setScalar(1.45);
-    this.sailSpot = story.find(spot(2.6, 0.5), 0, 10, 2.4, spot(2.6, 0.5));
+    this.sailSpot = story.find(spot(2.6, 0.3), 0, 8, 2.4, spot(2.2, 0.2));
     T.group.add(this.lostSail);
     this.layLostSail();
     this.buildChannel();
-    this.yardSpot = story.find(spot(4.48, 0.49), 1.5, 5, 1.0, spot(4.4, 0.5));
+    this.yardSpot = T.yardAt.clone();
     for (let i = 0; i < 3; i++) {
       const pc = pieceProp(2.2, r);
       pc.position.copy(this.yardSpot).add(V(0, 0.04 + i * 0.4, 0));
@@ -894,7 +897,9 @@ export class TownTasks {
         const mid = w(s.a.p.clone().lerp(s.b.p, 0.5));
         const a = w(s.a.p), b = w(s.b.p);
         const across = new THREE.Vector3().crossVectors(this.upAt(mid), b.clone().sub(a)).normalize();
-        this.stand(this.ground(mid.clone().addScaledVector(across, 1.1)).addScaledVector(this.upAt(mid), Math.max(0, mid.distanceTo(this.g.planets[this.idx].center) - this.ground(mid).distanceTo(this.g.planets[this.idx].center) - 0.3) * 0), across.clone().negate(), { kneel: 0.5 } as typeof g.player.pose);
+        // (beside the gap, on the walk or the square it runs along)
+        const cq = this.town.group.worldToLocal(mid.clone().addScaledVector(across, 1.1)); cq.y = this.town.walkTop(cq.x, cq.z, cq.y) ?? groundAt(cq.x, cq.z);
+        this.stand(this.town.group.localToWorld(cq), across.clone().negate(), { kneel: 0.5 } as typeof g.player.pose);
         if (k > 0.62 && !pc.userData.clicked) { pc.userData.clicked = true; g.sound.sfxPlay('build'); }
         // (the lanes between the houses are tight here: it stays where his own camera was, and turns to the gap)
         if (!cam) cam = g.camera.position.clone().lerp(mid, 0.15);

@@ -55,6 +55,7 @@ export default function (ctx: LabCtx): LabPiece {
     head: { pos: [Hd.x - 26, Hd.y + 3, Hd.z + 20], look: [Hd.x, Hd.y + 6, Hd.z - 1], fov: 50 },
     top: { pos: [-40, 66, 38], look: [0, 22, SHELL.cz], fov: 45 },
     back: { pos: [60, 30, -70], look: [0, 22, -4], fov: 45 },
+    plan: { pos: [0, 140, SHELL.cz + 6], look: [0, 18, SHELL.cz], fov: 27 },
   };
   let logged = false;
   return {

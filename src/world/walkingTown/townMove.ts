@@ -13,6 +13,7 @@ import * as THREE from 'three';
 import type { Game } from '../../game';
 import type { Player } from '../../player/player';
 import type { Solid } from '../collide';
+import { deckUnder } from '../collide';
 import type { Amble } from './amble';
 import type { Mossrest } from './mossrest';
 import { groundAt } from './mossrest';
@@ -44,10 +45,12 @@ export class TownMove {
   active = false;
   readonly amble: Amble;
   readonly town: Mossrest;
-  private sync: (a: THREE.Matrix4, b: THREE.Matrix4) => void;
+  private sync: (a: THREE.Matrix4, b: THREE.Matrix4, center?: THREE.Vector3) => void;
   private legSolids: { s: Solid; local: THREE.Vector3 }[] = [];
   private prev = new THREE.Matrix4();
   private havePrev = false;
+  private prevN = new THREE.Matrix4();
+  private havePrevN = false;
   /** Standing on Amble (the shell, a deck of the village) this frame. */
   onAmble = false;
   private offT = 9;
@@ -136,7 +139,7 @@ export class TownMove {
 
   private syncNow() {
     this.amble.root.updateMatrixWorld(true);
-    this.sync(this.amble.shellTop.matrixWorld, this.amble.neckRide.matrixWorld);
+    this.sync(this.amble.shellTop.matrixWorld, this.amble.neckRide.matrixWorld, this.g.planets[this.idx].center);
     for (const { s, local } of this.legSolids) {
       s.obj.position.copy(local).applyMatrix4(this.amble.root.matrixWorld);
       s.obj.quaternion.copy(this.amble.root.quaternion);
@@ -145,13 +148,33 @@ export class TownMove {
 
   // ------------------------------------------------------------------ the rules the player obeys in World 3
 
-  /** After the decks and solids: the shell's mossy top is ground; the flanks push you off; the umbrella slows a fall. */
+  /**
+   * After the decks and solids. On Amble's back Nilo walks only on the village's walks, stairs and floors and the
+   * crown's paved square: the moss, the plates and the roofs are not for walking, so a step onto them is refused
+   * (he slides along the edge instead, as along a railing). Off the outer edge of the ring walk he may still jump,
+   * and the umbrella floats him down. The flanks push you off; the umbrella slows a fall.
+   */
   private collide = (pl: Player) => {
+    // walking briskly down a steep walk (the neck's, as Amble's head bobs): keep his feet on the planks
+    if (!pl.onDeck && this.wasDeck && pl.vel.dot(pl.up) < 0.5) {
+      const P = this.g.planets[this.idx];
+      for (const d of P.decks) {
+        const u = deckUnder(d, pl.pos, P.center);
+        if (!u || Math.abs(u.z) > d.width / 2 + 0.05 || u.lift >= -0.15 || u.lift < -1.3) continue;
+        pl.pos.addScaledVector(u.up, u.lift);
+        const vu = pl.vel.dot(u.up); if (vu < 0) pl.vel.addScaledVector(u.up, -vu);
+        pl.grounded = true; pl.onDeck = true;
+        break;
+      }
+    }
     const q = this.toCreature(pl.pos, _v);
     const { rho } = shellPolar(q.x, q.z);
+    let bad = false;
     if (rho < 0.97 && q.y > SHELL.yLip) {
       const gy = groundAt(q.x, q.z);
-      if (q.y < gy + 0.03 && q.y > gy - 3.5) {
+      // (on a stair whose foot is cut into the moss bank, he keeps to the treads)
+      const onPlanks = pl.onDeck && this.town.deckTop(q.x, q.z, q.y, 0.3, 0) !== null;
+      if (q.y < gy + 0.03 && q.y > gy - 3.5 && !onPlanks) {
         // on the shell: stand on its top
         const vu = pl.vel.dot(pl.up);
         if (vu <= 0.5) {
@@ -159,9 +182,18 @@ export class TownMove {
           this.world(q, pl.pos);
           if (vu < 0) pl.vel.addScaledVector(pl.up, -vu);
           pl.grounded = true;
+          // (where a stair's foot or head sits a little into the moss, its planks still count; never a floor up over his head)
+          if (!pl.onDeck && !this.town.onPlaza(q.x, q.z) && this.town.deckTop(q.x, q.z, q.y - 0.4, 0.85, 0) === null) bad = true;
         }
       } else if (q.y <= gy - 3.5) this.pushOut(pl, q, 1.0);
+      else if (!pl.onDeck && this.wasDeck && pl.vel.dot(pl.up) < 0.3 && q.y - gy < 4 && this.town.deckTop(q.x, q.z, q.y - 0.5, 1.0, -0.3) === null && !this.town.onPlaza(q.x, q.z, -0.3)) {
+        // walked off the side of a walk or a stair, over the moss
+        bad = true;
+      }
     } else if (rho < 1.06 && q.y > SHELL.yLip - 0.5 && q.y < SHELL.yLow) this.pushOut(pl, q, 1.06);
+    if (bad) this.refuse(pl, q);
+    else if (pl.grounded && rho < 1.3 && q.y > SHELL.yLip && (pl.onDeck || this.town.onPlaza(q.x, q.z) || this.town.deckTop(q.x, q.z, q.y - 0.4, 0.85, 0) !== null)) { this.lastOk.copy(q); this.haveOk = true; }
+    this.wasDeck = pl.onDeck;
     // the paper umbrella: a soft, slow drift down
     if (this.umbrella.open) {
       const vu = pl.vel.dot(pl.up);
@@ -170,6 +202,42 @@ export class TownMove {
       if (hs > 4.5) pl.vel.addScaledVector(h, 4.5 / hs - 1);
     }
   };
+  /** Where he last stood on something walkable on Amble's back (creature space). */
+  private lastOk = new THREE.Vector3();
+  private haveOk = false;
+  private wasDeck = false;
+  /** A step onto the moss: back to the edge of the walk, keeping what of the step runs along it. */
+  private refuse(pl: Player, q: THREE.Vector3) {
+    const T = this.town, L = this.lastOk;
+    const to = new THREE.Vector3();
+    if (this.haveOk && Math.hypot(q.x - L.x, q.z - L.z) < 2.5) {
+      const dx = q.x - L.x, dz = q.z - L.z;
+      to.copy(L);
+      for (const a of [0.45, -0.45, 0.9, -0.9, 1.3, -1.3]) {
+        const c = Math.cos(a), s = Math.sin(a);
+        const nx = L.x + (dx * c - dz * s) * c, nz = L.z + (dx * s + dz * c) * c;
+        const y = T.walkTop(nx, nz, L.y);
+        if (y !== null) { to.set(nx, y, nz); break; }
+      }
+    } else {
+      // (somewhere a scene left him, or a long jump onto the moss: to the nearest walkable place)
+      let best: THREE.Vector3 | null = null;
+      for (let rr = 0.4; rr < 9 && !best; rr += 0.4) for (let a = 0; a < Math.PI * 2 && !best; a += 0.4) {
+        const nx = q.x + Math.cos(a) * rr, nz = q.z + Math.sin(a) * rr, y = T.walkTop(nx, nz, q.y);
+        if (y !== null) best = new THREE.Vector3(nx, y, nz);
+      }
+      if (!best) return;
+      to.copy(best);
+    }
+    const mv = this.dirWorld(_w.set(to.x - L.x, 0, to.z - L.z), new THREE.Vector3()).projectOnPlane(pl.up);
+    this.world(to, pl.pos);
+    const h = pl.vel.clone().projectOnPlane(pl.up);
+    pl.vel.sub(h);
+    if (mv.lengthSq() > 1e-6) { mv.normalize(); pl.vel.addScaledVector(mv, Math.max(0, h.dot(mv))); }
+    const vu = pl.vel.dot(pl.up); if (vu < 0) pl.vel.addScaledVector(pl.up, -vu);
+    pl.grounded = true;
+    this.lastOk.copy(to); this.haveOk = true;
+  }
 
   /** Out through the flank, horizontally in creature space, to outline fraction rho1. */
   private pushOut(pl: Player, q: THREE.Vector3, rho1: number) {
@@ -203,6 +271,9 @@ export class TownMove {
       if (pl.collide === this.collide) pl.collide = null;
       if (rig.floor === this.floor) rig.floor = null;
       rig.smoothBlock = false;
+      if (rig.follow === this.followDir) rig.follow = null;
+      rig.pitchMin = -0.25; rig.distCap = null; rig.pitchGoal = null; rig.posRate = 9; rig.distSpeed = Infinity;
+      this.haveOk = false;
       this.see.off();
       SEE.uSeeCircle.value = 1; SEE.uSeeNear.value.set(2.6, 1.4);
       this.setClutter(false);
@@ -215,10 +286,13 @@ export class TownMove {
     }
     pl.collide = this.collide;
     rig.floor = this.floor; rig.smoothBlock = true;
+    // a calm camera: it chases its goal gently and changes distance no faster than a slow walk
+    rig.posRate = 6; rig.distSpeed = 3.5;
     SEE.uSeeCircle.value = 0;
     if (!this.scanned) { this.scanned = true; this.see.scan(); }
     this.syncNow();
     this.prev.copy(this.town.group.matrixWorld); this.havePrev = true;
+    this.prevN.copy(this.town.neck.matrixWorld); this.havePrevN = true;
     // the early-afternoon sun stands ahead of Amble and off to its right, so the village and the face are lit
     // from the meadow side (as in Oscar's picture); the pinned hour keeps that bearing as Nilo walks about
     {
@@ -318,13 +392,25 @@ export class TownMove {
     const M = this.town.group.matrixWorld;
     // (a jump or a hop off a step keeps the shell's own going: he comes down where he took off, even as it turns)
     const q0 = this.toCreature(pl.pos, _w), aloft = !pl.grounded && this.offT < 1.5 && q0.y > SHELL.yLip - 2 && shellPolar(q0.x, q0.z).rho < 1.15;
-    if (this.havePrev && (this.onAmble || this.climb || aloft)) {
-      // carried along by the shell: move with it since the last frame
-      _m.copy(this.prev).invert().premultiply(M);
+    // (out on the neck walk or the lookout he rides with the neck itself, which bobs and turns on its own)
+    const Mn = this.town.neck.matrixWorld;
+    let onNeck = false;
+    if (this.havePrevN && pl.grounded) {
+      const l = pl.pos.clone().applyMatrix4(_m.copy(this.prevN).invert());
+      onNeck = this.town.neckTop(l.x, l.z, l.y) !== null;
+    }
+    if (this.havePrev && (this.onAmble || this.climb || aloft || onNeck)) {
+      // carried along by the shell (or the neck): move with it since the last frame
+      if (onNeck) _m.copy(this.prevN).invert().premultiply(Mn);
+      else _m.copy(this.prev).invert().premultiply(M);
       pl.pos.applyMatrix4(_m);
       _q.setFromRotationMatrix(_m);
       pl.facing.applyQuaternion(_q);
       pl.sync();
+      // and the camera with him, locked to the village's frame (so a walking Amble does not make it wobble)
+      const rig = this.g.rig;
+      rig.pos.applyMatrix4(_m); rig.look.applyMatrix4(_m); rig.ref.applyQuaternion(_q);
+      if (this.g.mode === 'play' && !rig.override) { this.g.camera.position.applyMatrix4(_m); this.g.camera.quaternion.premultiply(_q); }
     }
     // the fox rides along too, when she is up on Amble with him
     if (this.havePrev && this.g.fox.ground && (this.onAmble || this.climb || aloft)) {
@@ -336,6 +422,7 @@ export class TownMove {
       }
     }
     this.prev.copy(M); this.havePrev = true;
+    this.prevN.copy(Mn); this.havePrevN = true;
     // the ropes' and ladders' free ends reach down (or are pushed up) to the ground under them, wherever Amble is
     {
       const p = this.g.planets[this.idx], G = this.town.ropeGround.value, inv = _m.copy(M).invert();
@@ -351,6 +438,7 @@ export class TownMove {
       this.g.camera.position.addScaledVector(this.g.camera.up, Math.sin(tt * 38) * 0.05 * k).add(_v.set(Math.sin(tt * 31 + 1), 0, Math.sin(tt * 43 + 2)).multiplyScalar(0.025 * k));
       this.shake *= Math.exp(-6 * dt);
     }
+    this.camFrame(dt);
     this.town.update(dt, t, this.g.camera);
     this.umbrella.update(dt, t, pl);
     if (this.umbrella.shown) { pl.pose = { ...pl.pose, holdUp: this.umbrella.k }; this.g.fold.root.visible = false; }
@@ -360,6 +448,116 @@ export class TownMove {
     const melt = this.cutMelt > 0 && (this.g.mode === 'cut' || !!this.g.rig.override);
     SEE.uSeeNear.value.set(melt ? this.cutMelt : 2.6, melt ? Math.max(1.4, this.cutMelt - 1.8) : 1.4);
     this.see.update(dt, free || melt, this.g.camera, pl.pos.clone().addScaledVector(pl.up, 0.9), this.g.renderer);
+  }
+
+  // ------------------------------------------------------------------ the camera on Amble's back
+
+  private followDir = new THREE.Vector3();
+  /** The lived-in house Nilo is inside, if any. */
+  houseIn(): Mossrest['houses'][number] | null {
+    const q = this.toCreature(this.g.player.pos, new THREE.Vector3());
+    for (const h of this.town.houses) {
+      if (!h.walkIn) continue;
+      const dx = q.x - h.at.x, dz = q.z - h.at.z, c = Math.cos(h.rot), s = Math.sin(h.rot);
+      if (Math.abs(dx * c - dz * s) < h.w / 2 - 0.15 && Math.abs(dx * s + dz * c) < h.d / 2 - 0.15 && Math.abs(q.y - h.at.y) < 1.2) return h;
+    }
+    return null;
+  }
+  /**
+   * Up on Amble: the camera never looks up from under the walks (it keeps a little above Nilo), swings in behind
+   * the way he is walking once the mouse is left alone, and inside a house comes in close and looks down into the
+   * room. (The houses, trees and railings never push it about: they melt away instead.)
+   */
+  private camFrame(_dt: number) {
+    const rig = this.g.rig, pl = this.g.player;
+    const up = this.onAmble || !!this.climb;
+    const inside = up && this.houseIn() !== null;
+    rig.pitchMin = up ? 0.08 : -0.25;
+    rig.distCap = inside ? 3.2 : null;
+    rig.pitchGoal = inside ? 0.5 : null;
+    const h = pl.vel.clone().projectOnPlane(pl.up);
+    if (up && !inside && !this.climb && h.length() > 1.2) { this.followDir.copy(h); rig.follow = this.followDir; rig.followK = 0.55; }
+    else if (rig.follow === this.followDir) rig.follow = null;
+  }
+
+  // ------------------------------------------------------------------ the golden beam along the walks
+
+  /** What the beam is leading him to now, beyond the task itself (for a hint in the goal line). */
+  routeHint: 'up' | 'down' | 'rope' | 'ropeUp' | 'neck' | null = null;
+  private routeAdj: { j: number; w: number }[][] | null = null;
+  private routeT = 9;
+  private routeAt: THREE.Vector3 | null = null;
+  private routeFor = new THREE.Vector3(1e9, 0, 0);
+  /** The shortest way along the route network from node s to node t (node indices, s first). */
+  routePath(s: number, t: number) {
+    const R = this.town.paths;
+    if (!this.routeAdj) {
+      this.routeAdj = R.nodes.map(() => []);
+      for (const [a, b] of R.edges) { const w = R.nodes[a].p.distanceTo(R.nodes[b].p); this.routeAdj[a].push({ j: b, w }); this.routeAdj[b].push({ j: a, w }); }
+    }
+    const n = R.nodes.length, D = new Array(n).fill(1e9), from = new Array(n).fill(-1), done = new Array(n).fill(false);
+    D[s] = 0;
+    for (;;) {
+      let u = -1; for (let i = 0; i < n; i++) if (!done[i] && D[i] < 1e9 && (u < 0 || D[i] < D[u])) u = i;
+      if (u < 0 || u === t) break;
+      done[u] = true;
+      for (const { j, w } of this.routeAdj[u]) if (D[u] + w < D[j]) { D[j] = D[u] + w; from[j] = u; }
+    }
+    const out: number[] = []; for (let i = t; i >= 0; i = from[i]) out.unshift(i);
+    return out[0] === s ? out : [s];
+  }
+  /** On Amble's back or out along its neck and head (a world point). */
+  private onBack(w: THREE.Vector3) {
+    const q = this.toCreature(w, new THREE.Vector3());
+    return q.y > SHELL.yLip + 3 && (shellPolar(q.x, q.z).rho < 1.3 || (Math.abs(q.x) < 8 && q.z > SHELL.cz + 15 && q.y > 14));
+  }
+  /**
+   * Where the golden beam should stand to lead Nilo to `target` (world): the next stair foot or head, the neck walk,
+   * the rope down (or up) a leg, along the walks, or the target itself once nothing is in the way.
+   */
+  routeTo(target: THREE.Vector3 | null, dt: number): THREE.Vector3 | null {
+    if (!target) { this.routeHint = null; return null; }
+    this.routeT += dt;
+    if (this.routeT < 0.25 && target.distanceTo(this.routeFor) < 1 && this.routeAt) return this.routeAt;
+    this.routeT = 0; this.routeFor.copy(target);
+    const R = this.town.paths, pl = this.g.player, up = pl.up;
+    const P = R.nodes.map(n => n.neck ? this.town.neck.localToWorld(n.p.clone()) : this.world(n.p, new THREE.Vector3()));
+    const dist = (a: THREE.Vector3, b: THREE.Vector3) => { const d = a.clone().sub(b), v = d.dot(up); return Math.sqrt(d.lengthSq() + 3 * v * v); };
+    const nearest = (w: THREE.Vector3, ok: (i: number) => boolean = () => true) => { let bi = 0, bd = 1e9; P.forEach((p, i) => { if (!ok(i)) return; const d = dist(p, w); if (d < bd) { bd = d; bi = i; } }); return bi; };
+    const path = (a: number, b: number) => this.routePath(a, b);
+    const me = pl.pos, niloUp = this.onAmble || !!this.climb || this.onBack(me), targetUp = this.onBack(target);
+    let at: THREE.Vector3 = target.clone(), hint: typeof this.routeHint = null;
+    if (niloUp && !this.climb) {
+      const s = nearest(me);
+      let goalNode: number;
+      if (targetUp) goalNode = nearest(target);
+      else {
+        // down by the rope (or ladder) whose foot is nearest the target
+        let best = -1, bd = 1e9;
+        R.nodes.forEach((n, i) => { if (n.kind !== 'rope') return; const L = this.lines[n.line!]; const d = this.ropePos(L, L.sFoot).distanceTo(target); if (d < bd) { bd = d; best = i; } });
+        goalNode = best;
+      }
+      if (goalNode >= 0) {
+        const pth = path(s, goalNode);
+        for (let k = 1; k < pth.length; k++) {
+          const n = R.nodes[pth[k]];
+          const key = n.kind === 'foot' || n.kind === 'top' || (n.kind === 'neck' && R.nodes[pth[k - 1]].kind === 'ring') || n.kind === 'rope';
+          if (!key || dist(P[pth[k]], me) < 3.2) continue;
+          at = P[pth[k]].clone();
+          hint = n.kind === 'neck' ? 'neck' : n.kind === 'rope' ? 'rope' : P[pth[pth.length - 1]].clone().sub(me).dot(up) > 1.5 ? 'up' : 'down';
+          break;
+        }
+        if (!targetUp && !hint && R.nodes[goalNode].kind === 'rope') hint = 'rope';
+      }
+    } else if (!niloUp && targetUp && !this.climb) {
+      // up by the rope or ladder whose foot is nearest him
+      let bd = 1e9;
+      for (const L of this.lines) { const f = this.ropePos(L, L.sFoot); const d = f.distanceTo(me); if (d < bd) { bd = d; at = f; } }
+      hint = 'ropeUp';
+    }
+    this.routeHint = hint;
+    this.routeAt = at;
+    return at;
   }
 
   // ------------------------------------------------------------------ the ropes and ladders

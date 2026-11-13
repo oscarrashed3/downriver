@@ -5,7 +5,7 @@ import { BONE, REST, SHELL, LEGS, legBones, headPoint, headDir, HEAD_FWD, HEAD_S
 import type { AmbleBodyBuild, W } from './ambleBody';
 import { chainWeights } from './ambleBody';
 import { headSurface, headRing, EAR_DIR, EAR_FACE, EAR_LEN, EAR_HW } from './ambleHead';
-import { ledges, outlinePoint, shellTopY } from './ambleShell';
+import { ledges, outlinePoint, shellTopY, shellPolar } from './ambleShell';
 import { CELL, cellUV } from './ambleMaterials';
 
 // What grows on Old Amble, as alpha-tested cards skinned to its bones (one draw): curtains of vines hanging from
@@ -196,8 +196,11 @@ export function buildAmbleGrowth(body: AmbleBodyBuild, seed = 5) {
   }
 
   // ---- the tops: ferns along the terrace lips and the rim walk, flower cushions on the moss lumps
+  // (nothing grows on the crown's paved square, where the village walks)
+  const onSquare = (x: number, z: number) => { const q = shellPolar(x, z); return q.rho < Math.min(...ledges(q.th).map(l => l.e)) - 0.02; };
   for (const L of body.lumps) {
     const r = rng();
+    if (onSquare(L.p.x, L.p.z)) continue;
     if (r < 0.32) fern(cb, rng, L.p.clone().addScaledVector(L.n, L.r * 0.3), L.n, 1.1 + rng() * 0.9, wS);
     else if (r < 0.62) flowers(cb, rng, L.p.clone().addScaledVector(L.n, L.r * 0.25), L.n, 0.7 + rng() * 0.5, wS);
   }
@@ -212,7 +215,7 @@ export function buildAmbleGrowth(body: AmbleBodyBuild, seed = 5) {
     const E = outlinePoint(th);
     const x = E.x * rho, z = SHELL.cz + E.z * rho;
     const y = shellTopY(x, z);
-    if (y === null) continue;
+    if (y === null || onSquare(x, z)) continue;
     const p = new THREE.Vector3(x, y, z);
     const r = rng();
     if (r < 0.45) fern(cb, rng, p, Y, 1.0 + rng() * 1.0, wS);

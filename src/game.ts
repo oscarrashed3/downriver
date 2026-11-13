@@ -324,7 +324,7 @@ export class Game {
     // keep the camera out of houses, trunks and rocks: it pushes in toward Nilo instead
     // (the bridge only counts when choosing a talk shot: Nilo walks on it, so it must not shove the follow camera)
     this.rig.block = (look, pos) => {
-      const k = !this.planet.solids.length ? 1 : this.talkCam || this.meet ? segmentClear(this.planet.solids, look, pos, this.planet.center) : segmentClear(this.planet.solids.filter(s => !s.camOnly), look, pos, this.planet.center);
+      const k = !this.planet.solids.length ? 1 : this.talkCam || this.meet ? segmentClear(this.planet.solids, look, pos, this.planet.center) : segmentClear(this.planet.solids.filter(s => !s.camOnly && !s.camSkip), look, pos, this.planet.center);
       // the Sky Isles: never inside an island's rock while gliding beside or under it
       return this.skyMove?.active ? Math.min(k, rockClear(this.planet, look, pos)) : k;
     };

@@ -37,6 +37,16 @@ export class CameraRig {
   followK = 0;
   private stillT = 0;
   /**
+   * The Walking Town: a lowest pitch the camera eases up to (so it never looks up from under the walks Nilo stands
+   * on), a cap on the follow distance (inside a house), a pitch it eases to, how fast it chases its goal, and how
+   * many metres a second the distance may change. The defaults leave every other world exactly as it was.
+   */
+  pitchMin = -0.25;
+  distCap: number | null = null;
+  pitchGoal: number | null = null;
+  posRate = 9;
+  distSpeed = Infinity;
+  /**
    * Sky Isles: true while Nilo drops off a lip below the ground the camera stands over. The camera stops following
    * him down (it would go into the island's rock) and drifts out over him, watching from above. Null elsewhere.
    */
@@ -98,7 +108,14 @@ export class CameraRig {
       }
     }
     this.pitch = clamp(this.pitch + mdy * 0.0026 * this.sens, -0.25, 1.25);
-    this.dist += (this.distGoal - this.dist) * (1 - Math.exp(-8 * dt));
+    if (this.pitch < this.pitchMin) this.pitch += (this.pitchMin - this.pitch) * (1 - Math.exp(-4 * dt));
+    if (this.pitchGoal !== null) this.pitch += (this.pitchGoal - this.pitch) * (1 - Math.exp(-2 * dt));
+    {
+      const want = this.distCap !== null ? Math.min(this.distGoal, this.distCap) : this.distGoal;
+      let step = (want - this.dist) * (1 - Math.exp(-8 * dt));
+      if (Math.abs(step) > this.distSpeed * dt) step = Math.sign(step) * this.distSpeed * dt;
+      this.dist += step;
+    }
     this.smoothUp.lerp(up, 1 - Math.exp(-6 * dt)).normalize();
     const f = this.forward(this.smoothUp);
     const goal = target.clone()
@@ -127,7 +144,7 @@ export class CameraRig {
     }
     const lookGoal = target.clone().addScaledVector(this.smoothUp, 1.3);
     if (!this.init) { this.pos.copy(goal); this.look.copy(lookGoal); this.init = true; }
-    this.pos.lerp(goal, 1 - Math.exp(-9 * dt));
+    this.pos.lerp(goal, 1 - Math.exp(-this.posRate * dt));
     this.look.lerp(lookGoal, 1 - Math.exp(-14 * dt));
     let pos: THREE.Vector3, look: THREE.Vector3, up2: THREE.Vector3;
     if (this.override) { pos = this.override.pos.clone(); look = this.override.look; up2 = this.override.up; }

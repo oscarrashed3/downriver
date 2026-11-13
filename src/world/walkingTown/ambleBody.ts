@@ -648,8 +648,10 @@ export function buildAmbleBody(seed = 3): AmbleBodyBuild {
     if (riserAt(th, rho) > 0.3) continue;
     const { p, n } = topAt(th, rho);
     const r = 0.8 + rng() * 1.4;
-    mossLump(p.addScaledVector(n, -0.1), n, r, wS, rng, 0.32);
-    lumps.push({ p, n, r });
+    // (none on the crown's paved square: those sink out of sight, so the rest of the moss stays as it was)
+    const square = rho < Math.min(...ledges(th).map(l => l.e)) - 0.03;
+    mossLump(p.addScaledVector(n, square ? -0.45 * r - 0.15 : -0.1), n, r, wS, rng, 0.32);
+    if (!square) lumps.push({ p, n, r });
   }
   // round the neck root and along the mane
   for (let k = 0; k < 240; k++) {

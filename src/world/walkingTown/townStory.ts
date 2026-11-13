@@ -23,7 +23,7 @@ import { SCRIPTS } from '../../data/scripts';
 import { CHAPTERS } from '../../data/story';
 import { SkyWhale } from '../skyIsles/whale';
 import { MOSSFOLK, folkLook } from './mossfolk';
-import { TOWN_GOALS, TOWN_LINES } from '../../data/townWords';
+import { TOWN_GOALS, TOWN_LINES, TOWN_ROUTE } from '../../data/townWords';
 import { TownTasks } from './townTasks';
 import { FarValley } from './farValley';
 import { TownGoodbye } from './townGoodbye';
@@ -81,15 +81,22 @@ export class TownStory {
       ['pip', find(this.landing, 6, 10, 1.2, spot(1, 0.3)), null],
       ['ropewright', tamsinAt, front.out.clone().setY(0).normalize()],
       ['miller', find(mill, 4.5, 8, 1.0, spot(-1.0, 0.45)), null],
-      ['bramwyn', find(spot(1.0, 0.5), 0, 6, 1.0, spot(1.0, 0.5)), null],
+      ['bramwyn', find(spot(1.2, 0.3), 0, 6, 1.0, spot(1.2, 0.2)), null],
     ];
     // six more, out on their doorsteps (the houses nearest the landing)
-    const doors = T.houses.map(h => ({ h, d: Math.hypot(h.door.x - this.landing.x, h.door.z - this.landing.z) })).sort((a, b) => a.d - b.d).slice(0, 6);
+    // (the lived-in houses' doorsteps, on the walks; the carpenter in the yard; anyone left over on the square)
+    const doors = T.houses.filter(h => h.walkIn).map(h => ({ h, d: Math.hypot(h.door.x - this.landing.x, h.door.z - this.landing.z) })).sort((a, b) => a.d - b.d).slice(0, 5);
     doors.forEach(({ h }, i) => {
       const out = new THREE.Vector3(Math.sin(h.rot), 0, Math.cos(h.rot));
-      const p = h.door.clone().addScaledVector(out, 1.1);
+      const p = h.door.clone().addScaledVector(out, 1.3);
+      const y = T.walkTop(p.x, p.z, h.door.y);
+      if (y !== null) p.y = y;
       homes.push(['moss' + (i + 1), p, out]);
     });
+    for (let i = doors.length; i < 6; i++) {
+      const yard = T.yardAt.clone().add(new THREE.Vector3(0, 0, 0));
+      homes.push(['moss' + (i + 1), i === 5 ? yard.addScaledVector(T.ring.outs[T.ring.near(0.3)], -0.9) : find(this.landing, 3, 8, 1.2, spot(i, 0.2)), null]);
+    }
     for (const [id, pos, face] of homes) {
       const look = id in MOSSFOLK ? MOSSFOLK[id as keyof typeof MOSSFOLK] : folkLook(Number(id.slice(4)));
       const n = new Npc(id, look, SCRIPTS[id].start);
@@ -138,17 +145,23 @@ export class TownStory {
     });
   }
 
-  /** Open ground on the shell between r0 and r1 from `near` with `clear` metres free all round (creature space). */
+  /**
+   * Open ground on the crown's paved square (the only shell ground anyone walks on) between r0 and r1 from `near`
+   * with `clear` metres free all round (creature space); a little closer in or less clear if there is no such room.
+   */
   find(near: THREE.Vector3, r0: number, r1: number, clear: number, fallback: THREE.Vector3) {
     const free = (x: number, z: number, r: number) => (this.town as unknown as { free(x: number, z: number, r: number): boolean }).free(x, z, r);
-    let best: THREE.Vector3 | null = null, bd = 1e9;
-    for (let a = 0; a < Math.PI * 2; a += 0.21) for (let r = r0; r <= r1; r += 0.6) {
-      const x = near.x + Math.cos(a) * r, z = near.z + Math.sin(a) * r;
-      if (shellPolar(x, z).rho > 0.8 || !free(x, z, clear)) continue;
-      const d = Math.abs(r - (r0 + r1) / 2);
-      if (d < bd) { bd = d; best = new THREE.Vector3(x, groundAt(x, z), z); }
+    for (const [cl, grow] of [[clear, 0], [clear * 0.6, 4], [0.4, 10]]) {
+      let best: THREE.Vector3 | null = null, bd = 1e9;
+      for (let a = 0; a < Math.PI * 2; a += 0.21) for (let r = Math.max(0, r0 - grow); r <= r1 + grow; r += 0.6) {
+        const x = near.x + Math.cos(a) * r, z = near.z + Math.sin(a) * r;
+        if (shellPolar(x, z).rho > 0.8 || !this.town.onPlaza(x, z, 0.6) || !free(x, z, cl)) continue;
+        const d = Math.abs(r - (r0 + r1) / 2);
+        if (d < bd) { bd = d; best = new THREE.Vector3(x, groundAt(x, z), z); }
+      }
+      if (best) return best;
     }
-    return best ?? fallback;
+    return fallback;
   }
   private has(f: string) { return this.g.flags.has(f); }
   private w(v: THREE.Vector3, out = V()) { return this.tm.world(v, out); }
@@ -200,6 +213,10 @@ export class TownStory {
   step() { return !this.has('town:quest') ? 0 : !this.has('town:foot-done') ? 1 : !this.has('town:water-done') ? 2 : !this.has('town:eyes-done') ? 3 : 4; }
 
   goal(): string | null {
+    const g = this.goalBase(), hint = this.tm.routeHint;
+    return g && hint && this.g.mode === 'play' ? `${g} ${TOWN_ROUTE[hint]}` : g;
+  }
+  private goalBase(): string | null {
     if (!this.has('town:arrived')) return null;
     if (!this.has('town:quest')) return TOWN_GOALS.pip;
     if (this.step() === 1 && !this.has('town:met-tamsin')) return TOWN_GOALS.tamsin;
@@ -258,11 +275,12 @@ export class TownStory {
     const far = this.bye.playing ? 120 : 60;
     for (const h of this.homes) if (h.npc.root.visible && h.npc.root.position.distanceToSquared(cam) > far * far) h.npc.root.visible = false;
     // the beam
-    const target = g.mode === 'play' ? this.guideTarget() : null;
+    // (along the walks: over the next stair, the neck walk or the rope down, not straight through the houses)
+    const target = g.mode === 'play' ? this.tm.routeTo(this.guideTarget(), dt) : null;
     const u = (this.beam.material as THREE.ShaderMaterial).uniforms;
     u.uT.value += dt;
-    const near = target ? target.distanceTo(pl.pos) : 0;
-    const want = target && near > 9 ? clamp((near - 9) / 12) * 0.85 : 0;
+    const near = target ? target.distanceTo(pl.pos) : 0, d0 = this.tm.routeHint ? 3.5 : 9;
+    const want = target && near > d0 ? clamp((near - d0) / 8) * 0.85 : 0;
     u.uA.value += (want - u.uA.value) * (1 - Math.exp(-3 * dt));
     this.beam.visible = u.uA.value > 0.01;
     if (target) {

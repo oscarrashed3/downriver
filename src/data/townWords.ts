@@ -11,6 +11,15 @@ export const TOWN_MOVE = {
 };
 
 // the goal line, step by step (Pip first, then the three things that keep Amble standing still)
+/** A hint after the goal line while the golden beam leads along the walks to something on the way. */
+export const TOWN_ROUTE = {
+  up: '(Up the big stairs to the crown.)',
+  down: '(Down the big stairs to the ring walk.)',
+  rope: "(Down a rope by Amble's legs.)",
+  ropeUp: "(Up a rope onto Amble's back.)",
+  neck: '(Out along the neck walk.)',
+};
+
 export const TOWN_GOALS = {
   pip: 'Talk to Pip, the kid in the straw hat.',
   tamsin: 'Find Tamsin the Ropewright, by the big rope on the front leg.',
