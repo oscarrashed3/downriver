@@ -106,7 +106,17 @@ export class TownTasks {
     this.walkBase = front.top.clone().addScaledVector(this.o, -1.36); this.walkBase.y = front.top.y - 0.93;
     const pu = pulleyProp(r);
     this.pulley = pu.group;
-    this.pulley.position.copy(this.walkBase).addScaledVector(this.o, -0.4).addScaledVector(this.side, 1.7);
+    {
+      // (on the ring walk's outer edge, its legs straddling the railing, so the walk stays clear at full width)
+      const at = this.walkBase.clone().addScaledVector(this.side, 1.7), ring = T.ring;
+      let j = 0, bd = 1e9;
+      for (let i = 0; i < ring.n; i++) { const d = Math.hypot(ring.P(i, 1).x - at.x, ring.P(i, 1).z - at.z); if (d < bd) { bd = d; j = i; } }
+      const edge = ring.P(j, 1);
+      const out = this.o.dot(ring.outs[j]) || 1;
+      // along -o from the edge to the pulley's spot: how far the spot lies in from the outer edge
+      const inFrom = (at.clone().sub(edge).dot(ring.outs[j])) / out;
+      this.pulley.position.copy(at).addScaledVector(this.o, -inFrom + 0.3).setY(edge.y);
+    }
     this.pulley.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(this.side, V(0, 1, 0), this.side.clone().cross(V(0, 1, 0)).negate()));
     this.wheel = pu.wheel;
     T.group.add(this.pulley);

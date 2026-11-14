@@ -490,14 +490,6 @@ export class Mossrest {
       this.perches.push(m.top.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), rot).add(at));
       this.take(c.x, c.z, 4.8);
     }
-    // trees growing out of the shell
-    for (const [th, rho, h, sp] of [[3.55, 0.7, 6.0, 0.9], [-0.25, 0.52, 6.5, 1.0], [1.7, 0.56, 5.0, 0.9], [-1.65, 0.62, 5.5, 0.9]] as const) {
-      const c = spot(th, rho);
-      if (!this.free(c.x, c.z, 0.8)) continue;
-      tree(k, T(c.x, c.y, c.z, 0, r() * TAU, 0), r, h, sp);
-      this.solidSpecs.push({ x: c.x, z: c.z, hw: 0.5, hd: 0.5, h: h, rot: 0, y0: c.y });
-      this.take(c.x, c.z, 1.4);
-    }
     // the well on the crown: a stone ring, a little shingled roof on posts, the windlass and its bucket
     {
       const c = spot(1.3, 0.2);
@@ -630,14 +622,25 @@ export class Mossrest {
   /** Trees between the houses, bushes, flower beds, and ivy hanging over the rocky risers. */
   private greenery() {
     const k = this.kit, r = this.r;
+    // (nothing green within 2 m of a walk, a stair or the neck walk: the ways stay clear)
+    // trees growing out of the shell
+    for (const [th, rho, h, sp] of [[3.55, 0.7, 6.0, 0.9], [-0.25, 0.52, 6.5, 1.0], [1.7, 0.56, 5.0, 0.9], [-1.65, 0.62, 5.5, 0.9]] as const) {
+      const c = spot(th, rho);
+      if (!this.free(c.x, c.z, 0.8) || this.walkGap(c.x, c.z) < 2.6 || this.onPlaza(c.x, c.z, -2)) continue;
+      tree(k, T(c.x, c.y, c.z, 0, r() * TAU, 0), r, h, sp);
+      this.solidSpecs.push({ x: c.x, z: c.z, hw: 0.5, hd: 0.5, h: h, rot: 0, y0: c.y });
+      this.take(c.x, c.z, 1.4);
+    }
     let trees = 0, bushes = 0;
     for (let q = 0; q < 1400 && (trees < 16 || bushes < 70); q++) {
       const th = r() * TAU, rho = 0.08 + r() * 0.72;
       const L = ledges(th);
       if (L.some(l => Math.abs(rho - l.e) < l.w * 1.3)) continue;
       const p = spot(th, rho);
-      if (this.onPlaza(p.x, p.z, -1.2)) continue;
-      if (trees < 16 && this.free(p.x, p.z, 1.4) && this.stairGap(p.x, p.z) > 4.2) {
+      if (this.onPlaza(p.x, p.z, -2)) continue;
+      const gap = this.walkGap(p.x, p.z);
+      if (gap < 2.1) continue;
+      if (trees < 16 && this.free(p.x, p.z, 1.4) && gap > 2.6 && this.stairGap(p.x, p.z) > 4.2) {
         const h = 4.5 + r() * 3.5;
         tree(k, T(p.x, p.y, p.z, 0, r() * TAU, 0), r, h, 0.8 + r() * 0.3);
         this.solidSpecs.push({ x: p.x, z: p.z, hw: 0.4, hd: 0.4, h, rot: 0, y0: p.y });
@@ -654,7 +657,7 @@ export class Mossrest {
       if (r() < 0.35) continue;
       for (const l of ledges(th)) {
         const a = spot(th, l.e - l.w * 1.3), b = spot(th, l.e + l.w * 1.6);
-        if (!this.free((a.x + b.x) / 2, (a.z + b.z) / 2, 0.3) || a.y - b.y < 0.8) continue;
+        if (!this.free((a.x + b.x) / 2, (a.z + b.z) / 2, 0.3) || a.y - b.y < 0.8 || Math.min(this.walkGap(a.x, a.z), this.walkGap(b.x, b.z)) < 2) continue;
         const o = outward(th);
         const m = a.clone().lerp(b, 0.5).addScaledVector(o, 0.25); m.y = (a.y + b.y) / 2 + 0.2;
         vine(k, [a.clone().add(new THREE.Vector3(0, 0.15, 0)), m, b.clone().addScaledVector(o, 0.1).add(new THREE.Vector3(0, 0.3 + r() * 0.5, 0))], o.clone().setY(0.4).normalize(), r, 0.45);
@@ -727,6 +730,16 @@ export class Mossrest {
       this.stairs(m, b, 3.0);
       this.stairRuns.push({ foot: a.clone(), turn: m.clone(), top: b.clone(), ring: bi });
     }
+  }
+  /** How far a point is from the nearest walk, stair, floor or the neck walk (its footprint's edge; 0 on it). */
+  private walkGap(x: number, z: number) {
+    let best = 1e9;
+    for (const d of [...this.deckSpecs, ...this.neckDecks]) {
+      const dx = x - d.x, dz = z - d.z, c = Math.cos(d.rot), s = Math.sin(d.rot);
+      const lx = Math.abs(dx * c - dz * s) - d.span / 2, lz = Math.abs(dx * s + dz * c) - d.width / 2;
+      best = Math.min(best, Math.hypot(Math.max(0, lx), Math.max(0, lz)));
+    }
+    return best;
   }
   /** How far a point is from the nearer big stair's centre line (no trees crowd the stairs). */
   private stairGap(x: number, z: number) {
